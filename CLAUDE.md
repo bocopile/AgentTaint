@@ -18,6 +18,9 @@ Claude Code는 프로젝트 루트의 `AGENTS.md`를 자동으로 읽지 않는�
 - `docs/SUBORCHESTRATOR.md` — SubOrchestrator(외부 멀티에이전트 파이프라인
   도구)로 이 저장소를 구동할 때의 연동 방식. AgentTaint 자체 설계와는
   무관한 툴링 문서다.
+- `docs/RELATED_WORK.md` — 유사 철학의 오픈소스 프로젝트 조사 기록(별점,
+  구조, 문서 패턴 비교). **규범이 아니다** — 참고용 조사 기록이며 구현이
+  이 문서를 따를 의무는 없다.
 
 ## 작업 시작 규칙
 

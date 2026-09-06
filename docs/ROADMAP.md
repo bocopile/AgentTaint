@@ -32,6 +32,19 @@
       위반 발생 시 사람이 읽을 수 있는 이유를 에이전트에게 되돌려줘서
       (Claude Code/Codex hook, MCP 등) 다른 경로로 재시도하게 만든다.
       ActPlane의 corrective feedback 개념 참고 — 지금은 방향성만 기록.
+- [ ] **Phase 9 — Local Web Dashboard** · [prompts/09-local-web-dashboard.md](../prompts/09-local-web-dashboard.md) (스텁)
+      `agenttaint`가 이미 수집한 이벤트/정책 위반 로그를 로컬 브라우저에서
+      조회하는 뷰어. AgentSight의 `frontend`+`controller`(별도 SaaS,
+      OAuth/relay)를 그대로 따르지 않고, 클라우드 계층 없이 단일 바이너리
+      안에 내장하는 것을 기본 방향으로 한다 — 자세한 내용은
+      [ARCHITECTURE.md](./ARCHITECTURE.md)의 "향후: 로컬 웹 대시보드" 절
+      참고. 이벤트 영속화/쿼리 계층이 먼저 정의되어야 착수 가능하다.
+- [ ] **Phase 10 — Payload-aware LLM Sink (조건부)** · [prompts/10-payload-aware-llm-sink.md](../prompts/10-payload-aware-llm-sink.md) (조건부 스텁)
+      `SSL_write`/`SSL_read` uprobe로 LLM API 요청의 목적지·모델명 등
+      메타데이터를 Sink 판정에 사용하는 확장. **구현이 확정된 게 아니라
+      조건부 스텁이다** — 필요성이 실제로 확인되기 전까지는 시작하지
+      않는다. 지켜야 할 제약은
+      [SECURITY_MODEL.md](./SECURITY_MODEL.md)의 관련 절 참고.
 
 ## 순서를 지키는 이유
 
@@ -39,6 +52,7 @@
   만들면 보안 semantics를 어느 쪽 기준으로 검증했는지 불명확해진다.
 - Kubernetes는 로컬 information-flow 모델이 끝난 뒤에만 시작한다 —
   배포 방식(DaemonSet)을 먼저 고민하는 건 시기상조다.
-- TLS/페이로드 관찰(예: `SSL_write` uprobe)은 이 로드맵에 없다. 필요성이
-  생기면 AGENTS.md의 "문서는 규범이다" 절차를 따라 별도로 논의하고
-  추가한다 — 조용히 어느 Phase에 끼워 넣지 않는다.
+- TLS/페이로드 관찰(예: `SSL_write` uprobe)은 실행이 확정된 Phase가 아니라
+  Phase 10에 조건부 스텁으로만 남겨뒀다. 필요성이 실제로 확인되기 전까지는
+  시작하지 않으며, 착수하려면 AGENTS.md의 "문서는 규범이다" 절차를 다시
+  밟는다 — 조용히 다른 Phase에 끼워 넣지 않는다.

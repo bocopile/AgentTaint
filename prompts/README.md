@@ -44,6 +44,9 @@ prompts/0N-xxx.md     이번 작업에서 정확히 무엇을 변경할 것인�
 | 5 | [05-macos-observer.md](./05-macos-observer.md) | 스텁 (Phase 4 완료 후 상세화) |
 | 6 | [06-rich-flow.md](./06-rich-flow.md) | 스텁 |
 | 7 | [07-kubernetes.md](./07-kubernetes.md) | 스텁 |
+| 8 | (없음) | 미작성 — [docs/ROADMAP.md](../docs/ROADMAP.md)의 Agent Feedback Loop 참고 |
+| 9 | [09-local-web-dashboard.md](./09-local-web-dashboard.md) | 스텁 |
+| 10 | [10-payload-aware-llm-sink.md](./10-payload-aware-llm-sink.md) | 스텁 (조건부 — 필요성 확인 전까지 미착수) |
 
 Phase 0~4가 "Linux MVP"다. 5 이후는 지금 상세히 쓰지 않는다 — 아직 오지
 않은 Phase를 미리 세밀하게 설계하면 그 사이에 나온 결정(Phase 3에서

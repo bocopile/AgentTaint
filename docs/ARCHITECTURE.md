@@ -14,6 +14,10 @@ AGENTS.md의 "문서는 규범이다" 절차를 따라 먼저 논의한다.
 - 선택 이유와 Rust(aya) 대비 트레이드오프는 [AGENTS.md](../AGENTS.md)의
   "Tech Stack" 절 참고. 요약: Kubernetes 생태계(2차 목표)가 Go 중심이고,
   `cilium/ebpf`+CO-RE가 이 영역에서 Tetragon이 검증한 조합이다.
+- 정확한 버전 고정(Go 1.26+, `cilium/ebpf` v0.22.0, clang/LLVM 12+,
+  bpftool, 커널 최소 버전 5.13+)은 [AGENTS.md](../AGENTS.md)의
+  "버전 고정" 절이 유일한 source of truth다 — 이 문서에서 중복 기록하지
+  않는다.
 
 ## 디렉터리 구조
 
@@ -51,6 +55,9 @@ AgentTaint/
 │   ├── enforce/                  # Decision → 실제 조치 (audit/monitor/notify/block/kill)
 │   │   └── enforce.go
 │   │
+│   ├── web/                      # Phase 9(로컬 웹 대시보드) 전까지 자리만 확보 — 미구현
+│   │   └── doc.go
+│   │
 │   ├── env/                      # doctor: 커널/BTF/BPF-LSM/에이전트 CLI 진단 (읽기 전용)
 │   │   └── doctor.go
 │   │
@@ -77,7 +84,7 @@ AgentTaint/
 │   ├── integration/
 │   └── fixtures/
 │
-├── deploy/                       # Kubernetes 배포 (Phase 9까지는 비어 있음)
+├── deploy/                       # Kubernetes 배포 (Phase 7 착수 전까지는 비어 있음)
 │   ├── daemonset.yaml
 │   ├── configmap.yaml
 │   └── rbac.yaml
@@ -219,3 +226,25 @@ internal/enforce → ALLOW / AUDIT / DENY  +  구조화 로그
 로컬 실행과 향후 Kubernetes DaemonSet 배포는 이 파이프라인을 그대로
 공유한다. 배포 방식만 다르다 (단일 프로세스 vs 노드당 1개 DaemonSet +
 cgroup→pod 매핑).
+
+## 향후: 로컬 웹 대시보드 (스텁)
+
+`internal/web/`은 Phase 9까지 자리만 확보해둔 빈 패키지다. 지금 설계를
+확정하는 게 아니라, 나중에 이 컴포넌트를 실제로 만들 때 지켜야 할 방향만
+남겨둔다.
+
+- **AgentSight의 `frontend`+`controller` 구조를 그대로 따르지 않는다.**
+  그쪽은 Next.js 프론트엔드 + Cloudflare Workers 기반 별도 SaaS
+  백엔드(OAuth, relay, Postgres)까지 갖춘 멀티유저 제품이다. AgentTaint는
+  로컬 단일 바이너리 정체성(위 "`run`이 보안 경계다" 절)을 유지하는 걸
+  우선한다 — 클라우드 relay·멀티유저 기능은 이 스텁 단계에서 non-goal이다.
+- 기본 방향은 `agenttaint`가 이미 만든 이벤트/정책 위반 로그를 로컬 HTTP
+  서버로 띄워 브라우저에서 조회하는 것 — 별도 배포 없이 같은 바이너리
+  안에서 `go:embed`된 정적 자산을 서빙하는 정도로 최소화한다.
+- **선행 질문**: 지금 아키텍처에는 이벤트/Decision을 영속화하고 쿼리하는
+  계층이 정의돼 있지 않다 (`internal/enforce`는 "구조화 로그"만 언급).
+  웹 뷰어가 "조회"를 하려면 이 저장/쿼리 계층부터 먼저 설계해야 한다 —
+  이 phase를 시작하는 사람이 가장 먼저 풀어야 할 문제다.
+- 정확한 phase 번호·기술 스택·엔드포인트 설계는 이 스텁 단계에서
+  확정하지 않는다. 착수 시점에 AGENTS.md의 "문서는 규범이다" 절차대로
+  다시 논의한다.

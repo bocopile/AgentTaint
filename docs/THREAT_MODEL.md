@@ -65,6 +65,16 @@ Compromised MCP Server / Dependency
   파일/프로세스/네트워크 연결의 존재 여부만 보며, TLS 페이로드 자체는 보지
   않는다 — 자세한 이유는 [SECURITY_MODEL.md](./SECURITY_MODEL.md) 참고)
 - AgentTaint 자신에 대한 공급망 공격 (서명/배포 검증은 별도 과제)
+- **BPF-LSM이 없는 환경의 kill 폴백은 예방이 아니다**: Phase 4가 계획하는
+  kill 폴백(ROADMAP.md)은 사후 대응이지 사전 차단이 아니다. 예를 들어
+  `write()` 시스템콜 도중 SIGKILL을 보내도, 데이터가 이미 커널 버퍼로
+  넘어간 뒤라면 파일에 그대로 써질 수 있다 — 이건 추상적 우려가 아니라
+  cilium/tetragon이 자사 문서에서 명시하는 것과 동일한 한계다. AGENTS.md
+  Security Semantics의 "post-event detection을 prevention이라 부르지
+  않는다" 원칙은 kill 폴백에도 그대로 적용된다: kill이 성공적으로
+  프로세스를 종료시켜도, 그 프로세스가 kill 신호를 받기 직전까지 이미
+  만든 effect(부분적으로 쓰인 파일, 이미 나간 네트워크 패킷)를 되돌리지
+  못한다.
 
 ## Non-goals
 

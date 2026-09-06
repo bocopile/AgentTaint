@@ -79,6 +79,24 @@ IFC는 접근은 허용하되 그 이후 파생되는 흐름에 규칙을 건다
 두 계층을 함께 쓴다: 일부 자산은 애초에 접근 자체를 막고(access control),
 접근이 필요한 자산은 접근을 허용하되 흐름을 추적한다(IFC).
 
+### 이 구분이 실제로 중요한 이유 (생태계 조사 근거)
+
+이 구분은 추상적 이분법이 아니다. 고스타 오픈소스 보안 도구를 조사해보면
+(2026-09 기준, 전체 목록은 [RELATED_WORK.md](./RELATED_WORK.md) 참고)
+google/gvisor, evilsocket/opensnitch, netblue30/firejail,
+containers/bubblewrap, Zouuup/landrun처럼 범용 샌드박싱 도구는 물론,
+AI 에이전트를 명시적으로 타깃하는 multikernel/sandlock,
+GreyhavenHQ/greywall까지 **전부 access control**(경로·syscall 단위
+allow/deny 리스트)이다. 실시간으로 프로세스에 라벨을 붙이고 그 라벨을
+계보를 따라 전파해서 판정하는 프로젝트는 조사 범위에서 사실상 없었다 —
+유일하게 근접한 ashish-gehani/SPADE(provenance 그래프)조차 실시간 정책
+집행이 아니라 사후 포렌식 질의 도구다.
+
+즉 access control 계층은 이미 성숙한 도구가 많아 AgentTaint가 새로
+발명할 이유가 없고, AgentTaint의 taint/IFC 핵심 추상화
+(Source→Label→Propagation→Sink→Decision)가 실제로 값을 더하는
+지점이라는 게 이 조사로 뒷받침된다.
+
 ## Scope (v0.1)
 
 | 구분 | v0.1 범위 |
@@ -103,6 +121,29 @@ v0.1 sink 정의에 없다. 이유는 [THREAT_MODEL.md](./THREAT_MODEL.md)와
 이미 다루는 관찰(observability) 영역이고, AgentTaint의 핵심 정체성은
 "접근했다는 사실 자체를 근거로 흐름을 통제"하는 IFC이지 "내용을 들여다보는
 DLP"가 아니다. 필요해지면 명시적으로 별도 phase에서 추가한다.
+
+### (스텁) 향후 payload-aware LLM sink를 추가한다면
+
+지금 결정하는 것이 아니라, 나중에 이 확장이 실제로 필요하다고 판단되어
+AGENTS.md의 "문서는 규범이다" 절차(충돌 식별 → 이유 설명 → 최소 변경안
+제안 → 사람 확인)를 다시 밟게 될 경우를 대비해, 그 phase가 반드시 지켜야
+할 제약을 지금 기록해둔다.
+
+- **Decision 근거는 여전히 메타데이터여야 한다** — 목적지 host/도메인,
+  요청에 선언된 model 필드, 요청 크기 정도. prompt/response 본문을
+  분류(PII 판별, 위험도 스코어링 등)해서 그 결과를 Decision 근거로 쓰는
+  것은 이 확장에서도 금지된다. 그건 DLP이지 AgentTaint의 IFC 정체성이
+  아니다 (AGENTS.md Product Principle).
+- **목적지 단위 차단은 이미 v0.1 Sink로 충분하다** — SECRET 라벨이 붙은
+  프로세스가 `api.anthropic.com`을 포함한 외부 네트워크로 나가는 것 자체를
+  막는 데는 payload를 볼 필요가 없다 (위 "Scope (v0.1)" 참고). 이 확장이
+  실제로 필요해지는 경우는 "같은 목적지라도 요청마다 다르게 처리해야
+  하는" 케이스로 좁혀서 판단한다.
+- eBPF 훅 선택 시 AGENTS.md의 detect≠block 원칙을 코드로 강제한다 — 어떤
+  훅(uprobe vs LSM)이 어떤 Decision(audit vs deny)을 낼 수 있는지 타입
+  레벨에서 검증하는 게이트를 둔다 (참고 선례:
+  eunomia-bpf/ActPlane의 `te_effect_mode()` — 훅 종류가 지원 안 하는
+  effect를 rule이 요청하면 무효화하는 패턴).
 
 ## Policy Model (초안)
 
