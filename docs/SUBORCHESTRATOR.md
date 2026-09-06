@@ -85,7 +85,10 @@ go build`)은 Go 코드만 다루고 `bpf/*.bpf.c`(C, CO-RE) 컴파일·verifier
    Acceptance Criteria에 "VM 안에서 실행"을 명시적 단계로 넣을지, 아니면
    별도 수동 검증으로 분리할지.
 2. `bpf/*.bpf.c` 빌드(clang -target bpf, bpftool gen skeleton)를 CI/파이프라인
-   어디에 넣을지 — 현재 로컬에는 `clang`은 있지만 `llvm-strip`/`bpftool`이
-   없다.
+   어디에 넣을지 — **버전 요구사항 자체는 [AGENTS.md](../AGENTS.md)의
+   "버전 고정" 절에 확정됐다** (clang/LLVM 12+, bpftool 설치 방법 포함).
+   다만 이 로컬 macOS 개발 머신에는 여전히 `llvm-strip`/`bpftool`이 설치돼
+   있지 않다 — Phase 2 착수 전 Linux VM 쪽에 실제로 설치해야 한다. CI
+   파이프라인 자체에 넣을지는 아직 미정.
 
 지금은 결론 없이 갭으로만 기록해 둔다 — Phase 0/1 진행에는 영향 없다.

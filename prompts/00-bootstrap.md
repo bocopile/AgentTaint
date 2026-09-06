@@ -35,6 +35,12 @@ internal/env  internal/runner
    - OS 판별 (Linux/macOS), Linux면 커널 버전·BTF 존재 여부·BPF-LSM
      활성화 여부 점검. macOS면 "v0.1 미지원, Linux VM에서 실행하세요"
      출력.
+     - 커널 버전 판정 임계값(AGENTS.md "버전 고정" 절과 동일): 5.13
+       미만이면 "BPF-LSM 불안정/미지원 가능성" 경고, 5.8 미만이면
+       ring buffer 자체가 없어 "미지원"으로 표시한다. 이 Phase는 아직
+       eBPF를 로드하지 않으므로 버전 문자열 파싱·비교 로직만 구현하고
+       실제 BPF-LSM 활성화 여부(`lsm=` 커맨드라인) 점검은 문자열
+       비교로 가능한 범위까지만 한다.
    - 알려진 AI 에이전트 CLI 탐지 목록은 하드코딩하지 말고 설정/상수
      슬라이스로 분리 (최소 `claude`, `codex`).
      - PATH에서 `exec.LookPath`로 1차 탐지.

@@ -33,6 +33,28 @@ Source -> Label -> Propagation -> Sink -> Decision
   중심이고, `cilium/ebpf` + CO-RE가 Tetragon이 검증한 조합이다. Rust(aya)도
   대안으로 검토했으나 k8s 글루 코드 생태계가 더 얇아서 채택하지 않았다.
 
+### 버전 고정 (Pinned Versions)
+
+여기 적힌 숫자를 임의로 올리거나 내리지 않는다 — 바꿀 필요가 생기면 이유를
+기록하고 이 절부터 갱신한다.
+
+- **Go**: 1.26+ (`go.mod`의 `go` directive는 `1.26`). `cilium/ebpf`가
+  요구하는 최소 버전(1.25) 이상을 만족해야 한다.
+- **cilium/ebpf**: `v0.22.0` 고정. 버전을 올릴 때는 CHANGELOG에서 breaking
+  change(특히 `bpf2go` 생성 코드 시그니처 변경) 여부를 먼저 확인한다.
+- **clang/LLVM**: 최소 12+ (`bpf2go`가 요구하는 하한은 10이지만, CO-RE
+  relocation과 엔디안 자동 판별이 12부터 안정적이다). `doctor`가 이 버전을
+  확인 대상에 포함한다 (Phase 2 이후).
+- **bpftool**: `vmlinux.h` 생성(`bpftool btf dump file
+  /sys/kernel/btf/vmlinux format c`)에 필요. Ubuntu/Debian은
+  `linux-tools-common` + `linux-tools-$(uname -r)`, Fedora/RHEL 계열은
+  `bpftool` 패키지로 설치한다. Phase 2 착수 전 개발 환경에 반드시 있어야
+  한다 (`docs/SUBORCHESTRATOR.md`가 이미 gap으로 기록한 항목).
+- **커널 최소 버전**: BPF-LSM 훅은 5.7+부터 존재하지만 안정 동작 기준은
+  **5.13+**로 잡는다. Ring buffer(`BPF_MAP_TYPE_RINGBUF`)는 5.8+ 필요.
+  `doctor`(`internal/env`)는 이 숫자를 pass/fail 임계값으로 사용한다
+  (자세한 내용은 `prompts/00-bootstrap.md`).
+
 ## Architecture Rules
 
 1. `internal/core`는 플랫폼(Linux/macOS)을 알아서는 안 된다. Linux나 macOS

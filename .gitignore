@@ -1,1 +1,23 @@
 .idea/**
+
+# THREAT_MODEL.md의 보호 대상 1순위 — 실수 커밋 방지
+.env
+
+# SubOrchestrator 로컬 산출물 (docs/SUBORCHESTRATOR.md), 규범 문서 아님
+.orchestrator/logs/
+
+# Go 빌드 산출물
+/agenttaint
+/bin/
+*.test
+*.out
+
+# eBPF 중간 산출물(오브젝트 파일) — 커밋 대상 아님
+bpf/*.o
+
+# 주의: bpf2go가 생성하는 *_bpfel.go/*_bpfeb.go, bpf/vmlinux.h는 의도적으로
+# 여기 없다 — 재현 가능한 빌드를 위해 커밋 대상인지는 Phase 2에서 결정한다
+# (AGENTS.md "문서는 규범이다" 절차 없이 이 파일에서 조용히 정하지 않는다).
+
+# macOS
+.DS_Store
