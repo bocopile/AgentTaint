@@ -28,9 +28,24 @@ AGENTS.md             AI가 항상 지켜야 하는 규칙 (프로젝트 헌법)
 prompts/0N-xxx.md     이번 작업에서 정확히 무엇을 변경할 것인가 (implementation contract)
 ```
 
-`docs/`와 `AGENTS.md`는 규범(normative)이다. 구현이 여기에 없는 걸
-필요로 하면, Phase 프롬프트를 조용히 벗어나지 말고 AGENTS.md의 "문서는
-규범이다" 절차를 따른다.
+규범의 적용 범위는 다음과 같이 구분한다. `docs/` 아래 모든 파일이 자동으로
+규범이 되는 것은 아니다.
+
+- `AGENTS.md`: 모든 작업의 공통 규칙이며 충돌 시 우선한다.
+- `docs/ARCHITECTURE.md`, `docs/SECURITY_MODEL.md`: 구조·보안 모델의
+  source of truth다. 변경 시 AGENTS.md의 "문서는 규범이다" 절차를 따른다.
+- `docs/THREAT_MODEL.md`: 보호 가정·공격자·한계의 계약이다.
+- `docs/ROADMAP.md`: Phase 순서와 범위의 기준이다.
+- 현재 `prompts/NN-*.md`: 해당 Phase의 구현·검증 계약이며 위 규범을
+  조용히 덮어쓰지 않는다.
+- `docs/RELATED_WORK.md`, `docs/SUBORCHESTRATOR.md`: 조사·선택적 도구
+  안내이며 보안 모델이나 구현 권한을 변경하지 않는다.
+- `docs/IMPLEMENTATION_MASTER_PLAN.md`: 채택 기본안·작업 지도·검증 계획이다.
+  기존 규범의 자동 대체물이 아니며 관련 수정 사항은 해당 Phase 착수 전에
+  규범에 명시적으로 반영한다.
+
+구현에 필요한 내용이 규범·현재 Phase 범위와 충돌하면 이를 식별하고
+AGENTS.md의 "문서는 규범이다" 절차를 따른다.
 
 ## Phase 목록
 
