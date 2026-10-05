@@ -2,6 +2,7 @@ name: Portable Go
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
