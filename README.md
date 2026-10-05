@@ -36,8 +36,10 @@ go build -o ./agenttaint ./cmd/agenttaint
   실행 파일을 선택한다. 잘못된 명시 경로나 안전하지 않은 상대 PATH 결과는
   fallback하지 않는다. argv와 stdin/stdout/stderr를 그대로 연결하고, 자체
   안내는 stderr로 보낸다. shell 보간·PATH 변경을 하지 않는다.
-- 종료 코드: target의 정상 종료 코드를 보존한다. 실행/조회 실패 또는
-  signal 종료는 `1`, CLI 사용법 오류는 `2`다. `doctor`는 진단 보고서를
+- 종료 코드: target의 정상 종료 코드를 보존한다. target이 signal N으로
+  종료되면 POSIX shell 관례대로 `128+N`(예: SIGTERM `143`)이며 signal
+  이름을 stderr에 남긴다. 실행/조회 실패는 `1`, CLI 사용법 오류는 `2`다.
+  `128+N`은 target이 같은 값으로 정상 종료한 경우와 숫자만으로 구분되지 않는다. `doctor`는 진단 보고서를
   출력하면 `0`이며, 이 값은 보호 가능 판정이 아니다. 보고서 출력 실패는 `1`이다.
 - 프로세스 트리 감시·잔류 자식 정리·signal 전달을 책임지는 supervisor가
   아니다. native macOS 센서, Linux eBPF, taint, 정책 평가, enforcement는

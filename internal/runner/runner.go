@@ -7,11 +7,13 @@ import (
 	"io"
 	"os/exec"
 	"runtime"
+	"syscall"
 
 	"github.com/bocopile/AgentTaint/internal/env"
 )
 
 // Run preserves argv, streams, the inherited environment, and normal exit codes.
+// A target terminated by signal N yields 128+N, the POSIX shell convention.
 // It is not a sandbox, sensor, or process-tree supervisor.
 func Run(resolver env.Resolver, bin string, args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
 	if len(args) == 0 {
@@ -31,8 +33,14 @@ func Run(resolver env.Resolver, bin string, args []string, stdin io.Reader, stdo
 	cmd := &exec.Cmd{Path: found.Path, Args: append([]string(nil), args...), Stdin: stdin, Stdout: stdout, Stderr: stderr}
 	if err := cmd.Run(); err != nil {
 		var exit *exec.ExitError
-		if errors.As(err, &exit) && exit.ExitCode() >= 0 {
-			return exit.ExitCode(), nil
+		if errors.As(err, &exit) {
+			if exit.ExitCode() >= 0 {
+				return exit.ExitCode(), nil
+			}
+			if status, ok := exit.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+				fmt.Fprintf(stderr, "agenttaint: target terminated by signal: %v\n", status.Signal())
+				return 128 + int(status.Signal()), nil
+			}
 		}
 		return 1, fmt.Errorf("execute command: %w", err)
 	}

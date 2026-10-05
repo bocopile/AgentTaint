@@ -170,3 +170,21 @@ func TestRunPreservesSymlinkParentTraversal(t *testing.T) {
 		}
 	}
 }
+
+func TestRunMapsSignalTerminationTo128PlusSignal(t *testing.T) {
+	root := t.TempDir()
+	script := filepath.Join(root, "self-signal")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nkill -\"$1\" $$\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		signal string
+		code   int
+	}{{"TERM", 143}, {"KILL", 137}} {
+		var out, diagnostic bytes.Buffer
+		code, err := Run(env.Resolver{}, script, []string{"self-signal", test.signal}, nil, &out, &diagnostic)
+		if err != nil || code != test.code || out.Len() != 0 || !strings.Contains(diagnostic.String(), "terminated by signal") {
+			t.Fatalf("%s: code=%d err=%v stdout=%q stderr=%q", test.signal, code, err, out.String(), diagnostic.String())
+		}
+	}
+}
