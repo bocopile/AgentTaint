@@ -55,40 +55,45 @@ Phase 0(코드 0줄, 그린필드)은 SubOrchestrator가 TDD 방법론으로 자
 
 ## 실행 전 준비 체크리스트
 
-- [ ] `git status`에 커밋 안 된 변경이 없는지 확인 (현재 `README.md` 수정,
-      `AGENTS.md`/`docs/`/`prompts/` untracked 상태 — 커밋 권장)
-- [ ] `.gitignore`에 `.env`, `.orchestrator/logs/` 패턴 추가 (현재 파일
-      자체가 없음)
-- [ ] `orchestrator init --project-path .` 실행 시 permission-mode를
-      `auto` 또는 `bypassPermissions`로 선택 — 기본 allowlist는 npm 계열만
-      있고 `go build`/`go vet`/`go test`/`gofmt`가 없어, 그대로 두면 Go
-      명령마다 승인 프롬프트가 뜬다.
-- [ ] Gemini 어댑터는 2026-08-29 무료 티어 정책 변경으로 인증이 막혀
-      있다 — 3-AI consensus가 Codex+Claude 2-AI로 자동 축소된다
-      (SubOrchestrator `cross-validate-policy.md`의 "어댑터 unavailable"
-      규칙에 따른 정상 동작).
+- [ ] 실행 직전에 `git status --short --branch`와 staged diff를 확인한다.
+      저장소 상태는 세션마다 달라지므로 이 문서에 특정 파일 상태를
+      고정하지 않는다. 기존 사용자 변경은 별도 승인 없이 stage하지 않는다.
+- [x] 확인일 2026-10-19 기준 `.gitignore`에 `.env`와
+      `.orchestrator/logs/`가 포함돼 있다. ignore 설정은 비밀정보가 안전하게
+      보관된다는 증거가 아니므로 실제 staged 파일도 확인한다.
+- [ ] 권한 모드는 편의 때문에 `auto` 또는 `bypassPermissions`로 넓히지
+      않는다. read-only 기본값과 작업별 최소 권한을 유지하고, 필요한 명령만
+      task-scoped sandbox/allowlist 또는 개별 승인으로 실행한다. 저장소·전역
+      설정을 바꾸기 전에 실제 적용 권한과 변경 경로를 확인한다.
+- [ ] 모델·어댑터 가용성은 시점·계정·설정에 따라 달라진다. 실행 직전에
+      활성 provider와 실제 응답을 확인하고, consensus 인원이나 축소 동작을
+      사전 사실로 가정하지 않는다. 사용할 수 없는 provider는 `not_tested` 또는
+      해당 도구의 명시된 unavailable 상태로 기록한다.
 
-## Phase 2 이후: eBPF/Linux 검증 인프라 (아직 미결정)
+## Phase 2 이후: eBPF/Linux 검증 인프라
 
-Phase 0~1은 순수 Go라 로컬 macOS에서 `go build`/`go test`로 그대로
-검증된다. Phase 2(Linux Observer)부터는 `cilium/ebpf` + libbpf CO-RE가
-실제 Linux 커널을 요구한다 — macOS 호스트에서는 eBPF 프로그램을 로드하는
-테스트를 네이티브로 돌릴 수 없다 (`docs/ARCHITECTURE.md`의 "macOS는 Linux
-VM에서 실행" 방침과 동일한 제약).
+Phase 2(Linux Observer)부터는 `cilium/ebpf` + libbpf CO-RE의 실제 Linux
+커널 검증이 필요하다. macOS 호스트의 Go build/test는 guest의 BTF, verifier,
+load, attach, 실제 event 동작을 증명하지 않는다 (`docs/ARCHITECTURE.md`의
+Linux VM 실행 방향 참조).
 
 SubOrchestrator의 언어별 검증 체인(`go vet → golangci-lint → go test →
-go build`)은 Go 코드만 다루고 `bpf/*.bpf.c`(C, CO-RE) 컴파일·verifier 통과
-여부는 검증 대상에 포함하지 않는다. Phase 2 SPEC을 시작하기 전에 다음을
-먼저 정해야 한다:
+go build`)은 Go 코드를 다룬다. 이 체인만으로 `bpf/*.bpf.c`(C, CO-RE)의
+컴파일·verifier·load·attach 여부를 검증했다고 간주하지 않는다. 다음은 현재
+환경 사실과 이후 gate다.
 
-1. Linux VM(Lima/Docker) 안에서 `go test`를 어떻게 실행시킬지 — SPEC의
-   Acceptance Criteria에 "VM 안에서 실행"을 명시적 단계로 넣을지, 아니면
-   별도 수동 검증으로 분리할지.
-2. `bpf/*.bpf.c` 빌드(clang -target bpf, bpftool gen skeleton)를 CI/파이프라인
-   어디에 넣을지 — **버전 요구사항 자체는 [AGENTS.md](../AGENTS.md)의
-   "버전 고정" 절에 확정됐다** (clang/LLVM 12+, bpftool 설치 방법 포함).
-   다만 이 로컬 macOS 개발 머신에는 여전히 `llvm-strip`/`bpftool`이 설치돼
-   있지 않다 — Phase 2 착수 전 Linux VM 쪽에 실제로 설치해야 한다. CI
-   파이프라인 자체에 넣을지는 아직 미정.
+- 2026-10-19 host 확인: macOS arm64, Go 1.26.1, Apple clang 17.0.6. `limactl`
+  목록에는 기존 `ebpf-lab` Lima VM이 `Stopped`, VZ/aarch64, 4 CPU/4 GiB/20 GiB로
+  나타났다. host PATH에서 `llvm-strip`과 `bpftool`은 찾지 못했다. 이 값은
+  Linux guest 상태가 아니다.
+- 이 세션에서는 guest 설정·kernel·BTF·LSM·도구·권한을 읽지 않았고 VM을
+  시작하지 않았다. G3/ENV-01은 허용된 Linux guest 실행 경로가 제공될 때
+  수행한다. 설정 파일이나 host 도구만으로 guest 준비 완료를 판정하지 않는다.
+- guest에서 `go test`와 Linux 통합 시나리오를 어디서 실행할지는 ENV-01/02 및
+  Phase 2 검증 계약에서 정한다. portable CI는 kernel 검증을 대신하지 않으며,
+  Linux privileged CI 구성은 해당 작업의 선행조건·권한이 승인되기 전에는
+  추가하지 않는다.
 
-지금은 결론 없이 갭으로만 기록해 둔다 — Phase 0/1 진행에는 영향 없다.
+Go toolchain 검사와 eBPF runtime 검증을 구분한다. doctor의 기본 동작은 계속
+비실행 진단이며, 임의 설치·VM 시작·권한 변경은 이 운영 문서만으로 허용되지
+않는다.
