@@ -56,9 +56,9 @@ SECRET 프로세스의 socket connect
 ## Out of Scope
 
 - file write/read propagation, pipe propagation (Phase 6)
-- 다중 label (Phase 8)
-- macOS enforcement (Phase 5/6)
-- Kubernetes (Phase 9)
+- 다중 label (Phase 6)
+- macOS 네이티브 지원 (Phase 5; 별도 결정 전까지 Linux VM 방향 유지)
+- Kubernetes (Phase 7)
 - 인라인 리댁션(요청 내용만 지우고 통과시키는 것) — 범위 밖, 필요해지면
   별도 논의
 

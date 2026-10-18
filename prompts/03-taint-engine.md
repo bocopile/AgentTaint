@@ -44,8 +44,8 @@ internal/policy 평가 → Violation 이벤트 (DECISION: audit)
 
 - 실제 네트워크 차단, 프로세스 종료 (Phase 4)
 - LSM 기반 pre-op enforcement (Phase 4)
-- file write/read propagation, pipe propagation (Phase 6/7)
-- 다중 label (`CREDENTIAL`, `SOURCE_CODE` 등 — Phase 8)
+- file write/read propagation, pipe propagation, 다중 label (`CREDENTIAL`,
+  `SOURCE_CODE` 등 — 모두 Phase 6)
 - macOS, Kubernetes
 
 ## Files
@@ -89,14 +89,15 @@ process reads secret.txt → external connect → decision: deny (audit only), v
 parent reads secret.txt → fork → child connects → decision: deny, violation 발생
 ```
 
-**TEST 4 — 오탐 없음 검증**
+**TEST 4 — 지정한 정상 흐름 회귀 검증**
 ```
 parent reads normal.txt → fork → child connects → decision: allow, violation 없음
 ```
 
 이 4개는 `test/integration/`에 자동화된 테스트로 존재해야 하며, 각각
 `examples/`의 스크립트를 사용한다. "대충 구현했다"고 넘어갈 수 없도록
-TEST 3(전파)과 TEST 4(오탐 없음)를 특히 엄격하게 검증한다.
+TEST 3(전파)과 TEST 4의 지정된 정상 흐름을 특히 엄격하게 검증한다.
+TEST 4 한 건의 통과를 일반적인 오탐 부재 증거로 확대하지 않는다.
 
 ## Tests
 

@@ -73,29 +73,20 @@ AI Agent → .env read → ALLOW (+ SECRET label) → 작업 수행
          → external network connect → DENY
 ```
 
-Access Control만으로는 "파일 A는 스크립트 A를 통해서만 접근 가능"처럼
-조건부 규칙을 표현할 수 없고, 전부-허용/전부-차단의 이분법에 갇힌다.
-IFC는 접근은 허용하되 그 이후 파생되는 흐름에 규칙을 건다. AgentTaint는
-두 계층을 함께 쓴다: 일부 자산은 애초에 접근 자체를 막고(access control),
-접근이 필요한 자산은 접근을 허용하되 흐름을 추적한다(IFC).
+Resource/operation access control과 IFC는 다른 질문에 답한다. 전자는 현재
+주체의 자원 접근을 허용할지 판단하고, IFC는 관측한 민감 자원 접근에서
+파생된 process label을 이후 sink 판정에 사용한다. 더 복잡한 access-control
+시스템이 조건부 규칙을 표현할 수 없다는 뜻은 아니다. 두 방식은 함께 쓸
+수 있지만, AgentTaint의 핵심 모델은 Source→Label→Propagation→Sink→Decision이다.
 
-### 이 구분이 실제로 중요한 이유 (생태계 조사 근거)
+### 이 구분이 실제로 중요한 이유
 
-이 구분은 추상적 이분법이 아니다. 고스타 오픈소스 보안 도구를 조사해보면
-(2026-09 기준, 전체 목록은 [RELATED_WORK.md](./RELATED_WORK.md) 참고)
-google/gvisor, evilsocket/opensnitch, netblue30/firejail,
-containers/bubblewrap, Zouuup/landrun처럼 범용 샌드박싱 도구는 물론,
-AI 에이전트를 명시적으로 타깃하는 multikernel/sandlock,
-GreyhavenHQ/greywall까지 **전부 access control**(경로·syscall 단위
-allow/deny 리스트)이다. 실시간으로 프로세스에 라벨을 붙이고 그 라벨을
-계보를 따라 전파해서 판정하는 프로젝트는 조사 범위에서 사실상 없었다 —
-유일하게 근접한 ashish-gehani/SPADE(provenance 그래프)조차 실시간 정책
-집행이 아니라 사후 포렌식 질의 도구다.
-
-즉 access control 계층은 이미 성숙한 도구가 많아 AgentTaint가 새로
-발명할 이유가 없고, AgentTaint의 taint/IFC 핵심 추상화
-(Source→Label→Propagation→Sink→Decision)가 실제로 값을 더하는
-지점이라는 게 이 조사로 뒷받침된다.
+경로·syscall 단위 access-control 규칙의 존재만으로는 관측된 민감 자원
+접근이 이후 어떤 process sink에 영향을 주는지 표현하지 않는다. 반대로
+IFC label은 자원 접근 자체를 허용하거나 거부하는 access control을 대체하지
+않는다. AgentTaint의 설계 차이는 특정 생태계 도구가 조건부 access control을
+구현할 수 없다는 주장이 아니라, Source→Label→Propagation→Sink→Decision
+흐름을 제품의 핵심 모델로 삼는 데 있다.
 
 ## Scope (v0.1)
 
@@ -147,13 +138,29 @@ AGENTS.md의 "문서는 규범이다" 절차(충돌 식별 → 이유 설명 →
 
 ## Policy Model (초안)
 
-구현 전이지만, BPF map/이벤트 스키마를 역설계할 수 있도록 형태를 먼저
-고정한다.
+아래 첫 예시는 구현 전의 **v0.1 단일 `SECRET` label 예시**다. 현재 구현된
+policy schema가 아니다.
 
 ```yaml
 sources:
   - path: ".env"
     label: SECRET
+
+rules:
+  - name: prevent-secret-egress
+    when:
+      process_has: SECRET
+    sink:
+      network: external
+    action: deny
+```
+
+다음 `PRIVATE_KEY` snippet은 미래의 다중 label 확장 예시다. v0.1/Phase 3의
+실행 가능한 policy에 포함하지 않으며, 해당 확장은 Phase 6에서 별도 계약과
+검증을 거쳐야 한다.
+
+```yaml
+sources:
   - path: "~/.ssh/id_rsa"
     label: PRIVATE_KEY
 
@@ -161,13 +168,6 @@ rules:
   - name: block-private-key-access
     when:
       source: PRIVATE_KEY
-    action: deny
-
-  - name: prevent-secret-egress
-    when:
-      process_has: SECRET
-    sink:
-      network: external
     action: deny
 ```
 
