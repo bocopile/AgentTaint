@@ -887,8 +887,8 @@ AgentTaint/
 
 | 완료 | ID | 작업 | 선행 조건 | 주 산출물 |
 |---|---|---|---|---|
-| [ ] | PRE-01 | 문서·Phase·예시 불일치 정리안 적용 | 문서 수정 요청 | 일관된 기존 문서 |
-| [ ] | PRE-02 | 채택 기본안·허용 경로를 구체화해 규범에 반영 | 4절 기본안, 관련 E 설계 | 보장 표·정합적인 구조·현재 작업 범위 |
+| [x] | PRE-01 | 문서·Phase·예시 불일치 정리안 적용 | 문서 수정 요청 | 일관된 기존 문서; 검토된 불일치는 수정하고 후속 Phase 전 항목은 명시적으로 이연 |
+| [x] | PRE-02 | 채택 기본안·허용 경로를 구체화해 규범에 반영 | 4절 기본안, 관련 E 설계 | 보장 표·정합적인 구조·현재 작업 범위; G1/G2/G4 및 D05 문서 계약 반영, 구현 증거는 별도 카드 |
 | [ ] | TOOL-01 | 선택한 외부 스킬 세 개와 reference 도입 | D06 기본안, E01 | source SHA·reference 검증·discovery 증거 |
 | [ ] | TOOL-02 | 전용 preflight·docs·semantics 스킬 | E01 | 세 개의 좁은 검증 절차 |
 | [ ] | TOOL-03 | 서브에이전트 역할·인계·후속 검증 절차 | TOOL-02, 해당 Phase 진입 | 역할별 변경 경계·검증 증거·세션 인계 |
@@ -938,20 +938,20 @@ AgentTaint/
 | 위치 | 최초 검토 항목 / 현재 남은 문제 | 최소 변경안 | 상태 |
 |---|---|---|---|
 | `docs/ARCHITECTURE.md` 플랫폼 표 | Kubernetes Phase 번호 | ROADMAP의 Phase 7과 일치 | Phase 0에서 완료 |
-| `prompts/03-taint-engine.md`, `04-linux-enforcement.md` | 다중 라벨·Kubernetes 등 Phase 참조 오류 | ROADMAP의 Phase 6/7과 일치 | 미완료 |
-| `SECURITY_MODEL.md` 정책 예시 | PRIVATE_KEY와 단일 SECRET Phase 충돌 | v0.1 예시와 미래 예시 구분 | 의미 정리 확인 필요 |
+| `prompts/03-taint-engine.md`, `04-linux-enforcement.md` | 다중 라벨·Kubernetes 등 Phase 참조 오류 | ROADMAP의 Phase 6/7과 일치 | 2026-10-19 수정; diff 및 ROADMAP 대조 완료 |
+| `SECURITY_MODEL.md` 정책 예시 | PRIVATE_KEY와 단일 SECRET Phase 충돌 | v0.1 예시와 미래 예시 구분 | 2026-10-19 수정; v0.1 단일 SECRET과 미래 Phase 6 예시 분리 |
 | `prompts/README.md` | 규범 문서 집합 | 규범 파일을 명시적으로 나열 | Phase 0에서 완료 |
 | `ARCHITECTURE.md` 트리 제한 | Phase 2 생성물 범위 허용; 정확한 generator basename/suffix는 ENV-02에서 생성 전 기록 필요 | 기존 sensor 패키지의 생성 Go/object 및 해당 fixture·portable 검사만 허용 | G2 문서 반영 완료; 스킬·privileged CI는 별도 |
-| `SUBORCHESTRATOR.md` | 오래된 .gitignore·untracked 서술, broad permission 권고 | 현재 상태 확인 절차와 최소 권한 안내로 교체 | 미완료 |
-| `ARCHITECTURE.md` 및 `05-macos-observer.md` | ARCH의 Swift 필수 표현은 수정됐으나 Phase 5 프롬프트는 남음 | C API·언어 선택·VM 우선·native 별도 결정 구분 | 일부 완료 |
-| `SECURITY_MODEL.md` access control 비교 | 조건부 접근 제어 자체가 불가능하다는 일반화 | 차별점을 동적 접근 이력·라벨 전파로 표현 | 미완료 |
-| `03-taint-engine.md` TEST 4 | 단일 정상 사례를 오탐 없음 검증으로 표현 | 특정 정상 흐름 회귀 검증으로 명명 | 미완료 |
+| `SUBORCHESTRATOR.md` | 오래된 .gitignore·untracked 서술, broad permission 권고 | 현재 상태 확인 절차와 최소 권한 안내로 교체 | 2026-10-19 완료; commit `2821c64`, 현재 host/VM 증거 및 제한된 권한 안내 |
+| `ARCHITECTURE.md` 및 `05-macos-observer.md` | ARCH의 Swift 필수 표현은 수정됐으나 Phase 5 프롬프트는 남음 | C API·언어 선택·VM 우선·native 별도 결정 구분 | 2026-10-19 수정; C API와 비필수 Swift 표현 대조 완료 |
+| `SECURITY_MODEL.md` access control 비교 | 조건부 접근 제어 자체가 불가능하다는 일반화 | 차별점을 동적 접근 이력·라벨 전파로 표현 | 2026-10-19 수정; 조건부 규칙 불가 주장을 제거하고 모델 차이로 한정 |
+| `03-taint-engine.md` TEST 4 | 단일 정상 사례를 오탐 없음 검증으로 표현 | 특정 정상 흐름 회귀 검증으로 명명 | 2026-10-19 수정; 단일 사례를 일반 오탐 부재 증거로 확대하지 않도록 명시 |
 | `00-bootstrap.md` 수용 기준 | 개인 머신 PATH 상태 고정 | fixture로 PATH 안/밖 통제 | Phase 0에서 완료 |
 | `00-bootstrap.md` doctor 검증 | 부모 PATH 불변만으로 읽기 전용 입증 | subprocess 환경·쓰기·임의 실행 여부 별도 검증 | Phase 0에서 완료 |
 | `02-linux-observer.md` 출력 | audit JSON stdout과 target stdout 보존 충돌 | 별도 필수 감사 파일·안전한 생성·실패 경계 | G1 문서 반영 완료; 옵션 미구현 |
 | AGENTS clang 검사 / ARCH doctor 계약 | Phase 2 toolchain 버전 검사와 외부 명령 비실행 계약의 접점 | 기본 비실행 유지, 신뢰된 절대 경로의 명시 probe만 제한 실행 | G4 문서 반영 완료; probe 미구현 |
 | `03-taint-engine.md` 상태·exec | PID-only map 예시, exec를 부모→자식 전파처럼 표현 | ProcessKey 기반 상태와 동일 생애 exec 유지로 구체화 | P3 착수 전 |
-| `04-linux-enforcement.md` fallback | 자동 kill과 D05의 block 미지원 시 시작 전 실패 충돌 | 명시 mode와 capability 계약 정리 | P4 착수 전 확인 |
+| `04-linux-enforcement.md`, `THREAT_MODEL.md`, `ROADMAP.md` fallback | 자동 kill과 D05의 block 미지원 시 시작 전 실패 충돌 | 명시 mode와 capability 계약 정리 | 2026-10-19 정합화; block 미지원은 시작 전 실패, kill은 명시 mode만 허용 |
 
 참조: 기존 `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY_MODEL.md`, `docs/ROADMAP.md`, `prompts/00~04`.
 
@@ -1254,7 +1254,7 @@ go test -race -count=1 ./...
 
 | ID / 현재 상태 | 실행할 일·주요 파일 또는 대상 | 선행·완료 기준·금지 |
 |---|---|---|
-| PRE-01 / 일부 진행 | `docs/`, `prompts/`의 Phase 번호·예시·현황 오류를 12.2 표와 대조. 단일 SECRET과 PRIVATE_KEY 미래 예시 분리, SUBORCHESTRATOR의 오래된 현황·과도한 권한 안내 수정안 작성 | 기존 Phase 0 수정은 보존. 의미 변경은 PRE-02로 분리. 링크·버전·Phase 참조 검증 후 완료; 경쟁 제품에 대한 단정으로 보안을 증명하지 않음 |
+| PRE-01 / 일부 진행 | `docs/`, `prompts/`의 Phase 번호·예시·현황 오류를 12.2 표와 대조. 단일 SECRET과 PRIVATE_KEY 미래 예시 분리, SUBORCHESTRATOR의 오래된 현황·과도한 권한 안내 수정 | 기존 Phase 0 수정은 보존. 의미 변경은 PRE-02로 분리. 링크·버전·Phase 참조 검증 후 완료; 경쟁 제품에 대한 단정으로 보안을 증명하지 않음 |
 | PRE-02 / 일부 진행 | E01/E08/E09와 D05에 따른 문서 충돌별 최소 변경안 작성. 첫 범위는 감사 출력 분리·생성 파일 정확한 위치·Linux 실행 권한 계약 | 관련 사용자 확인 뒤 ARCHITECTURE/현재 prompt부터 갱신. 변경 전 충돌 위치·이유 기록. 후속 모든 Phase를 한 번에 포괄 승인한 것으로 취급하지 않음 |
 | TOOL-01 / 미착수·선택 | 8절의 고정 upstream 세 스킬과 필요한 references를 프로젝트 범위에 도입. provenance·원본 SHA·변경점·host discovery·제거 대상 기록 | E01/설치 경로 쓰기 권한 필요. 스킬 설치 실패는 제품 개발을 차단하지 않음. 전역 설정·전체 팩·hook을 함께 설치하지 않음 |
 | TOOL-02 / 미착수·선택 | 9.1절의 preflight/docs-contract/security-semantics 세 절차부터 skill-creator로 작성. phase-closeout, Linux verifier, replay, adversarial 절차는 해당 Phase에 도달할 때 추가 | 승인된 경로만 사용. 정상/범위 위반/증거 없음 프롬프트로 동작 검증. 스킬의 답변을 실제 kernel 시험으로 대체하지 않음 |

@@ -23,7 +23,7 @@
 - [ ] **Phase 3 — Taint Engine** · [prompts/03-taint-engine.md](../prompts/03-taint-engine.md)
       Source→Label→Propagation→Sink→Decision 최초 구현 (audit only) — AgentTaint MVP
 - [ ] **Phase 4 — Linux Enforcement** · [prompts/04-linux-enforcement.md](../prompts/04-linux-enforcement.md)
-      BPF-LSM 기반 block, 폴백 kill, monitor/notify/block/kill 모드
+      BPF-LSM 기반 block, 지원되지 않는 block 요청의 시작 전 실패, 명시적 monitor/notify/kill mode
 
 ## 확장
 

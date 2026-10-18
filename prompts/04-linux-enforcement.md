@@ -32,8 +32,8 @@ SECRET 프로세스의 socket connect
    BPF-LSM (socket_connect 훅) 사용 가능하면
         │  ← pre-operation "block"
         ▼
-   불가능하면: connect 이후 감지 → 소켓 종료/SIGKILL
-        │  ← post-operation, 이건 "kill"이지 "block"이 아니다
+   block을 제공할 수 없으면 target 시작 전에 실패
+   │  kill은 사용자가 해당 mode를 명시한 경우에만 별도 실행
         ▼
 ```
 
@@ -42,16 +42,20 @@ SECRET 프로세스의 socket connect
 - `bpf/file.bpf.c`를 tracepoint에서 BPF-LSM(`file_open`)으로 전환 (또는
   병행) — 정책에 지정된 민감 파일에 대해 pre-op으로 거부(`-EPERM`) 가능한
   경로를 구현.
-- `bpf/network.bpf.c`에 BPF-LSM(`socket_connect`)이 커널/환경에서
-  사용 가능하면 pre-op block을, 사용 불가능하면 post-op kill(연결
-  종료 또는 `bpf_send_signal`)로 폴백하는 두 경로를 모두 구현하고
-  **실제로 어느 경로가 활성화됐는지 런타임에 보고**한다.
+- `bpf/network.bpf.c`에 지원되는 BPF-LSM(`socket_connect`) pre-op block을
+  구현한다. 요청한 `block` capability를 제공할 수 없으면 target을 시작하기
+  전에 실패한다. post-op kill은 사용자가 `kill` mode를 명시한 경우에만
+  별도 경로로 실행하며 block의 자동 폴백으로 사용하지 않는다. 요청 mode와
+  실제 action을 런타임에 구분해 보고한다.
 - `internal/enforce`: `internal/policy`의 Decision을 받아 위 두 경로 중
   하나를 실행. 강제 모드는 `monitor`(로그만, 기본값) / `notify` /
   `block`(pre-op 가능할 때만) / `kill` 4단계로 분리.
-- `agenttaint doctor`에 BPF-LSM 활성화 여부를 이미 Phase 0에서
-  점검하게 되어 있다 — 이 Phase에서 그 결과를 `internal/enforce`가
-  실제로 참조해서 block/kill 중 무엇이 가능한지 스스로 판단하게 만든다.
+- 환경 진단의 BPF-LSM 정보는 capability 판단 입력으로 사용하되, 정적 진단
+  결과만으로 실제 hook attach나 집행 가능성을 증명하지 않는다. `block`의
+  준비 단계에서 요청된 enforcement surface에 필요한 훅을 각각 실제로
+  load/attach할 수 있는지 확인하고, 하나라도 불충족이면 target 시작 전에
+  실패한다. 일반적인 BPF-LSM 활성 표시는 이 증거를 대신하지 않는다.
+  `internal/enforce`가 요청 mode를 다른 action으로 자동 변경하지 않는다.
 
 ## Out of Scope
 
@@ -77,9 +81,8 @@ SECRET 프로세스의 socket connect
 ## Security Requirements
 
 - **모든 로그/출력/문서에서 실제 메커니즘과 다른 강도로 표현하지
-  않는다.** BPF-LSM이 없어서 kill로 폴백한 경우, 그 이벤트 로그에
-  `"action": "kill"`이라고 정확히 남기고 `"action": "block"`이라고
-  쓰지 않는다.
+  않는다.** 사용자가 `kill` mode를 명시했을 때만 post-op kill을 실행하며,
+  그 결과를 `kill`로 기록한다. 이를 `block`으로 표현하지 않는다.
 - Final Report의 "what is blocked"에는 pre-op으로 확실히 막히는
   케이스만 나열하고, "what is NOT guaranteed"에는 post-op kill의
   한계(탐지~조치 사이의 짧은 지연 창에서 이미 일부 데이터가 나갔을
@@ -88,21 +91,26 @@ SECRET 프로세스의 socket connect
 ## Acceptance Criteria
 
 - `monitor` 모드(기본값)에서는 Phase 3과 동일하게 아무것도 막지 않는다.
-- `block` 모드에서, BPF-LSM이 활성화된 커널에서 지정 민감 파일 `open()`
-  이 `-EPERM`으로 실패한다.
+- `block` 모드에서, 요청된 file/network 집행에 필요한 각 BPF-LSM 훅이 실제
+  load/attach된 환경에서 지정 민감 파일 `open()`과 지원되는 새 IPv4
+  `connect()`가 `-EPERM`으로 실패하고 통제된 수신 측에 연결이 도달하지 않는다.
 - `kill` 모드에서, `SECRET` 라벨이 붙은 프로세스가 외부로 connect를
   시도하면 해당 프로세스가 종료된다 (Phase 3의 TEST 2/3 시나리오 재사용,
   이번엔 실제로 프로세스가 죽는지 확인).
-- BPF-LSM이 없는 환경에서 `block` 모드를 요청하면, block이 안 되고
-  kill/notify로만 동작한다는 것을 명확한 에러/경고로 알린다 (조용히
-  아무 일도 안 하고 "성공"이라 답하지 않는다).
+- 요청한 `block` capability를 제공할 수 없는 환경에서는 target 시작 전에
+  실패하고 어떤 `kill`/`notify` mode로도 자동 변경하지 않는다.
+- `kill` mode는 사용자가 명시적으로 요청한 경우에만 동작하며, 이미 발생한
+  effect가 되돌려지지 않을 수 있음을 알린다.
 
 ## Tests
 
-- Phase 3의 4개 시나리오를 `monitor`/`kill`/`block` 각 모드로 재실행하는
+- Phase 3의 4개 시나리오를 `monitor`/`notify`/`kill`/`block` 각 모드로 재실행하는
   통합 테스트.
-- BPF-LSM 없는 환경을 시뮬레이션해 kill로 정확히 폴백하는지 확인하는
-  테스트.
+- BPF-LSM capability가 없는 환경에서 `block` 요청이 target 시작 전에
+  실패하고 자동 kill/notify가 없음을 확인하는 테스트.
+- 필수 집행 훅 중 하나라도 load/attach되지 않는 환경에서 `block` 요청이
+  target 시작 전에 실패하는 테스트.
+- 사용자가 명시한 `kill` mode의 action/result를 `block`과 구분하는 테스트.
 
 ## Documentation
 
