@@ -15,13 +15,19 @@ import (
 func TestCLIParsing(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
-	for _, args := range [][]string{nil, {"unknown"}, {"doctor", "unexpected"}, {"doctor", "--json", "extra"}, {"run"}, {"run", "echo"}, {"run", "--"}, {"run", "--bin"}, {"run", "--bin", "", "--", "echo"}, {"run", "--bin", "--", "echo"}, {"run", "--bin=", "--", "echo"}, {"run", "--bad", "--", "echo"}, {"run", "--bin", "/file", "--bin", "/other", "--", "echo"}} {
+	for _, args := range [][]string{nil, {"unknown"}, {"doctor", "unexpected"}, {"doctor", "--json", "extra"}, {"run"}, {"run", "echo"}, {"run", "--"}, {"run", "--bin"}, {"run", "--bin", "", "--", "echo"}, {"run", "--bin", "--", "echo"}, {"run", "--bin=", "--", "echo"}, {"run", "--bad", "--", "echo"}, {"run", "--bin", "/file", "--bin", "/other", "--", "echo"}, {"run", "--observe", "--", "echo"}, {"run", "--observe", "--audit-file", "audit", "--", "echo"}, {"run", "--policy", "policy", "--", "echo"}, {"run", "--observe", "--policy"}, {"run", "--observe", "--policy", "policy", "--policy", "other", "--audit-file", "audit", "--", "echo"}, {"run", "--audit-file", "audit", "--", "echo"}, {"run", "--observe", "--audit-file"}, {"run", "--observe", "--observe", "--policy", "policy", "--audit-file", "audit", "--", "echo"}, {"run", "--run-as"}, {"run", "--run-as", "65534:65534", "--", "echo"}, {"run", "--observe", "--policy", "policy", "--run-as", "65534", "--audit-file", "audit", "--", "echo"}, {"run", "--observe", "--policy", "policy", "--run-as", "65534:65534", "--run-as", "65534:65534", "--audit-file", "audit", "--", "echo"}} {
 		var out, diagnostic bytes.Buffer
 		if code := run(args, nil, &out, &diagnostic, env.Resolver{}); code != 2 || out.Len() != 0 || !strings.Contains(diagnostic.String(), "usage:") {
 			t.Fatalf("%q: %d %q %q", args, code, out.String(), diagnostic.String())
 		}
 	}
 	var out, diagnostic bytes.Buffer
+	policyPath := filepath.Join(t.TempDir(), "missing.yaml")
+	if code := run([]string{"run", "--observe", "--policy", policyPath, "--audit-file", filepath.Join(t.TempDir(), "audit.jsonl"), "--", "/bin/true"}, nil, &out, &diagnostic, env.Resolver{}); code != 1 || !strings.Contains(diagnostic.String(), "load policy") {
+		t.Fatalf("invalid policy did not fail before launch: code=%d stdout=%q stderr=%q", code, out.String(), diagnostic.String())
+	}
+	out.Reset()
+	diagnostic.Reset()
 	if code := run([]string{"--help"}, nil, &out, &diagnostic, env.Resolver{}); code != 0 || !strings.Contains(out.String(), "doctor") {
 		t.Fatalf("help: %d %s", code, out.String())
 	}
@@ -39,6 +45,18 @@ func TestCLIParsing(t *testing.T) {
 			if err := json.Unmarshal(out.Bytes(), &report); err != nil {
 				t.Fatal(err)
 			}
+		}
+	}
+}
+
+func TestParseTargetIdentity(t *testing.T) {
+	identity, err := parseTargetIdentity("65534:123")
+	if err != nil || identity == nil || identity.UID != 65534 || identity.GID != 123 {
+		t.Fatalf("parse identity: %#v %v", identity, err)
+	}
+	for _, value := range []string{"", "1", ":2", "1:", "-1:2", "1:+2", "4294967296:2", "1:2:3"} {
+		if identity, err := parseTargetIdentity(value); err == nil || identity != nil {
+			t.Fatalf("accepted invalid identity %q: %#v %v", value, identity, err)
 		}
 	}
 }

@@ -20,13 +20,14 @@ const maxJSONDepth = 32
 type EventKind string
 
 const (
-	ProcessExec    EventKind = "process_exec"
-	ProcessFork    EventKind = "process_fork"
-	ProcessExit    EventKind = "process_exit"
-	FileOpen       EventKind = "file_open"
-	FileRead       EventKind = "file_read"
-	FileWrite      EventKind = "file_write"
-	NetworkConnect EventKind = "network_connect"
+	ProcessExec     EventKind = "process_exec"
+	ProcessFork     EventKind = "process_fork"
+	ProcessExit     EventKind = "process_exit"
+	FileOpen        EventKind = "file_open"
+	FileRead        EventKind = "file_read"
+	FileWrite       EventKind = "file_write"
+	NetworkConnect  EventKind = "network_connect"
+	PolicyViolation EventKind = "policy_violation"
 )
 
 type Event interface {
@@ -108,13 +109,25 @@ type NetworkConnectEvent struct {
 	Destination NetworkDestination `json:"destination"`
 }
 
-func (ProcessExecEvent) Kind() EventKind    { return ProcessExec }
-func (ProcessForkEvent) Kind() EventKind    { return ProcessFork }
-func (ProcessExitEvent) Kind() EventKind    { return ProcessExit }
-func (FileOpenEvent) Kind() EventKind       { return FileOpen }
-func (FileReadEvent) Kind() EventKind       { return FileRead }
-func (FileWriteEvent) Kind() EventKind      { return FileWrite }
-func (NetworkConnectEvent) Kind() EventKind { return NetworkConnect }
+// PolicyViolationEvent is a derived audit record. A deny decision is not an
+// enforcement result; OperationResult describes the observed connect syscall.
+type PolicyViolationEvent struct {
+	Metadata
+	Labels   []Label            `json:"labels"`
+	Source   FileResource       `json:"source"`
+	Sink     NetworkDestination `json:"sink"`
+	Decision string             `json:"decision"`
+	Policy   string             `json:"policy"`
+}
+
+func (ProcessExecEvent) Kind() EventKind     { return ProcessExec }
+func (ProcessForkEvent) Kind() EventKind     { return ProcessFork }
+func (ProcessExitEvent) Kind() EventKind     { return ProcessExit }
+func (FileOpenEvent) Kind() EventKind        { return FileOpen }
+func (FileReadEvent) Kind() EventKind        { return FileRead }
+func (FileWriteEvent) Kind() EventKind       { return FileWrite }
+func (NetworkConnectEvent) Kind() EventKind  { return NetworkConnect }
+func (PolicyViolationEvent) Kind() EventKind { return PolicyViolation }
 
 func (e ProcessExecEvent) MarshalJSON() ([]byte, error) {
 	type plain ProcessExecEvent
@@ -143,6 +156,10 @@ func (e FileWriteEvent) MarshalJSON() ([]byte, error) {
 func (e NetworkConnectEvent) MarshalJSON() ([]byte, error) {
 	type plain NetworkConnectEvent
 	return marshalEvent(e.Kind(), e.Metadata, plain(e))
+}
+func (e PolicyViolationEvent) MarshalJSON() ([]byte, error) {
+	type plain PolicyViolationEvent
+	return marshalEvent(e.Kind(), e.Metadata, plain(e), e.Source.Path, e.Policy, e.Decision)
 }
 
 func processText(process ProcessContext) []string {
@@ -209,6 +226,9 @@ func DecodeEvent(data []byte) (Event, error) {
 		event, metadata = e, &e.Metadata
 	case NetworkConnect:
 		e := &NetworkConnectEvent{}
+		event, metadata = e, &e.Metadata
+	case PolicyViolation:
+		e := &PolicyViolationEvent{}
 		event, metadata = e, &e.Metadata
 	default:
 		return nil, fmt.Errorf("unknown event kind %q", kind)
@@ -278,6 +298,32 @@ func DecodeEvent(data []byte) (Event, error) {
 		_, err = requiredObject(fields["destination"], "address", "port")
 		if err == nil && !e.Destination.Address.Is4() {
 			err = errors.New("destination address must be IPv4, not IPv6 or mapped IPv6")
+		}
+	case *PolicyViolationEvent:
+		if _, err = requiredObject(fields["source"], "path"); err == nil {
+			err = validateFile(fields["source"], e.Source)
+		}
+		if err == nil {
+			if _, err = requiredObject(fields["sink"], "address", "port"); err == nil && !e.Sink.Address.Is4() {
+				err = errors.New("sink address must be IPv4")
+			}
+		}
+		if err == nil && (e.Decision != "audit" && e.Decision != "deny") {
+			err = errors.New("policy violation decision must be audit or deny")
+		}
+		if err == nil && e.Policy == "" {
+			err = errors.New("policy rule name must be nonempty")
+		}
+		if err == nil && len(e.Labels) == 0 {
+			err = errors.New("policy violation must include at least one label")
+		}
+		if err == nil {
+			for i, label := range e.Labels {
+				if label == "" || (i > 0 && e.Labels[i-1] >= label) {
+					err = errors.New("policy violation labels must be nonempty, unique, and sorted")
+					break
+				}
+			}
 		}
 	}
 	if err != nil {

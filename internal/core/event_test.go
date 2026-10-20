@@ -28,6 +28,7 @@ func fixtures() []Event {
 		&FileReadEvent{Metadata: metadata, Resource: FileResource{Path: "/workspace/.env"}},
 		&FileWriteEvent{Metadata: metadata, Resource: FileResource{Path: "./link/../result $HOME *"}},
 		&NetworkConnectEvent{Metadata: metadata, Destination: NetworkDestination{Address: netip.MustParseAddr("1.2.3.4"), Port: 443}},
+		&PolicyViolationEvent{Metadata: completed, Labels: []Label{LabelSecret}, Source: FileResource{Path: "/workspace/.env"}, Sink: NetworkDestination{Address: netip.MustParseAddr("1.2.3.4"), Port: 443}, Decision: "deny", Policy: "prevent-secret-egress"},
 	}
 }
 
@@ -98,13 +99,14 @@ func changeField(t *testing.T, data []byte, path string, value any, remove bool)
 func TestDecodeRejectsMissingAndNullFields(t *testing.T) {
 	common := []string{"event", "schema_version", "event_id", "run_id", "timestamp", "session_id", "observation_stage", "operation_result", "process", "process.pid", "process.birth_id", "process.scope_id", "process.ppid", "process.pgid", "process.comm"}
 	variantFields := map[EventKind][]string{
-		ProcessExec:    {"executable", "executable.path"},
-		ProcessFork:    {"child", "child.pid", "child.birth_id", "child.scope_id", "child.ppid", "child.pgid", "child.comm"},
-		ProcessExit:    {},
-		FileOpen:       {"resource", "resource.path", "access"},
-		FileRead:       {"resource", "resource.path"},
-		FileWrite:      {"resource", "resource.path"},
-		NetworkConnect: {"destination", "destination.address", "destination.port"},
+		ProcessExec:     {"executable", "executable.path"},
+		ProcessFork:     {"child", "child.pid", "child.birth_id", "child.scope_id", "child.ppid", "child.pgid", "child.comm"},
+		ProcessExit:     {},
+		FileOpen:        {"resource", "resource.path", "access"},
+		FileRead:        {"resource", "resource.path"},
+		FileWrite:       {"resource", "resource.path"},
+		NetworkConnect:  {"destination", "destination.address", "destination.port"},
+		PolicyViolation: {"labels", "source", "source.path", "sink", "sink.address", "sink.port", "decision", "policy"},
 	}
 	for _, event := range fixtures() {
 		data := encodeFixture(t, event)
@@ -125,7 +127,7 @@ func TestDecodeRejectsWrongTypesAndValues(t *testing.T) {
 		field string
 		value any
 	}{
-		{"event", "new_event"}, {"event", "policy_violation"}, {"event", 1},
+		{"event", "new_event"}, {"event", 1},
 		{"schema_version", 0}, {"schema_version", 2}, {"schema_version", "1"}, {"schema_version", 1.5},
 		{"event_id", ""}, {"event_id", 1}, {"run_id", ""}, {"run_id", 4021},
 		{"timestamp", "bad-time"}, {"timestamp", "0001-01-01T00:00:00Z"}, {"timestamp", 123},

@@ -1,0 +1,19 @@
+# Replace this with the absolute path of a synthetic secret fixture.
+# Phase 2 records the path passed to openat; relative, dirfd, and symlink
+# identity are not resolved, so this example intentionally uses an absolute path.
+sources:
+  - path: /workspace/fixtures/secret.txt
+    label: SECRET
+
+rules:
+  - name: prevent-secret-egress
+    when:
+      process_has: SECRET
+    sink:
+      network:
+        # This is an explicit example CIDR set, not an automatic public/private
+        # address classifier. Replace it with the destination ranges to govern.
+        external:
+          - 203.0.113.0/24
+        ports: [443]
+    action: deny
