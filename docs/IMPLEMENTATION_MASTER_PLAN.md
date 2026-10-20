@@ -906,10 +906,10 @@ AgentTaint/
 | [ ] | P2-03 | run scope·출력·손실 상태 | P2-02, E08 | 계보 필터·별도 audit 스트림 |
 | [ ] | P2-04 | start/stop·권한·Linux 실제 검증 | P2-03, E09 | 시작 경합·cleanup·실제 verifier 증거 |
 | [ ] | CI-02 | 격리된 Linux BPF 검증 job | ENV-02, P2-04, 13.7절 | verifier·필수 scenario·잔류 자원 정리 증거 |
-| [ ] | P3-01 | SECRET 상태 전이·replay | Phase 2 완료 | taint reference model |
-| [ ] | P3-02 | YAML policy·평가·명시적 external | P3-01, E05/E06, D04 | 단일 라벨 policy와 검증 |
-| [ ] | P3-03 | audit-only 통합·예시·증거 | P3-02, D08 | 네 가지 기본 시나리오와 확장 회귀 |
-| [ ] | P4-01 | 동기 집행 아키텍처 결정·검증 설계 | Phase 3 완료, E04/E09, D05 | 승인된 kernel/Go 계약 |
+| [x] | P3-01 | SECRET 상태 전이·replay | Phase 2 완료 | `ProcessKey` reference engine, ordered replay, external incomplete signal, unit vectors (2026-10-19; P3-02 연결 전) |
+| [x] | P3-02 | YAML policy·평가·명시적 external | P3-01, E05/E06, D04 | pinned YAML v3 strict snapshot, IPv4 CIDR/port evaluator, precedence/error tests (2026-10-19; runner integration P3-03) |
+| [x] | P3-03 | audit-only 통합·예시·증거 | P3-02, D08 | synthetic replay와 Linux guest 네 가지 runtime 시나리오 통과; test-owned disposable fixtures로 검증 (2026-10-19) |
+| [x] | P4-01 | 동기 집행 아키텍처 결정·검증 설계 | Phase 3 완료, E04/E09, D05 | Go/kernel 책임·run scope·fault·실패 행동 및 제한을 사용자 승인·문서화 (2026-10-20); runtime 검증은 P4-02/04 |
 | [x] | P4-02 | 지원 source·network pre-op 집행 | P4-01 | 별도 direct-file deny 및 source-attempt→network deny guest fixtures에서 실제 EPERM, receiver 비도달, allow 대조군과 Go reference 차이를 검증 (2026-10-21; runner audit coverage limitation은 12.10 최신 업데이트) |
 | [ ] | P4-03 | modes·지원 불가 처리·health·로그 | P4-02 | 실제 action과 상태를 표시 |
 | [ ] | P4-04 | adversarial·장애·아키텍처별 검증 | P4-03, D07 | 지원 범위에 대한 증거 |
