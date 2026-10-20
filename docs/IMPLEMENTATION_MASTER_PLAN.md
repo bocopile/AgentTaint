@@ -4,7 +4,7 @@
 
 최초 분석 기준: `bocopile/AgentTaint`의 `5cc919dadb0a86ea5ec00c794ed07918ccc42d9a`
 
-상태: **2026-10-03 전체 작업을 37개 상위 작업과 실행 카드로 정리하고 순차 실행 준비를 시작했다. Phase 0/1의 5개 작업은 로컬 수용 검증 완료, PRE-01/02와 ENV-01은 일부 진행이다. 후속 “진행” 승인에 따라 G1/G2/G4의 제한된 Phase 2 문서 계약을 반영했다. 제품 기능 구현 완료는 아니다. 기존 Linux VM은 Stopped이며 현재 세션에서 시작에 필요한 경로 쓰기 권한이 없어 guest 진단은 미실행이다. 남은 권한·구현 조건은 12.12절에 기록했다. Linux runtime·원격 CI·외부 스킬 설치·Phase 2 이후 구현은 아직 완료하지 않았다.**
+상태: **2026-10-21 기준, 37개 상위 작업과 실행 카드를 순서대로 진행 중이다. Phase 0/1, P2-01~P2-04, P3-01~P3-03, P4-01, P4-02는 각 기록 범위에서 완료했다. P4-02의 세 guest enforcement fixture는 통과했으며 runner 전체 audit completeness는 path-capture loss로 미통과 상태다. CI-02는 승인된 workflow 범위가 없어 미완료다. 다음 제품 카드는 P4-03이며, 최신 증거와 미검증 항목은 12.10~12.12절을 따른다.**
 
 이 문서는 제품 철학 분석, macOS 사용 가능성, `addyosmani/agent-skills` 도입 검토, 아키텍처, 언어, 디렉터리, 작업 목록, 검증 기준과 사용자 결정 사항을 한 곳에 모은다. 다른 AI가 새로운 세션에서 읽고 현재 작업을 식별할 수 있도록 작성했다. 최초 분석 당시에는 제품 코드·Go 모듈이 없었다. **현재 실행 상태는 12.10절 기록이 기준이며, 2절의 환경·저장소 조사는 최초 분석 시점의 snapshot이다.**
 
@@ -910,7 +910,7 @@ AgentTaint/
 | [ ] | P3-02 | YAML policy·평가·명시적 external | P3-01, E05/E06, D04 | 단일 라벨 policy와 검증 |
 | [ ] | P3-03 | audit-only 통합·예시·증거 | P3-02, D08 | 네 가지 기본 시나리오와 확장 회귀 |
 | [ ] | P4-01 | 동기 집행 아키텍처 결정·검증 설계 | Phase 3 완료, E04/E09, D05 | 승인된 kernel/Go 계약 |
-| [ ] | P4-02 | 지원 source·network pre-op 집행 | P4-01 | 실제 EPERM·연결 거부 |
+| [x] | P4-02 | 지원 source·network pre-op 집행 | P4-01 | 별도 direct-file deny 및 source-attempt→network deny guest fixtures에서 실제 EPERM, receiver 비도달, allow 대조군과 Go reference 차이를 검증 (2026-10-21; runner audit coverage limitation은 12.10 최신 업데이트) |
 | [ ] | P4-03 | modes·지원 불가 처리·health·로그 | P4-02 | 실제 action과 상태를 표시 |
 | [ ] | P4-04 | adversarial·장애·아키텍처별 검증 | P4-03, D07 | 지원 범위에 대한 증거 |
 | [ ] | V-01 | Linux MVP 최종 보장 감사 | P4-04 | claim→test 표·Required Final Report |
@@ -2059,3 +2059,13 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - runner 통합은 계속 실패한다. `TestRunObservedPolicyAuditPipeline`은 `file-path-unreadable-success=6`, `file-path-unreadable-other-error=4`로 실패한다. 실패 시 BPF가 `bpf_probe_read_user_str`에서 `-EFAULT`를 받았지만 syscall 결과가 각각 성공과 다른 오류였음을 trace_pipe로 확인했다. UID/GID 65534 및 대조용 1000 실행에서 동일했다. 공식 Linux BPF selftest source의 `tp_btf/sys_enter` 서명 패턴과 CO-RE arm64 register helper 실험으로도 현상을 해결하지 못했고, 진단용 `bpf_printk`는 source에서 제거했다.
 - 해석 제한: path capture failure가 발생한 syscall은 source/path를 신뢰성 있게 판정할 수 없다. 이를 성공한 source read나 차단으로 기록하지 않는다. 세부 counter는 실패 유형을 구별하며 전체 통합 coverage 판정은 fail-closed로 유지한다. 왜 일부 valid syscall의 user path가 읽히지 않는지 **미해결**이다.
 - 판정: P4-02 미완료, P4-03 미시작. 실제 source→taint→sink 통합, 직접 `-EPERM`, receiver 대조, 앞선 LSM deny 보존, concurrent fault/state 및 cleanup은 `not_tested`다. 개별 observer PASS는 P4-02 acceptance를 대체하지 않는다.
+
+#### P4-02 acceptance 완료 기록 — 2026-10-21
+
+아래 결과는 위 두 진단 기록의 당시 미완료 판정을 갱신한다. 해당 실패 기록은 당시 관찰로 보존한다.
+
+- BPF-LSM 활성 aarch64 guest(`7.0.0-38-generic`)에서 별도 fixture 세 개를 실행했다. 직접 파일 deny는 syscall `EPERM`과 파일 효과 부재를 확인했고, 허용 파일·일반 네트워크 대조군은 수신 측 도달을 확인했다. source-open 시도 후 network deny는 source 접근과 connect `EPERM`, 수신 측 비도달을 확인했고, source가 아닌 allow 대조군은 수신 측에 도달했다.
+- 실패한 source open fixture는 `/dev` 아래 test-owned character device를 사용해 LSM hook에서 `ENXIO`를 확인한 뒤 이어진 connect의 `EPERM`과 수신 측 비도달을 검증했다. 동일 실행의 감사 이벤트를 Go reference engine에 적용했을 때 실패한 open은 label을 만들지 않았다. 이는 pre-operation kernel projection의 source-attempt 상태와 성공 완료 event만 사용하는 reference 의미의 차이를 보인다.
+- 세 guest fixture는 각각 PASS했다. `go test ./...`, `go vet ./...`, `go build ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check`도 PASS했다. 이 증거는 해당 fixture와 guest에 한정되며 concurrency, map saturation, 앞선 LSM deny 보존, supervisor 장애, 다른 커널/아키텍처는 P4-04에서 검증한다.
+- runner 전체 결과는 audit completeness 검사 때문에 exit code 1이다. 반복 실행에서 `file-path-unreadable-success=4`가 남는다(일부 실행에는 `process-capture=2`도 보고됨). 개별 BPF-LSM fixture의 syscall 결과·effect 증거는 통과했지만, audit coverage는 완전하지 않으며 이 실행이 전체 runner acceptance를 통과했다는 뜻은 아니다. 해당 path-capture 원인은 미해결이다.
+- 판정: P4-02의 직접 파일 거부와 source-attempt 이후 새 network connect 거부 acceptance는 위 guest 증거로 완료한다. audit coverage의 미해결 제한은 유지한다. 다음 순서 P4-03을 시작할 수 있다. P4-04 항목은 완료로 간주하지 않는다.
