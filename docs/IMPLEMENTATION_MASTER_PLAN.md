@@ -2051,3 +2051,11 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 고정된 `cilium/ebpf v0.22.0` 구현은 `link.Tracepoint`에서 `pid=-1`일 때 `perf_event_open`을 CPU 0으로 연다. CPU별 별도 부착 실험은 동일 tracepoint의 두 번째 `PERF_EVENT_IOC_SET_BPF`에서 `EEXIST`로 실패해 제거했다. 현재 syscall observer의 전 CPU 범위 누락은 해결되지 않았다.
 - runner `TestRunObservedPolicyAuditPipeline`도 `child sink was not audited`로 실패했다. 원인은 CPU 범위 공백과 부합하지만, 다음 raw tracepoint/`tp_btf` 설계 및 guest 검증 전에는 확정된 제품 수정으로 간주하지 않는다.
 - 이 진단 단위의 host Go tests, `go vet`, ARM64 Linux test-binary builds와 `git diff --check`는 통과했다. guest integration은 실패했으므로 P4-02는 미완료이며 P4-03은 시작하지 않았다. 실제 deny errno, allow 대조군, source-state 전이 및 receiver 효과는 `not_tested`다.
+
+#### P4-02 syscall observer 추적 업데이트 — 2026-10-21
+
+- 검증 환경: 활성 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64. Cilium `link.Tracepoint`의 CPU0 범위 문제를 피하도록 syscall hook을 `tp_btf/sys_enter`/`sys_exit`에 붙이고 ARM64 syscall register를 CO-RE 필드 기준으로 읽는다. `TestFileAndConnectObserver`는 CPU0 및 CPU1 고정 실행에서 통과했고, `TestProcessObserverThreadLifecycle`도 CPU1에서 통과했다. 이는 syscall event 수집과 thread/process lifecycle의 해당 fixture 증거다.
+- scope 보완: observer가 전 시스템의 파일 syscall을 현재 run scope에 넣지 않도록 `TrackProcess(pid)`로 helper root를 등록하고 fork descendants만 등록하는 map을 추가했다. 이 경로의 source와 fixture 동작은 확인했으나, unrelated-host isolation 자체를 별도 acceptance test로 검증하지는 않았다. ARM64 object generation과 Linux/arm64 sensor·runner test binary build, `go vet ./...`, `git diff --check`는 통과했다.
+- runner 통합은 계속 실패한다. `TestRunObservedPolicyAuditPipeline`은 `file-path-unreadable-success=6`, `file-path-unreadable-other-error=4`로 실패한다. 실패 시 BPF가 `bpf_probe_read_user_str`에서 `-EFAULT`를 받았지만 syscall 결과가 각각 성공과 다른 오류였음을 trace_pipe로 확인했다. UID/GID 65534 및 대조용 1000 실행에서 동일했다. 공식 Linux BPF selftest source의 `tp_btf/sys_enter` 서명 패턴과 CO-RE arm64 register helper 실험으로도 현상을 해결하지 못했고, 진단용 `bpf_printk`는 source에서 제거했다.
+- 해석 제한: path capture failure가 발생한 syscall은 source/path를 신뢰성 있게 판정할 수 없다. 이를 성공한 source read나 차단으로 기록하지 않는다. 세부 counter는 실패 유형을 구별하며 전체 통합 coverage 판정은 fail-closed로 유지한다. 왜 일부 valid syscall의 user path가 읽히지 않는지 **미해결**이다.
+- 판정: P4-02 미완료, P4-03 미시작. 실제 source→taint→sink 통합, 직접 `-EPERM`, receiver 대조, 앞선 LSM deny 보존, concurrent fault/state 및 cleanup은 `not_tested`다. 개별 observer PASS는 P4-02 acceptance를 대체하지 않는다.
