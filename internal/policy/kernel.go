@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	maxKernelSources = 64
-	maxKernelPath    = 255
-	maxKernelDenies  = 256
+	maxKernelSources    = 64
+	maxKernelFileDenies = 64
+	maxKernelPath       = 255
+	maxKernelDenies     = 256
 )
 
 // KernelProjection returns the bounded subset understood by the Linux
@@ -20,15 +21,27 @@ func (s *Snapshot) KernelProjection() (KernelProjection, error) {
 	if s == nil {
 		return KernelProjection{}, errors.New("nil policy snapshot")
 	}
-	if len(s.sources) == 0 || len(s.sources) > maxKernelSources {
-		return KernelProjection{}, fmt.Errorf("kernel projection supports 1 to %d sources", maxKernelSources)
+	if len(s.sources) > maxKernelSources {
+		return KernelProjection{}, fmt.Errorf("kernel projection supports at most %d sources", maxKernelSources)
 	}
-	projection := KernelProjection{Sources: make([]string, 0, len(s.sources))}
+	if len(s.denyFiles) == 0 && len(s.sources) == 0 {
+		return KernelProjection{}, errors.New("kernel projection has no source or denied file path")
+	}
+	if len(s.denyFiles) > maxKernelFileDenies {
+		return KernelProjection{}, fmt.Errorf("kernel projection supports at most %d denied file paths", maxKernelFileDenies)
+	}
+	projection := KernelProjection{Sources: make([]string, 0, len(s.sources)), DenyFiles: make([]string, 0, len(s.denyFiles))}
 	for _, source := range s.sources {
 		if len(source.path) == 0 || len(source.path) > maxKernelPath || strings.IndexByte(source.path, 0) >= 0 {
 			return KernelProjection{}, fmt.Errorf("source path %q exceeds kernel path limit or contains NUL", source.path)
 		}
 		projection.Sources = append(projection.Sources, source.path)
+	}
+	for _, path := range s.denyFiles {
+		if len(path) == 0 || len(path) > maxKernelPath || strings.IndexByte(path, 0) >= 0 {
+			return KernelProjection{}, fmt.Errorf("denied file path %q exceeds kernel path limit or contains NUL", path)
+		}
+		projection.DenyFiles = append(projection.DenyFiles, path)
 	}
 	for _, candidate := range s.rules {
 		if candidate.action != Deny {

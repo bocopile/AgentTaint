@@ -103,6 +103,33 @@ func TestKernelProjectionContainsOnlyBoundedDenyMatches(t *testing.T) {
 	}
 }
 
+func TestLoadProjectsDirectFileDenyWithoutNetworkSources(t *testing.T) {
+	path := writePolicy(t, "deny_files:\n  - ../fixtures/denied.txt\n")
+	snapshot, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection, err := snapshot.KernelProjection()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Clean(filepath.Join(filepath.Dir(path), "..", "fixtures", "denied.txt"))
+	if len(projection.Sources) != 0 || len(projection.Denies) != 0 || len(projection.DenyFiles) != 1 || projection.DenyFiles[0] != want {
+		t.Fatalf("direct file-deny projection = %+v, want only %q", projection, want)
+	}
+
+	for name, text := range map[string]string{
+		"duplicate denied path": "deny_files:\n  - /tmp/denied\n  - /tmp/denied\n",
+		"source overlap":        strings.Replace(validPolicy, "rules:\n", "deny_files:\n  - ../fixtures/secret.txt\nrules:\n", 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := Load(writePolicy(t, text)); err == nil {
+				t.Fatal("expected conflicting direct file-deny policy to be rejected")
+			}
+		})
+	}
+}
+
 func TestKernelProjectionAllowsPoliciesWithoutDenyRules(t *testing.T) {
 	text := strings.Replace(validPolicy, "action: deny", "action: allow", 1)
 	snapshot, err := Load(writePolicy(t, text))

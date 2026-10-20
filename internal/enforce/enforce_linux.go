@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	maxSources   = 64
-	maxDenyRules = 256
-	pathSize     = 256
+	maxSources    = 64
+	maxFileDenies = 64
+	maxDenyRules  = 256
+	pathSize      = 256
 )
 
 type enforceSourceValue struct {
@@ -44,8 +45,14 @@ func New(projection policy.KernelProjection, cgroupID uint64) (*Enforcer, error)
 	if cgroupID == 0 {
 		return nil, errors.New("enforcement cgroup ID must be nonzero")
 	}
-	if len(projection.Sources) == 0 || len(projection.Sources) > maxSources {
-		return nil, fmt.Errorf("enforcement supports 1 to %d source paths", maxSources)
+	if len(projection.Sources) > maxSources {
+		return nil, fmt.Errorf("enforcement supports at most %d source paths", maxSources)
+	}
+	if len(projection.DenyFiles) == 0 && len(projection.Sources) == 0 {
+		return nil, errors.New("enforcement requires at least one source or denied file path")
+	}
+	if len(projection.DenyFiles) > maxFileDenies {
+		return nil, fmt.Errorf("enforcement supports at most %d denied file paths", maxFileDenies)
 	}
 	if len(projection.Denies) > maxDenyRules {
 		return nil, fmt.Errorf("enforcement supports at most %d IPv4 deny matches", maxDenyRules)
@@ -53,6 +60,11 @@ func New(projection policy.KernelProjection, cgroupID uint64) (*Enforcer, error)
 	for _, source := range projection.Sources {
 		if len(source) == 0 || len(source) >= pathSize || containsNUL(source) {
 			return nil, fmt.Errorf("source path %q does not fit the enforcement ABI", source)
+		}
+	}
+	for _, path := range projection.DenyFiles {
+		if len(path) == 0 || len(path) >= pathSize || containsNUL(path) {
+			return nil, fmt.Errorf("denied file path %q does not fit the enforcement ABI", path)
 		}
 	}
 	for _, deny := range projection.Denies {
@@ -86,6 +98,14 @@ func New(projection policy.KernelProjection, cgroupID uint64) (*Enforcer, error)
 		copy(value.Path[:], source)
 		if err := instance.objects.EnforceSources.Update(&key, &value, ebpf.UpdateNoExist); err != nil {
 			return nil, fmt.Errorf("load enforcement source %q: %w", source, err)
+		}
+	}
+	for _, path := range projection.DenyFiles {
+		key := sourcePathHash(path)
+		var value enforceSourceValue
+		copy(value.Path[:], path)
+		if err := instance.objects.EnforceFileDenies.Update(&key, &value, ebpf.UpdateNoExist); err != nil {
+			return nil, fmt.Errorf("load denied file %q: %w", path, err)
 		}
 	}
 	for index, match := range projection.Denies {

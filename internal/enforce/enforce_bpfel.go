@@ -56,6 +56,7 @@ const (
 	enforceMapEnforceConfigMap      = "enforce_config_map"
 	enforceMapEnforceDenies         = "enforce_denies"
 	enforceMapEnforceFaultMap       = "enforce_fault_map"
+	enforceMapEnforceFileDenies     = "enforce_file_denies"
 	enforceMapEnforceProcesses      = "enforce_processes"
 	enforceMapEnforceSources        = "enforce_sources"
 	enforceProgEnforceFileOpen      = "enforce_file_open"
@@ -118,11 +119,12 @@ type enforceProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type enforceMapSpecs struct {
-	EnforceConfigMap *ebpf.MapSpec `ebpf:"enforce_config_map"`
-	EnforceDenies    *ebpf.MapSpec `ebpf:"enforce_denies"`
-	EnforceFaultMap  *ebpf.MapSpec `ebpf:"enforce_fault_map"`
-	EnforceProcesses *ebpf.MapSpec `ebpf:"enforce_processes"`
-	EnforceSources   *ebpf.MapSpec `ebpf:"enforce_sources"`
+	EnforceConfigMap  *ebpf.MapSpec `ebpf:"enforce_config_map"`
+	EnforceDenies     *ebpf.MapSpec `ebpf:"enforce_denies"`
+	EnforceFaultMap   *ebpf.MapSpec `ebpf:"enforce_fault_map"`
+	EnforceFileDenies *ebpf.MapSpec `ebpf:"enforce_file_denies"`
+	EnforceProcesses  *ebpf.MapSpec `ebpf:"enforce_processes"`
+	EnforceSources    *ebpf.MapSpec `ebpf:"enforce_sources"`
 }
 
 // enforceVariableSpecs contains global variables before they are loaded into the kernel.
@@ -151,11 +153,12 @@ func (o *enforceObjects) Close() error {
 //
 // It can be passed to loadEnforceObjects or ebpf.CollectionSpec.LoadAndAssign.
 type enforceMaps struct {
-	EnforceConfigMap *ebpf.Map `ebpf:"enforce_config_map"`
-	EnforceDenies    *ebpf.Map `ebpf:"enforce_denies"`
-	EnforceFaultMap  *ebpf.Map `ebpf:"enforce_fault_map"`
-	EnforceProcesses *ebpf.Map `ebpf:"enforce_processes"`
-	EnforceSources   *ebpf.Map `ebpf:"enforce_sources"`
+	EnforceConfigMap  *ebpf.Map `ebpf:"enforce_config_map"`
+	EnforceDenies     *ebpf.Map `ebpf:"enforce_denies"`
+	EnforceFaultMap   *ebpf.Map `ebpf:"enforce_fault_map"`
+	EnforceFileDenies *ebpf.Map `ebpf:"enforce_file_denies"`
+	EnforceProcesses  *ebpf.Map `ebpf:"enforce_processes"`
+	EnforceSources    *ebpf.Map `ebpf:"enforce_sources"`
 }
 
 func (m *enforceMaps) Close() error {
@@ -163,6 +166,7 @@ func (m *enforceMaps) Close() error {
 		m.EnforceConfigMap,
 		m.EnforceDenies,
 		m.EnforceFaultMap,
+		m.EnforceFileDenies,
 		m.EnforceProcesses,
 		m.EnforceSources,
 	)

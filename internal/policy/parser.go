@@ -26,8 +26,26 @@ const (
 )
 
 type policyDocument struct {
-	Sources []sourceDocument `yaml:"sources"`
-	Rules   []ruleDocument   `yaml:"rules"`
+	Sources   []sourceDocument `yaml:"sources"`
+	DenyFiles filePathList     `yaml:"deny_files"`
+	Rules     []ruleDocument   `yaml:"rules"`
+}
+
+type filePathList []string
+
+func (paths *filePathList) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.SequenceNode || len(node.Content) == 0 {
+		return errors.New("deny_files must be a non-empty sequence of paths")
+	}
+	values := make(filePathList, 0, len(node.Content))
+	for _, item := range node.Content {
+		if item.Kind != yaml.ScalarNode || item.Tag != "!!str" || item.Value == "" {
+			return errors.New("deny_files must contain non-empty string paths")
+		}
+		values = append(values, item.Value)
+	}
+	*paths = values
+	return nil
 }
 
 type sourceDocument struct {
@@ -191,11 +209,17 @@ func buildSnapshot(absPath string, data []byte, document policyDocument) (*Snaps
 	if len(document.Sources) > maxPolicySources {
 		return nil, fmt.Errorf("policy has more than %d sources", maxPolicySources)
 	}
-	if len(document.Sources) == 0 {
-		return nil, errors.New("policy must define at least one source")
+	if len(document.DenyFiles) > maxPolicySources {
+		return nil, fmt.Errorf("policy has more than %d denied file paths", maxPolicySources)
 	}
-	if len(document.Rules) == 0 || len(document.Rules) > maxPolicyRules {
+	if len(document.Sources) == 0 && len(document.DenyFiles) == 0 {
+		return nil, errors.New("policy must define a source or denied file path")
+	}
+	if len(document.Rules) > maxPolicyRules || (len(document.Rules) == 0 && len(document.Sources) > 0 && len(document.DenyFiles) == 0) {
 		return nil, fmt.Errorf("policy must contain between 1 and %d rules", maxPolicyRules)
+	}
+	if len(document.Rules) > 0 && len(document.Sources) == 0 {
+		return nil, errors.New("network rules require at least one source")
 	}
 	base := filepath.Dir(absPath)
 	snapshot := &Snapshot{}
@@ -219,6 +243,25 @@ func buildSnapshot(absPath string, data []byte, document policyDocument) (*Snaps
 		}
 		seenSources[resolved] = struct{}{}
 		snapshot.sources = append(snapshot.sources, source{path: resolved, label: core.LabelSecret})
+	}
+	seenDeniedFiles := make(map[string]struct{}, len(document.DenyFiles))
+	for _, path := range document.DenyFiles {
+		if path == "" || strings.HasPrefix(path, "~") || hasPathExpansion(path) {
+			return nil, fmt.Errorf("denied file path %q is empty or uses unsupported expansion syntax", path)
+		}
+		resolved := path
+		if !filepath.IsAbs(resolved) {
+			resolved = filepath.Join(base, resolved)
+		}
+		resolved = filepath.Clean(resolved)
+		if _, duplicate := seenDeniedFiles[resolved]; duplicate {
+			return nil, fmt.Errorf("duplicate denied file path %q", resolved)
+		}
+		if _, source := seenSources[resolved]; source {
+			return nil, fmt.Errorf("path %q cannot be both a source and a denied file", resolved)
+		}
+		seenDeniedFiles[resolved] = struct{}{}
+		snapshot.denyFiles = append(snapshot.denyFiles, resolved)
 	}
 	seenRules := make(map[string]struct{}, len(document.Rules))
 	for _, item := range document.Rules {

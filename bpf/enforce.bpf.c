@@ -62,6 +62,13 @@ struct {
 } enforce_sources SEC(".maps");
 
 struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, ENFORCE_MAX_SOURCES);
+	__type(key, __u64);
+	__type(value, struct enforce_source_value);
+} enforce_file_denies SEC(".maps");
+
+struct {
 	__uint(type, BPF_MAP_TYPE_ARRAY);
 	__uint(max_entries, ENFORCE_MAX_DENIES);
 	__type(key, __u32);
@@ -148,6 +155,24 @@ static __always_inline int source_path_matches(const char *path)
 	return 0;
 }
 
+static __always_inline int file_path_denied(const char *path)
+{
+	__u64 hash = source_path_hash(path);
+	struct enforce_source_value *deny = bpf_map_lookup_elem(&enforce_file_denies, &hash);
+	__u32 i;
+
+	if (!deny)
+		return 0;
+#pragma unroll
+	for (i = 0; i < ENFORCE_PATH_SIZE; i++) {
+		if (path[i] != deny->path[i])
+			return 0;
+		if (!path[i])
+			return 1;
+	}
+	return 0;
+}
+
 SEC("lsm.s/file_open")
 int BPF_PROG(enforce_file_open, struct file *file, int previous)
 {
@@ -168,6 +193,8 @@ int BPF_PROG(enforce_file_open, struct file *file, int previous)
 		fail_scope();
 		return -ENFORCE_EPERM;
 	}
+	if (file_path_denied(path))
+		return -ENFORCE_EPERM;
 	if (!source_path_matches(path))
 		return previous;
 	task = bpf_get_current_task_btf();

@@ -37,6 +37,13 @@ func TestKernelBlockChild(t *testing.T) {
 	if openErr == nil {
 		_ = syscall.Close(fd)
 	}
+	if os.Getenv(blockExpectEnv) == "file-deny" {
+		_, _ = fmt.Fprintf(os.Stdout, "open_errno=%d\n", blockErrno(openErr))
+		if openErr != syscall.EPERM {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 	address, err := net.ResolveTCPAddr("tcp4", net.JoinHostPort(os.Getenv(blockAddressEnv), os.Getenv(blockPortEnv)))
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stdout, "open_errno=%d resolve_error=%q\n", blockErrno(openErr), err)
@@ -61,6 +68,108 @@ func TestKernelBlockChild(t *testing.T) {
 		os.Exit(1)
 	}
 	os.Exit(0)
+}
+
+func TestRunBlockedFileOpenDenyWithAllowControl(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to load BPF programs and create the run cgroup")
+	}
+
+	root, err := os.MkdirTemp("/tmp", "agenttaint-file-deny-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(root, "secret.txt")
+	normal := filepath.Join(root, "normal.txt")
+	for path, contents := range map[string]string{secret: "synthetic secret\n", normal: "ordinary data\n"} {
+		if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	endpoint := listener.Addr().(*net.TCPAddr)
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := fmt.Sprintf("deny_files:\n  - %q\n", secret)
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "target")
+	input, err := os.Open(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	if err != nil {
+		_ = input.Close()
+		t.Fatal(err)
+	}
+	_, copyErr := output.ReadFrom(input)
+	closeInputErr := input.Close()
+	closeOutputErr := output.Close()
+	if err := errors.Join(copyErr, closeInputErr, closeOutputErr); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(blockChildEnv, "1")
+	t.Setenv(blockAddressEnv, endpoint.IP.String())
+	t.Setenv(blockPortEnv, fmt.Sprint(endpoint.Port))
+	t.Setenv(blockExpectEnv, "file-deny")
+	t.Setenv(blockSourceEnv, secret)
+	blockedOutput, blockedStderr := &bytes.Buffer{}, &bytes.Buffer{}
+	blockedCode, blockedErr := RunBlockedWithPolicy(context.Background(), env.Resolver{}, target,
+		[]string{target, "-test.run=^TestKernelBlockChild$"}, nil, blockedOutput, blockedStderr,
+		filepath.Join(root, "blocked.jsonl"), snapshot, &TargetIdentity{UID: 65534, GID: 65534})
+	if !strings.Contains(blockedOutput.String(), "open_errno=1") {
+		t.Fatalf("target did not report EPERM on denied file open: code=%d err=%v stdout=%q stderr=%q", blockedCode, blockedErr, blockedOutput.String(), blockedStderr.String())
+	}
+	if err := listener.(*net.TCPListener).SetDeadline(time.Now().Add(300 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	conn, acceptErr := listener.Accept()
+	if acceptErr == nil {
+		_ = conn.Close()
+		t.Fatal("receiver accepted a connection from the file-denied target")
+	}
+	if timeout, ok := acceptErr.(net.Error); !ok || !timeout.Timeout() {
+		t.Fatalf("file-denied receiver check: %v", acceptErr)
+	}
+	t.Logf("file-deny runner result: code=%d err=%v", blockedCode, blockedErr)
+
+	t.Setenv(blockExpectEnv, "allow")
+	t.Setenv(blockSourceEnv, normal)
+	allowedOutput, allowedStderr := &bytes.Buffer{}, &bytes.Buffer{}
+	allowedCode, allowedErr := RunBlockedWithPolicy(context.Background(), env.Resolver{}, target,
+		[]string{target, "-test.run=^TestKernelBlockChild$"}, nil, allowedOutput, allowedStderr,
+		filepath.Join(root, "allowed.jsonl"), snapshot, &TargetIdentity{UID: 65534, GID: 65534})
+	if !strings.Contains(allowedOutput.String(), "open_errno=0 connect_errno=0") {
+		t.Fatalf("non-denied file control failed: code=%d err=%v stdout=%q stderr=%q", allowedCode, allowedErr, allowedOutput.String(), allowedStderr.String())
+	}
+	if err := listener.(*net.TCPListener).SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	conn, err = listener.Accept()
+	if err != nil {
+		t.Fatalf("non-denied file control connection did not reach receiver: %v", err)
+	}
+	_ = conn.Close()
+	if err := listener.(*net.TCPListener).SetDeadline(time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("file-deny allow-control runner result: code=%d err=%v", allowedCode, allowedErr)
 }
 
 func blockErrno(err error) int {

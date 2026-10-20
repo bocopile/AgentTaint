@@ -34,9 +34,10 @@ type rule struct {
 
 // Snapshot is an immutable, validated policy loaded once for a run.
 type Snapshot struct {
-	digest  string
-	sources []source
-	rules   []rule
+	digest    string
+	sources   []source
+	denyFiles []string
+	rules     []rule
 }
 
 // KernelRule is one bounded IPv4/port match projected from a validated rule.
@@ -52,8 +53,9 @@ type KernelRule struct {
 // KernelProjection is the deliberately small policy subset supported by the
 // synchronous Linux enforcement backend.
 type KernelProjection struct {
-	Sources []string
-	Denies  []KernelRule
+	Sources   []string
+	DenyFiles []string
+	Denies    []KernelRule
 }
 
 func (s *Snapshot) Digest() string {
