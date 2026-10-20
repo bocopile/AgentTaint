@@ -2044,3 +2044,10 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 **제품 검증과 분리:** 이번 변경은 문서만이다. 외부 프로젝트 빌드·실행, Linux verifier/load/attach, 보안 우회·성능 시험, VM 시작, 새 code 구현, commit/push는 하지 않았다. Phase 0/1의 기존 Go 검증 결과는 12.10에 남아 있으며 이번 조사 결과로 재실행/추가 PASS를 만들지 않는다. **Byte-level taint를 주장하지 않으며, post-event detection이나 kill을 prevention이라고 부르지 않는다.** 현재 제품에 실제 OS 감지·taint·차단이 구현됐다고도 주장하지 않는다.
 
 문서 검증 기록: 독립 리뷰에서 sandbox/READY 계약 및 IFC/provenance 비교 주장의 차단성 오류는 발견되지 않았다. ActPlane 선례 설명과 AgentTaint의 타입 수준 게이트 목표를 혼동하지 않도록 정정안을 좁혔다. 코드 fence 균형, JSON 예제 3개 파싱, 로컬 파일 링크 12개, 비교 항목 01~26과 BP-01~26의 개수·중복 검사를 통과했다. `git diff --check`도 통과했다. Go source·go.mod·Makefile·기존 CI를 합친 20개 파일의 bundle SHA-256은 `851228228dcd999d4fa8567dce66186dfe1f8ad48d3f2630122ef1bfe99fe3a5`로 이전 검증과 같으며 제품 코드는 변경되지 않았다. 문서 전용 작업이므로 이번에 gofmt/go vet/go test/build를 다시 실행하지 않았다.
+
+#### P4-02 진단 실행 업데이트 — 2026-10-21
+
+- 활성 BPF-LSM guest(`7.0.0-38-generic`, aarch64)에서 센서 테스트를 반복했다. CPU 0 고정은 통과했고 CPU 1 고정은 file-open timeout으로 실패했다. drop counters는 `[0 0 0 0 0 0]`이었다.
+- 고정된 `cilium/ebpf v0.22.0` 구현은 `link.Tracepoint`에서 `pid=-1`일 때 `perf_event_open`을 CPU 0으로 연다. CPU별 별도 부착 실험은 동일 tracepoint의 두 번째 `PERF_EVENT_IOC_SET_BPF`에서 `EEXIST`로 실패해 제거했다. 현재 syscall observer의 전 CPU 범위 누락은 해결되지 않았다.
+- runner `TestRunObservedPolicyAuditPipeline`도 `child sink was not audited`로 실패했다. 원인은 CPU 범위 공백과 부합하지만, 다음 raw tracepoint/`tp_btf` 설계 및 guest 검증 전에는 확정된 제품 수정으로 간주하지 않는다.
+- 이 진단 단위의 host Go tests, `go vet`, ARM64 Linux test-binary builds와 `git diff --check`는 통과했다. guest integration은 실패했으므로 P4-02는 미완료이며 P4-03은 시작하지 않았다. 실제 deny errno, allow 대조군, source-state 전이 및 receiver 효과는 `not_tested`다.
