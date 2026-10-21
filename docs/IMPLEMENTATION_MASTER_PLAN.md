@@ -2323,3 +2323,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestKernelRingBufferDropRemainsStickyAfterRecovery`와 `TestAuditCoverageLossRemainsStickyAfterQueueRecovers`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 각각 3회 PASS했다. 실제 kernel ring reserve drop 뒤 target continuation, 회복 후 추가 drop 없음, incomplete quality history 유지가 각 반복에서 확인됐다. 결정적 queue test는 공간 회복 뒤 event 재수용, sticky incomplete 상태, 이후 connect들의 policy verdict 미생성을 확인했다.
 - 실제 kernel drop과 그 동일 run의 후속 sink verdict suppression을 하나의 end-to-end fixture로 결합하는 것은 여전히 `not_tested`; 서로 분리된 guest와 deterministic queue evidence를 합쳐서 단일 통합 수용으로 표시하지 않는다. 다른 kernel/architecture 및 전체 audit completeness도 `not_tested`; P4-04 미완료다.
 - 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile 및 `git diff --check` PASS; 위 guest/unit tests 각각 3회 PASS.
+
+#### P4-04 실행 보강 — S38 제어·FD 경계 반복 확인 — 2026-10-21
+
+- `TestObserveHelperClosesControlFDBeforeTargetExec`, `TestUnprivilegedTargetCannotModifyPolicyAuditOrControl`, `TestUnprivilegedTargetCannotSignalOrPtraceSupervisor`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 각각 3회 PASS했다. target exec 전에 control FD가 닫히고 high FD가 상속되지 않는 것, 비특권 target의 policy/audit/control 변경 실패, supervisor에 대한 signal/ptrace `EPERM` 및 observer/block runner 생존을 확인했다.
+- signal/ptrace block probe는 세 번 모두 `file-path-unreadable-success=4`, `AuditCoverage=incomplete`, runner code 1을 반환했지만 target errno는 signal/ptrace 각각 `EPERM`이고 helper assertion은 PASS했다. S25 concurrent-run 전체 audit isolation, 다른 kernel/architecture 및 모든 내부 FD 조작은 `not_tested`; S38/P4-04 전체 완료로 일반화하지 않는다.
+- 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile 및 `git diff --check` PASS; 위 guest tests 각각 3회 PASS.
