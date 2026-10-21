@@ -2365,3 +2365,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunBlockUDPSourceSendtoIsOutsideConnectEnforcement`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 3회 PASS했다. target은 source를 열고 UDP `sendto`를 호출해 `connect` 없이 payload를 전송했고 receiver가 bytes를 받았다. IPv6 CIDR deny 입력은 `TestLoadRejectsIPv6DenyRuleRatherThanSilentlyIgnoringIt`에서 parser가 `invalid IPv4 CIDR`로 거부함을 host test로 PASS 확인했다.
 - 세 UDP run 모두 `file-path-unreadable-success=4`, `AuditCoverage=incomplete`, runner code 1이었다. 증거는 현 IPv4 connect hook이 이 UDP `sendto` fixture를 막지 않는 것과 IPv6 deny 입력의 조기 거부에 한정된다. IPv6 network runtime 및 UDP connect/send/receive 조합은 `not_tested`; 이 경로들을 보호된 것으로 표시하지 않으며 P4-04 미완료다.
 - 검증: IPv6 policy rejection targeted host test, 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 test-binary cross-build 및 `git diff --check`; guest UDP test 3회 PASS.
+
+#### P4-04 실행 재확인 — S25 concurrent audit isolation — 2026-10-21
+
+- `TestRunObservedSeparatesConcurrentRuns`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 3회 재실행했다. 세 번 모두 target stdout/stderr·권한·FD checks, 관측된 fixture event, 서로 다른 RunID/ScopeID 및 sibling fixture 경로 비혼합 검사가 통과했다.
+- 각 run pair 모두 `file-path-unreadable-success=2`로 audit coverage incomplete였고 테스트는 세 번 모두 `SKIP` 처리했다. 따라서 partial record 간 식별자 분리만 확인됐으며 complete audit isolation / 무누락 acceptance는 계속 `not_tested`다. audit path capture root cause는 미해결이고 P4-04 미완료다.
+- 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check`; guest test 3회 모두 incomplete-evidence skip.
