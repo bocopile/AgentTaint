@@ -2156,3 +2156,8 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestUnprivilegedTargetCannotModifyPolicyAuditOrControl`를 privileged Linux/arm64 guest에서 PASS했다. UID/GID 65534 target의 policy 및 audit 파일 append는 각각 `Permission denied`; target 출력은 두 차단과 control FD 비노출을 확인했다. policy 내용은 바뀌지 않았고 audit 파일은 `0600`이며 남은 모든 audit line이 `core.DecodeEvent`를 통과했다.
 - 이 test는 runner가 반환하는 audit coverage incompleteness를 별도로 허용하며 전체 audit completeness를 주장하지 않는다. 같은 UID 또는 privileged target, 다른 filesystem/mount 권한 조합은 미검증이다. P4-04 미완료.
 - 검증: host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check`, guest target permission/effect test PASS.
+
+#### P4-04 실행 업데이트 — S29 guest/host filesystem 경계 — 2026-10-21
+
+- 기존 `ebpf-lab` guest에서 읽기 전용 `findmnt -rn -o TARGET,SOURCE,FSTYPE`를 확인했다. `/`는 `/dev/vda1` ext4, `/tmp`는 tmpfs이며 목록에서 virtiofs/9p/sshfs 또는 host project 공유 mount는 보이지 않았다. 이 guest에서 복사·생성한 검증 artifact는 guest-local 경로를 사용했다.
+- host-shared filesystem의 동일 파일 접근, permission mapping, identity/inode 차이는 이 환경에 mount가 없어 실행하지 않았으며 `not_tested`다. mount inventory는 현재 guest 설정에 한정되고 일반 Lima 공유 mount의 동작 보장이 아니다. P4-04 미완료.
