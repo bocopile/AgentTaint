@@ -2432,3 +2432,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - S37의 통제된 `/dev/null` open flood 세 반복에서 실제 `file-ring-reserve=187808`만 quality detail에 기록됐고 `file-path-unreadable-success`는 관측되지 않았다. 따라서 S25의 `file-path-unreadable-success=2` 원인은 이 통제된 ring overflow 부하로 재현되지 않았다.
 - CPU별 기본 observer 시나리오는 통과했지만 S25 동시 `RunObserved` 환경의 syscall/path capture 누락 원인은 아직 식별하지 못했다. 정확한 실패 syscall·원인과 complete concurrent audit isolation은 `not_tested`; S25 및 P4-04 미완료다.
 - 검증: host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build, `git diff --check` PASS; guest CPU 0/1 observer test 각 3회 및 S37 통합 test 3회 PASS.
+
+#### P4-04 실행 보강 — S17 직접 file-open deny 및 allow control — 2026-10-21
+
+- `TestRunBlockedFileOpenDenyWithAllowControl`을 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 3회 PASS했다. 직접 deny target의 source file open은 `EPERM`이었고 receiver에는 연결이 도달하지 않았다. non-source allow control은 file open과 IPv4 connect가 성공했고 receiver가 연결을 수락했다.
+- 세 반복의 두 run 모두 audit coverage incomplete (`file-path-unreadable-success=4`, runner code 1)로 반환됐다. target syscall/effect assertions는 통과했으나 전체 audit completeness는 확인되지 않았다. 다른 kernel/architecture의 direct file enforcement는 `not_tested`; P4-04 전체는 미완료다.
+- 검증: 기존 guest Linux/arm64 runner test binary에서 위 테스트 3회 PASS; 각 반복의 deny/allow control 모두 assertion 통과.
