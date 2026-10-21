@@ -2299,3 +2299,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestUnprivilegedTargetCannotSignalOrPtraceSupervisor`를 observer harness의 block-mode path까지 확장해 BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 3회 PASS했다. UID/GID 65534 target의 privileged supervisor `SIGTERM`과 ptrace 시도가 각각 `EPERM`이었고 runner는 계속 동작했다. block run은 `ActiveMode=block`, `ActualAction=pre_op_lsm_enforcement_active`, target exit 0이었다.
 - 각 block run의 audit는 `file-path-unreadable-success=4`, `AuditCoverage=incomplete`, runner code 1이었다. 이는 process-control 권한 결과와 분리해 보고한다. 다른 kernel/architecture, privileged/same-UID target 및 모든 내부 descriptor 접근은 `not_tested`; 전체 control 경계 acceptance와 P4-04는 미완료다.
 - 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check` 및 observer/block guest test 3회 PASS.
+
+#### P4-04 실행 보강 — S35 최대 source·rule 개수 — 2026-10-21
+
+- 새 `TestLoadAcceptsMaximumSourceAndRuleCounts` PASS. 정확히 `maxPolicySources`(1024) source 항목과 정확히 `maxPolicyRules`(1024) rule 항목을 각각 포함한 policy를 loader가 수락했다. 기존 `TestLoadRejectsSizeAndRuleCountLimits`는 각각 1025 source와 1025 rule을 거부한다.
+- 이는 parser cardinality 상한의 inclusive 경계만 확인한다. active block run 중 policy 원본 교체 및 다른 architecture는 `not_tested`; P4-04 전체는 미완료다.
+- 검증: targeted cardinality test, `go test ./...`, `go vet ./...`, `git diff --check` PASS.

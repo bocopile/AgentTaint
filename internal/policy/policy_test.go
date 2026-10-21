@@ -320,6 +320,35 @@ func TestLoadAcceptsPolicyAtByteLimit(t *testing.T) {
 	}
 }
 
+func TestLoadAcceptsMaximumSourceAndRuleCounts(t *testing.T) {
+	t.Run("maximum sources", func(t *testing.T) {
+		var text strings.Builder
+		text.WriteString("sources:\n")
+		for i := 0; i < maxPolicySources; i++ {
+			fmt.Fprintf(&text, "  - path: /secret/%04d\n    label: SECRET\n", i)
+		}
+		text.WriteString("rules:\n  - name: rule\n    when: {process_has: SECRET}\n    sink: {network: {external: [203.0.113.0/24]}}\n    action: deny\n")
+		snapshot, err := Load(writePolicy(t, text.String()))
+		if err != nil {
+			t.Fatalf("policy at the inclusive source-count limit was rejected: %v", err)
+		}
+		if got := len(snapshot.SourcePaths()); got != maxPolicySources {
+			t.Fatalf("source count = %d, want %d", got, maxPolicySources)
+		}
+	})
+
+	t.Run("maximum rules", func(t *testing.T) {
+		var text strings.Builder
+		text.WriteString("sources:\n  - path: /secret\n    label: SECRET\nrules:\n")
+		for i := 0; i < maxPolicyRules; i++ {
+			fmt.Fprintf(&text, "  - name: rule-%04d\n    when: {process_has: SECRET}\n    sink: {network: {external: [203.0.113.0/24]}}\n    action: audit\n", i)
+		}
+		if _, err := Load(writePolicy(t, text.String())); err != nil {
+			t.Fatalf("policy at the inclusive rule-count limit was rejected: %v", err)
+		}
+	})
+}
+
 func TestSameActionRuleSelectionIsIndependentOfDeclarationOrder(t *testing.T) {
 	text := `sources:
   - path: /secret
