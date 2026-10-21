@@ -290,7 +290,8 @@ int BPF_PROG(on_sys_enter, struct pt_regs *regs, long syscall_nr)
 			file_count_drop(AGENTTAINT_DROP_FILE_SYSCALL_ARGS);
 			return 0;
 		}
-		file_enter_openat((const char *)(unsigned long)arg1, arg2, true);
+		file_enter_openat((const char *)(unsigned long)arg1, arg2, true,
+				  AGENTTAINT_FILE_SYSCALL_OPENAT);
 	} else if (syscall_nr == AGENTTAINT_ARM64_NR_OPENAT2) {
 		if (arm64_syscall_arg(regs, 1, &arg1) < 0 || arm64_syscall_arg(regs, 2, &arg2) < 0 ||
 		    arm64_syscall_arg(regs, 3, &arg3) < 0) {
@@ -300,7 +301,8 @@ int BPF_PROG(on_sys_enter, struct pt_regs *regs, long syscall_nr)
 		__u64 flags = 0;
 		bool valid = arg3 >= sizeof(flags) &&
 			bpf_probe_read_user(&flags, sizeof(flags), (const void *)(unsigned long)arg2) == 0;
-		file_enter_openat((const char *)(unsigned long)arg1, flags, valid);
+		file_enter_openat((const char *)(unsigned long)arg1, flags, valid,
+				  AGENTTAINT_FILE_SYSCALL_OPENAT2);
 	} else if (syscall_nr == AGENTTAINT_ARM64_NR_CONNECT) {
 		if (arm64_syscall_arg(regs, 1, &arg1) < 0 || arm64_syscall_arg(regs, 2, &arg2) < 0) {
 			network_count_drop(AGENTTAINT_DROP_NETWORK_CAPTURE);

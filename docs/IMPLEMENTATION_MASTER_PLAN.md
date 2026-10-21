@@ -2445,3 +2445,10 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 다섯 번 모두 audit coverage는 `file-path-unreadable-success`로 incomplete여서 테스트가 `SKIP`됐다. 두 run 각각의 카운트는 3회 `4`, 2회 `2`였다. 따라서 partial audit record의 run 식별성은 재확인됐지만 complete audit isolation 및 무누락 조건은 충족되지 않았다.
 - 현재 BPF 손실 이유는 syscall 종류를 보존하지 않아 실패한 path copy가 `openat`인지 `openat2`인지 구별되지 않는다. 정확한 syscall과 원인은 `not_tested`; 진단 목적의 ABI/카운터 확장은 별도 범위 검토 전 적용하지 않는다. S25 및 P4-04 미완료다.
 - 검증: Linux/arm64 runner test-binary cross-compile PASS; guest targeted test 5회 모두 incomplete-evidence SKIP. 이 turn에서 전체 Go suite 및 amd64 runtime은 실행하지 않았다.
+
+#### P4-04 진단 계측 — S25 openat 경로 캡처 분리 — 2026-10-21
+
+- `file-path-unreadable-success`를 syscall별 BPF loss reason으로 나눴다. pending open map에 `openat`/`openat2` kind를 보존하고, success/other-error 카운터를 따로 노출했다. 정책 평가, 대상 syscall 결과, enforcement 동작은 변경하지 않았다. BPFEL/BPFEB process objects는 Linux guest의 pinned `bpf2go`로 재생성했다.
+- 새 Linux/arm64 runner test binary에서 S25 `TestRunObservedSeparatesConcurrentRuns`를 5회 실행했다. 다섯 번 모두 `file-openat-path-unreadable-success`가 발생했고 값은 run별 2 또는 4였다. `openat2` path failure는 발생하지 않았다. fixture event와 서로 다른 RunID/ScopeID는 확인됐지만 audit incomplete로 인해 다섯 번 모두 `SKIP`; complete concurrent audit isolation 및 무누락은 여전히 `not_tested`다. 손실의 더 구체적인 경로/원인은 미해결이다.
+- regenerated BPF에서 `TestFileAndConnectObserver`를 taskset CPU 0 및 CPU 1에서 각각 3회 PASS했다. CPU pinning이 없는 실행은 첫 파일 이벤트 timeout으로 3회 실패했고 drop counters는 모두 0이었다. 이는 observer event delivery의 실행 조건 민감성을 보여주지만 원인을 특정하지 못했으며, pinning된 테스트 결과를 전 CPU 보장으로 일반화하지 않는다.
+- 검증: host `gofmt`, `go test ./...`, `go vet ./...`, `go build ./...`(모두 exit 0; build에서 module stat-cache write 경고), Linux/arm64 runner 및 sensor test-binary cross-build, `git diff --check`, guest S25 5회 incomplete-evidence SKIP, guest observer CPU 0/1 각각 3회 PASS. 이 turn에서 amd64 runtime은 실행하지 않았다.

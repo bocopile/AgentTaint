@@ -38,7 +38,7 @@ func (e *DecodeError) Unwrap() error { return e.Err }
 
 // DropCounts reports cumulative per-CPU BPF-side loss counters in stable reason
 // order. A failed lookup is unknown coverage, never an implicit zero.
-type DropCounts [11]uint64
+type DropCounts [13]uint64
 
 func (s *Sensor) DropCounts() (DropCounts, error) {
 	var counts DropCounts

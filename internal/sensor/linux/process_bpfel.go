@@ -44,10 +44,11 @@ type processAgenttaintPendingFileOpen struct {
 		ScopeId   uint64
 		Comm      [16]int8
 	}
-	Path     [256]int8
-	Flags    uint8
-	Access   uint8
-	Reserved [6]uint8
+	Path        [256]int8
+	Flags       uint8
+	Access      uint8
+	SyscallKind uint8
+	Reserved    [5]uint8
 }
 
 // Names of all BPF objects in the ELF.

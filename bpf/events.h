@@ -39,9 +39,11 @@ enum agenttaint_drop_reason {
 	AGENTTAINT_DROP_FILE_SYSCALL_ARGS = 6,
 	AGENTTAINT_DROP_FILE_PROCESS = 7,
 	AGENTTAINT_DROP_FILE_PENDING = 8,
-	AGENTTAINT_DROP_FILE_PATH_SUCCESS = 9,
-	AGENTTAINT_DROP_FILE_PATH_OTHER_ERROR = 10,
-	AGENTTAINT_DROP_REASON_COUNT = 11,
+	AGENTTAINT_DROP_FILE_OPENAT_PATH_SUCCESS = 9,
+	AGENTTAINT_DROP_FILE_OPENAT_PATH_OTHER_ERROR = 10,
+	AGENTTAINT_DROP_FILE_OPENAT2_PATH_SUCCESS = 11,
+	AGENTTAINT_DROP_FILE_OPENAT2_PATH_OTHER_ERROR = 12,
+	AGENTTAINT_DROP_REASON_COUNT = 13,
 };
 
 /* Fixed-width native-endian ABI. Every field has an explicit offset. */
@@ -105,7 +107,13 @@ struct agenttaint_pending_file_open {
 	char path[AGENTTAINT_EXEC_PATH_LEN];
 	__u8 flags;
 	__u8 access;
-	__u8 reserved[6];
+	__u8 syscall_kind;
+	__u8 reserved[5];
+};
+
+enum agenttaint_file_syscall_kind {
+	AGENTTAINT_FILE_SYSCALL_OPENAT = 1,
+	AGENTTAINT_FILE_SYSCALL_OPENAT2 = 2,
 };
 
 struct agenttaint_pending_connect {

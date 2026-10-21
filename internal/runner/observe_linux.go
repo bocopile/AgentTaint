@@ -802,7 +802,7 @@ func pollBPFDropCounts(sensor *linux.Sensor, baseline linux.DropCounts, quality 
 		quality.loseUnknown()
 		return err
 	}
-	reasons := [...]string{"process-ring-reserve", "process-capture", "file-ring-reserve", "file-capture", "network-ring-reserve", "network-capture", "file-syscall-args", "file-process", "file-pending-map", "file-path-unreadable-success", "file-path-unreadable-other-error"}
+	reasons := [...]string{"process-ring-reserve", "process-capture", "file-ring-reserve", "file-capture", "network-ring-reserve", "network-capture", "file-syscall-args", "file-process", "file-pending-map", "file-openat-path-unreadable-success", "file-openat-path-unreadable-other-error", "file-openat2-path-unreadable-success", "file-openat2-path-unreadable-other-error"}
 	for index, count := range current {
 		if count > baseline[index] {
 			quality.loseN(reasons[index], count-baseline[index])

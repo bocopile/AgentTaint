@@ -88,7 +88,7 @@ static __always_inline __u8 file_access_from_flags(__u64 flags, bool valid)
 }
 
 static __always_inline void file_enter_openat(const char *filename, __u64 flags,
-						      bool flags_valid)
+						      bool flags_valid, __u8 syscall_kind)
 {
 	__u32 tid = (__u32)bpf_get_current_pid_tgid();
 	struct agenttaint_pending_file_open pending = {};
@@ -105,6 +105,7 @@ static __always_inline void file_enter_openat(const char *filename, __u64 flags,
 	}
 	pending.monotonic_ns = bpf_ktime_get_ns();
 	pending.access = file_access_from_flags(flags, flags_valid);
+	pending.syscall_kind = syscall_kind;
 	long copied = bpf_probe_read_user_str(pending.path, sizeof(pending.path), filename);
 	if (copied <= 0) {
 		pending.flags |= AGENTTAINT_PENDING_PATH_CAPTURE_FAILED;
@@ -125,10 +126,17 @@ static __always_inline void file_exit_openat(long result)
 	if (!pending)
 		return;
 	if (pending->flags & AGENTTAINT_PENDING_PATH_CAPTURE_FAILED) {
-		if (result >= 0)
-			file_count_drop(AGENTTAINT_DROP_FILE_PATH_SUCCESS);
-		else if (result != -14) /* EFAULT means the kernel performed no file lookup. */
-			file_count_drop(AGENTTAINT_DROP_FILE_PATH_OTHER_ERROR);
+		if (pending->syscall_kind == AGENTTAINT_FILE_SYSCALL_OPENAT) {
+			if (result >= 0)
+				file_count_drop(AGENTTAINT_DROP_FILE_OPENAT_PATH_SUCCESS);
+			else if (result != -14) /* EFAULT means the kernel performed no file lookup. */
+				file_count_drop(AGENTTAINT_DROP_FILE_OPENAT_PATH_OTHER_ERROR);
+		} else if (pending->syscall_kind == AGENTTAINT_FILE_SYSCALL_OPENAT2) {
+			if (result >= 0)
+				file_count_drop(AGENTTAINT_DROP_FILE_OPENAT2_PATH_SUCCESS);
+			else if (result != -14)
+				file_count_drop(AGENTTAINT_DROP_FILE_OPENAT2_PATH_OTHER_ERROR);
+		}
 		bpf_map_delete_elem(&pending_file_opens, &tid);
 		return;
 	}
