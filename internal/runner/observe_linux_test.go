@@ -5,6 +5,7 @@ package runner
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/bocopile/AgentTaint/internal/core"
+	"github.com/bocopile/AgentTaint/internal/enforce"
 	"github.com/bocopile/AgentTaint/internal/env"
 	"github.com/bocopile/AgentTaint/internal/policy"
 	"golang.org/x/sys/unix"
@@ -235,6 +237,452 @@ func TestRunObservedPolicyAuditPipeline(t *testing.T) {
 		case <-time.After(2 * time.Second):
 			t.Fatal("the deny/audit verdict prevented a local TCP connection")
 		}
+	}
+}
+
+func TestRunPolicyModesNotifyAndKillAfterPolicyEvent(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to load eBPF programs and create the kill-mode run cgroup")
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-modes-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(secret, []byte("synthetic secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	port := listener.Addr().(*net.TCPAddr).Port
+	accepted := make(chan error, 3)
+	go func() {
+		for range 3 {
+			conn, err := listener.Accept()
+			if err != nil {
+				accepted <- err
+				return
+			}
+			_ = conn.Close()
+			accepted <- nil
+		}
+	}()
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := "sources:\n  - path: " + secret + "\n    label: SECRET\nrules:\n  - name: post-event-test\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n"
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connect := "exec 3<" + shellQuote(secret) + "\nexec 4<>/dev/tcp/127.0.0.1/" + fmt.Sprint(port) + "\nsleep 1\nprintf survived"
+	identity := &TargetIdentity{UID: 65534, GID: 65534}
+	for _, mode := range []PolicyMode{ModeMonitor, ModeNotify, ModeKill} {
+		if mode == ModeKill {
+			probe, probeErr := createRunCgroup()
+			if probeErr != nil {
+				marker := filepath.Join(root, "kill-mode-started")
+				preflight := filepath.Join(root, "kill-preflight.sh")
+				if err := os.WriteFile(preflight, []byte("#!/bin/sh\nprintf started > "+shellQuote(marker)+"\n"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				var out, diagnostic bytes.Buffer
+				code, status, runErr := RunWithPolicyMode(context.Background(), env.Resolver{}, preflight, []string{preflight}, nil, &out, &diagnostic, filepath.Join(root, "kill-preflight.jsonl"), snapshot, identity, ModeKill)
+				if runErr == nil || !strings.Contains(runErr.Error(), "prepare run cgroup scope") || status.ActiveMode != "none" || status.Result != "not_started" || code == 0 {
+					t.Fatalf("kill mode did not fail safely before start when cgroup scope is unavailable: code=%d status=%+v stderr=%q err=%v", code, status, diagnostic.String(), runErr)
+				}
+				if _, err := os.Stat(marker); !os.IsNotExist(err) {
+					t.Fatalf("kill target ran without a private cgroup scope: marker stat err=%v", err)
+				}
+				t.Logf("kill mode failed before target start because private cgroup scope is unavailable: %v", probeErr)
+				return
+			}
+			if err := probe.Close(); err != nil {
+				t.Fatalf("close kill-mode cgroup preflight probe: %v", err)
+			}
+		}
+		script := filepath.Join(root, string(mode)+".sh")
+		if err := os.WriteFile(script, []byte("#!/bin/bash\nset -e\n"+connect+"\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		var stdout, stderr bytes.Buffer
+		code, status, runErr := RunWithPolicyMode(context.Background(), env.Resolver{}, script, []string{script}, nil, &stdout, &stderr, filepath.Join(root, string(mode)+".jsonl"), snapshot, identity, mode)
+		if status.RequestedMode != mode || status.ActiveMode != mode {
+			t.Fatalf("%s mode status does not report the active run: %+v", mode, status)
+		}
+		if status.AuditCoverage == "incomplete" {
+			if runErr == nil || !strings.Contains(runErr.Error(), "audit coverage is incomplete") {
+				t.Fatalf("%s mode did not report incomplete audit coverage: status=%+v err=%v", mode, status, runErr)
+			}
+			t.Logf("%s mode action completed with audit coverage reported incomplete: code=%d err=%v", mode, code, runErr)
+		} else if status.AuditCoverage != "complete" || runErr != nil {
+			t.Fatalf("%s mode returned unexpected coverage/result: status=%+v err=%v", mode, status, runErr)
+		}
+		switch mode {
+		case ModeMonitor:
+			if status.ActualAction != "observe_only" || status.Notifications != 0 || !strings.Contains(stdout.String(), "survived") {
+				t.Fatalf("monitor changed the target or reported an action: status=%+v stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+			}
+		case ModeNotify:
+			if status.ActualAction != "post_event_notification" || status.Notifications != 1 || !strings.Contains(stderr.String(), "audit_event_id=") || !strings.Contains(stdout.String(), "survived") {
+				t.Fatalf("notify did not report its linked post-event action: status=%+v stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+			}
+		case ModeKill:
+			if status.ActualAction != "post_event_kill" || status.Result != "cgroup_killed_after_policy_event" || strings.Contains(stdout.String(), "survived") {
+				t.Fatalf("kill did not terminate the run after the policy event: status=%+v stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+			}
+		}
+		data, err := os.ReadFile(filepath.Join(root, string(mode)+".jsonl"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var foundDeny bool
+		for _, line := range bytes.Split(bytes.TrimSpace(data), []byte{'\n'}) {
+			if len(line) == 0 {
+				continue
+			}
+			event, err := core.DecodeEvent(line)
+			if err != nil {
+				t.Fatalf("%s invalid audit event %s: %v", mode, line, err)
+			}
+			if violation, ok := event.(*core.PolicyViolationEvent); ok && violation.Decision == "deny" && violation.OperationResult == core.ResultSuccess {
+				foundDeny = true
+				if mode == ModeNotify && !strings.Contains(stderr.String(), "audit_event_id="+string(violation.EventID)) {
+					t.Fatalf("notification is not linked to audit event %s: %q", violation.EventID, stderr.String())
+				}
+			}
+		}
+		if !foundDeny {
+			t.Fatalf("%s mode lacks a successful post-event deny record", mode)
+		}
+		select {
+		case acceptErr := <-accepted:
+			if acceptErr != nil {
+				t.Fatalf("%s mode receiver did not confirm the connection effect: %v", mode, acceptErr)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s mode connection did not reach the controlled receiver", mode)
+		}
+	}
+}
+
+func TestRunPolicyModeBlockReportsPreOperationEnforcement(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to load eBPF programs and create the block-mode run cgroup")
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-mode-block-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(secret, []byte("synthetic secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	endpoint := listener.Addr().(*net.TCPAddr)
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := "sources:\n  - path: " + secret + "\n    label: SECRET\nrules:\n  - name: block-mode-test\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n"
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(blockChildEnv, "1")
+	t.Setenv(blockSourceEnv, secret)
+	t.Setenv(blockAddressEnv, endpoint.IP.String())
+	t.Setenv(blockPortEnv, fmt.Sprint(endpoint.Port))
+	t.Setenv(blockExpectEnv, "deny")
+	target := os.Args[0]
+	var stdout, stderr bytes.Buffer
+	code, status, runErr := RunWithPolicyMode(context.Background(), env.Resolver{}, target, []string{target, "-test.run=^TestKernelBlockChild$"}, nil, &stdout, &stderr, filepath.Join(root, "block.jsonl"), snapshot, &TargetIdentity{UID: 65534, GID: 65534}, ModeBlock)
+	if status.RequestedMode != ModeBlock || status.ActiveMode != ModeBlock || status.ActualAction != "pre_op_lsm_enforcement_active" {
+		t.Fatalf("block status does not identify active pre-operation enforcement: code=%d status=%+v stderr=%q err=%v", code, status, stderr.String(), runErr)
+	}
+	if !strings.Contains(stdout.String(), "open_errno=0 connect_errno=1") {
+		t.Fatalf("block mode did not preserve the source open and pre-operation EPERM result: code=%d status=%+v stdout=%q stderr=%q err=%v", code, status, stdout.String(), stderr.String(), runErr)
+	}
+	if status.AuditCoverage == "incomplete" {
+		if runErr == nil || !strings.Contains(runErr.Error(), "audit coverage is incomplete") {
+			t.Fatalf("block mode did not report incomplete audit coverage: status=%+v err=%v", status, runErr)
+		}
+	} else if status.AuditCoverage != "complete" || runErr != nil {
+		t.Fatalf("block mode returned unexpected coverage/result: status=%+v err=%v", status, runErr)
+	}
+	if err := listener.(*net.TCPListener).SetDeadline(time.Now().Add(300 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	conn, acceptErr := listener.Accept()
+	if acceptErr == nil {
+		_ = conn.Close()
+		t.Fatal("receiver accepted the connect denied by block mode")
+	}
+	if timeout, ok := acceptErr.(net.Error); !ok || !timeout.Timeout() {
+		t.Fatalf("block-mode receiver check: %v", acceptErr)
+	}
+}
+
+func TestRunPolicyModeScenarioMatrix(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to load eBPF programs and create private run cgroups")
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-mode-matrix-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(root, "secret.txt")
+	normal := filepath.Join(root, "normal.txt")
+	for path, data := range map[string]string{secret: "synthetic secret\n", normal: "ordinary data\n"} {
+		if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	port := listener.Addr().(*net.TCPAddr).Port
+	identity := &TargetIdentity{UID: 65534, GID: 65534}
+	type scenario struct {
+		name       string
+		source     string
+		forkedSink bool
+	}
+	scenarios := []scenario{
+		{name: "normal", source: normal},
+		{name: "direct-source", source: secret},
+		{name: "fork-child", source: secret, forkedSink: true},
+		{name: "audit-only", source: secret},
+	}
+	modes := []PolicyMode{ModeMonitor, ModeNotify, ModeBlock, ModeKill}
+	for _, scenario := range scenarios {
+		for _, mode := range modes {
+			t.Run(string(mode)+"/"+scenario.name, func(t *testing.T) {
+				action := "deny"
+				if scenario.name == "audit-only" {
+					action = "audit"
+				}
+				policyPath := filepath.Join(root, string(mode)+"-"+scenario.name+".yaml")
+				policyText := fmt.Sprintf("sources:\n  - path: %q\n    label: SECRET\nrules:\n  - name: mode-matrix\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: %s\n", secret, action)
+				if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				snapshot, err := policy.Load(policyPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				connect := "exec 4<>/dev/tcp/127.0.0.1/" + fmt.Sprint(port)
+				var sink string
+				if scenario.forkedSink {
+					sink = "if /bin/bash -c " + shellQuote(connect) + "; then printf child_connected; else printf child_connect_failed; fi"
+				} else {
+					sink = "if " + connect + "; then printf connected; else printf connect_failed; fi"
+				}
+				script := filepath.Join(root, string(mode)+"-"+scenario.name+".sh")
+				scriptBody := "#!/bin/bash\nset +e\nexec 3<" + shellQuote(scenario.source) + "\n" + sink + "\nsleep 0.2\nprintf survived\n"
+				if scenario.name == "audit-only" {
+					scriptBody = strings.Replace(scriptBody, "printf survived", "printf audited", 1)
+				}
+				if err := os.WriteFile(script, []byte(scriptBody), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				var stdout, stderr bytes.Buffer
+				auditPath := filepath.Join(root, string(mode)+"-"+scenario.name+".jsonl")
+				code, status, runErr := RunWithPolicyMode(context.Background(), env.Resolver{}, script, []string{script}, nil, &stdout, &stderr, auditPath, snapshot, identity, mode)
+				if status.RequestedMode != mode || status.ActiveMode != mode {
+					t.Fatalf("mode status does not report the active run: code=%d status=%+v stderr=%q err=%v", code, status, stderr.String(), runErr)
+				}
+				if status.AuditCoverage == "incomplete" {
+					if runErr == nil || !strings.Contains(runErr.Error(), "audit coverage is incomplete") {
+						t.Fatalf("incomplete audit coverage was not surfaced: status=%+v err=%v", status, runErr)
+					}
+				} else if status.AuditCoverage != "complete" || runErr != nil {
+					t.Fatalf("unexpected audit coverage result: status=%+v err=%v", status, runErr)
+				}
+				tainted := scenario.name != "normal"
+				denied := tainted && action == "deny"
+				blocked := mode == ModeBlock && denied
+				killed := mode == ModeKill && denied
+				connected := !blocked
+				if blocked {
+					if scenario.forkedSink {
+						if !strings.Contains(stdout.String(), "child_connect_failed") {
+							t.Fatalf("fork child connect was not rejected: stdout=%q stderr=%q", stdout.String(), stderr.String())
+						}
+					} else if !strings.Contains(stdout.String(), "connect_failed") {
+						t.Fatalf("direct connect was not rejected: stdout=%q stderr=%q", stdout.String(), stderr.String())
+					}
+				} else if !strings.Contains(stdout.String(), "connected") {
+					t.Fatalf("expected target connection to complete: stdout=%q stderr=%q", stdout.String(), stderr.String())
+				}
+				continued := strings.Contains(stdout.String(), "survived") || strings.Contains(stdout.String(), "audited")
+				if killed == continued {
+					t.Fatalf("kill result does not match the target's post-event continuation: status=%+v stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+				}
+				if scenario.name == "audit-only" && !strings.Contains(stdout.String(), "audited") {
+					t.Fatalf("audit-only policy changed target continuation: stdout=%q", stdout.String())
+				}
+				switch mode {
+				case ModeMonitor:
+					if status.ActualAction != "observe_only" || status.Notifications != 0 {
+						t.Fatalf("monitor reported an enforcement action: %+v", status)
+					}
+				case ModeNotify:
+					expectedNotifications := uint64(0)
+					if tainted {
+						expectedNotifications = 1
+					}
+					if status.Notifications != expectedNotifications {
+						t.Fatalf("notify count=%d, want %d: stderr=%q", status.Notifications, expectedNotifications, stderr.String())
+					}
+					if expectedNotifications == 1 && (!strings.Contains(status.ActualAction, "notification") || !strings.Contains(stderr.String(), "audit_event_id=")) {
+						t.Fatalf("notify did not reference an audit event: status=%+v stderr=%q", status, stderr.String())
+					}
+				case ModeBlock:
+					if status.ActualAction != "pre_op_lsm_enforcement_active" {
+						t.Fatalf("block did not report pre-operation enforcement: %+v", status)
+					}
+				case ModeKill:
+					if killed && (status.ActualAction != "post_event_kill" || status.Result != "cgroup_killed_after_policy_event") {
+						t.Fatalf("explicit kill did not report its post-event result: %+v", status)
+					}
+					if !killed && status.ActualAction != "none" {
+						t.Fatalf("kill mode acted without a deny event: %+v", status)
+					}
+				}
+				if err := listener.(*net.TCPListener).SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+					t.Fatal(err)
+				}
+				conn, acceptErr := listener.Accept()
+				_ = listener.(*net.TCPListener).SetDeadline(time.Time{})
+				if connected {
+					if acceptErr != nil {
+						t.Fatalf("expected connection did not reach receiver: %v", acceptErr)
+					}
+					_ = conn.Close()
+				} else {
+					if acceptErr == nil {
+						_ = conn.Close()
+						t.Fatal("block mode allowed a denied connection to reach the receiver")
+					}
+					if timeout, ok := acceptErr.(net.Error); !ok || !timeout.Timeout() {
+						t.Fatalf("receiver block check returned %v", acceptErr)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestRunEnforcementModesFailBeforeTargetWithoutRunScopePrivilege(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("requires an unprivileged Linux caller to verify run-scope preflight failure")
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-mode-preflight-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	secret := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(secret, []byte("synthetic secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := fmt.Sprintf("sources:\n  - path: %q\n    label: SECRET\nrules:\n  - name: preflight-test\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n", secret)
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := &TargetIdentity{UID: uint32(os.Geteuid()), GID: uint32(os.Getegid())}
+	for _, mode := range []PolicyMode{ModeBlock, ModeKill} {
+		marker := filepath.Join(root, string(mode)+"-started")
+		var stdout, stderr bytes.Buffer
+		code, status, runErr := RunWithPolicyMode(context.Background(), env.Resolver{}, "/usr/bin/touch", []string{"/usr/bin/touch", marker}, nil, &stdout, &stderr, filepath.Join(root, string(mode)+".jsonl"), snapshot, identity, mode)
+		if runErr == nil || !strings.Contains(runErr.Error(), "prepare run cgroup scope") || status.ActiveMode != "none" || status.ActualAction != "none" || status.Result != "not_started" || code == 0 {
+			t.Fatalf("%s mode did not fail before target start without private-scope privilege: code=%d status=%+v stdout=%q stderr=%q err=%v", mode, code, status, stdout.String(), stderr.String(), runErr)
+		}
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Fatalf("%s mode started the target without private-scope privilege: marker stat err=%v", mode, err)
+		}
+	}
+}
+
+func TestRunBlockHookPreparationFailureDoesNotStartTarget(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to verify block hook preparation failure")
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-hook-preflight-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	secret := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(secret, []byte("synthetic secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := fmt.Sprintf("sources:\n  - path: %q\n    label: SECRET\nrules:\n  - name: hook-preflight-test\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n", secret)
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopePath := filepath.Join(root, "synthetic-cgroup")
+	createScope := func() (*runCgroup, error) {
+		if err := os.Mkdir(scopePath, 0o700); err != nil {
+			return nil, err
+		}
+		return &runCgroup{path: scopePath, id: 1}, nil
+	}
+	newEnforcer := func(_ policy.KernelProjection, _ uint64) (*enforce.Enforcer, error) {
+		return nil, errors.New("synthetic required socket_connect hook attach failure")
+	}
+	marker := filepath.Join(root, "target-started")
+	auditPath := filepath.Join(root, "audit.jsonl")
+	var stdout, stderr bytes.Buffer
+	status := ModeStatus{RequestedMode: ModeBlock, ActiveMode: "none", ActualAction: "none", Result: "not_started", AuditCoverage: "unknown"}
+	code, runErr := runProtectedPlatformWithDependencies(context.Background(), "/usr/bin/touch", []string{"/usr/bin/touch", marker}, nil, &stdout, &stderr, auditPath, snapshot, &TargetIdentity{UID: 65534, GID: 65534}, ModeBlock, &status, createScope, newEnforcer)
+	if code == 0 || runErr == nil || !strings.Contains(runErr.Error(), "prepare kernel enforcement hooks") || !strings.Contains(runErr.Error(), "synthetic required socket_connect hook attach failure") {
+		t.Fatalf("block did not report the hook preparation failure: code=%d status=%+v stdout=%q stderr=%q err=%v", code, status, stdout.String(), stderr.String(), runErr)
+	}
+	if status.ActiveMode != "none" || status.ActualAction != "none" || status.Result != "not_started" {
+		t.Fatalf("failed block preflight reported an active mode or action: %+v", status)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("target started after the required hook failed to attach: marker stat err=%v", err)
+	}
+	if _, err := os.Stat(auditPath); !os.IsNotExist(err) {
+		t.Fatalf("audit output was created before block hook preflight completed: stat err=%v", err)
+	}
+	if _, err := os.Stat(scopePath); !os.IsNotExist(err) {
+		t.Fatalf("synthetic run scope was not cleaned up after preflight failure: stat err=%v", err)
 	}
 }
 

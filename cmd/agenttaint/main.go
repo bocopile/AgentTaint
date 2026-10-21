@@ -15,7 +15,7 @@ import (
 	"github.com/bocopile/AgentTaint/internal/runner"
 )
 
-const usage = "usage: agenttaint doctor [--json]\n       agenttaint run [(--observe|--block) --policy <path> --audit-file <path> [--run-as <uid>:<gid>]] [--bin <path>] -- <command> [args...]"
+const usage = "usage: agenttaint doctor [--json]\n       agenttaint run [--mode monitor|notify|block|kill --policy <path> --audit-file <path> [--run-as <uid>:<gid>]] [--bin <path>] -- <command> [args...]\n       --observe and --block remain aliases for --mode monitor and --mode block"
 
 func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, env.NewResolver())) }
 
@@ -44,23 +44,40 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, resolver env.
 		auditPath := ""
 		policyPath := ""
 		var targetIdentity *runner.TargetIdentity
-		observe := false
-		block := false
+		var mode runner.PolicyMode
+		modeSet := false
 		rest := args[1:]
 		for len(rest) > 0 && rest[0] != "--" {
 			option := rest[0]
 			rest = rest[1:]
 			switch {
 			case option == "--observe":
-				if observe {
-					return invalid("--observe may be specified only once")
+				if modeSet {
+					return invalid("specify only one of --mode, --observe, or --block")
 				}
-				observe = true
+				mode, modeSet = runner.ModeMonitor, true
 			case option == "--block":
-				if block {
-					return invalid("--block may be specified only once")
+				if modeSet {
+					return invalid("specify only one of --mode, --observe, or --block")
 				}
-				block = true
+				mode, modeSet = runner.ModeBlock, true
+			case option == "--mode":
+				if modeSet {
+					return invalid("specify only one of --mode, --observe, or --block")
+				}
+				if len(rest) == 0 || rest[0] == "--" || rest[0] == "" {
+					return invalid("--mode requires one of monitor, notify, block, or kill")
+				}
+				mode, modeSet = runner.PolicyMode(rest[0]), true
+				rest = rest[1:]
+			case strings.HasPrefix(option, "--mode="):
+				if modeSet {
+					return invalid("specify only one of --mode, --observe, or --block")
+				}
+				if strings.TrimPrefix(option, "--mode=") == "" {
+					return invalid("--mode requires one of monitor, notify, block, or kill")
+				}
+				mode, modeSet = runner.PolicyMode(strings.TrimPrefix(option, "--mode=")), true
 			case option == "--audit-file":
 				if auditPath != "" || len(rest) == 0 || rest[0] == "--" || rest[0] == "" {
 					return invalid("--audit-file requires one literal path")
@@ -98,39 +115,40 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, resolver env.
 		if len(rest) < 2 || rest[0] != "--" || len(rest[1:]) == 0 {
 			return invalid("run requires -- followed by a command")
 		}
-		if observe && block {
-			return invalid("--observe and --block are mutually exclusive")
+		if modeSet {
+			switch mode {
+			case runner.ModeMonitor, runner.ModeNotify, runner.ModeBlock, runner.ModeKill:
+			default:
+				return invalid("--mode must be monitor, notify, block, or kill")
+			}
+		} else if auditPath != "" || policyPath != "" {
+			// A policy-backed run defaults to audit-only monitoring. Plain `run`
+			// without policy/audit options keeps its existing pass-through behavior.
+			mode = runner.ModeMonitor
 		}
-		if (observe || block) && auditPath == "" {
-			return invalid("--observe and --block require --audit-file PATH")
+		if mode != "" && auditPath == "" {
+			return invalid("policy modes require --audit-file PATH")
 		}
-		if (observe || block) && policyPath == "" {
-			return invalid("--observe and --block require --policy PATH")
+		if mode != "" && policyPath == "" {
+			return invalid("policy modes require --policy PATH")
 		}
-		if !observe && !block && auditPath != "" {
-			return invalid("--audit-file requires --observe or --block")
-		}
-		if !observe && !block && policyPath != "" {
-			return invalid("--policy requires --observe or --block")
-		}
-		if !observe && !block && targetIdentity != nil {
-			return invalid("--run-as requires --observe or --block")
+		if mode == "" && targetIdentity != nil {
+			return invalid("--run-as requires an explicit policy mode")
 		}
 		var code int
 		var err error
-		if observe || block {
+		if mode != "" {
 			snapshot, loadErr := policy.Load(policyPath)
 			if loadErr != nil {
 				fmt.Fprintln(stderr, "agenttaint: load policy:", loadErr)
+				fmt.Fprintf(stderr, "agenttaint: mode requested=%s active=none actual_action=none result=policy_load_failed audit_coverage=unknown notifications=0\n", mode)
 				return 1
 			}
 			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer cancel()
-			if block {
-				code, err = runner.RunBlockedWithPolicy(ctx, resolver, bin, rest[1:], stdin, stdout, stderr, auditPath, snapshot, targetIdentity)
-			} else {
-				code, err = runner.RunObservedWithPolicy(ctx, resolver, bin, rest[1:], stdin, stdout, stderr, auditPath, snapshot, targetIdentity)
-			}
+			var status runner.ModeStatus
+			code, status, err = runner.RunWithPolicyMode(ctx, resolver, bin, rest[1:], stdin, stdout, stderr, auditPath, snapshot, targetIdentity, mode)
+			fmt.Fprintf(stderr, "agenttaint: mode requested=%s active=%s actual_action=%s result=%s audit_coverage=%s notifications=%d\n", status.RequestedMode, status.ActiveMode, status.ActualAction, status.Result, status.AuditCoverage, status.Notifications)
 		} else {
 			code, err = runner.Run(resolver, bin, rest[1:], stdin, stdout, stderr)
 		}

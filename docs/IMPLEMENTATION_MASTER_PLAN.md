@@ -4,7 +4,7 @@
 
 최초 분석 기준: `bocopile/AgentTaint`의 `5cc919dadb0a86ea5ec00c794ed07918ccc42d9a`
 
-상태: **2026-10-21 기준, 37개 상위 작업과 실행 카드를 순서대로 진행 중이다. Phase 0/1, P2-01~P2-04, P3-01~P3-03, P4-01, P4-02는 각 기록 범위에서 완료했다. P4-02의 세 guest enforcement fixture는 통과했으며 runner 전체 audit completeness는 path-capture loss로 미통과 상태다. CI-02는 승인된 workflow 범위가 없어 미완료다. 다음 제품 카드는 P4-03이며, 최신 증거와 미검증 항목은 12.10~12.12절을 따른다.**
+상태: **2026-10-21 기준, 37개 상위 작업과 실행 카드를 순서대로 진행 중이다. Phase 0/1, P2-01~P2-04, P3-01~P3-03, P4-01~P4-03은 각 기록 범위에서 완료했다. P4-02 guest enforcement와 P4-03의 16개 mode/scenario 조합은 통과했으며 runner audit completeness는 path-capture loss로 미완료다. CI-02는 승인된 workflow 범위가 없어 미완료다. 다음 제품 카드는 P4-04이며, 최신 증거와 미검증 항목은 P4-03 실행 기록 및 12.10~12.12절을 따른다.**
 
 이 문서는 제품 철학 분석, macOS 사용 가능성, `addyosmani/agent-skills` 도입 검토, 아키텍처, 언어, 디렉터리, 작업 목록, 검증 기준과 사용자 결정 사항을 한 곳에 모은다. 다른 AI가 새로운 세션에서 읽고 현재 작업을 식별할 수 있도록 작성했다. 최초 분석 당시에는 제품 코드·Go 모듈이 없었다. **현재 실행 상태는 12.10절 기록이 기준이며, 2절의 환경·저장소 조사는 최초 분석 시점의 snapshot이다.**
 
@@ -911,7 +911,7 @@ AgentTaint/
 | [x] | P3-03 | audit-only 통합·예시·증거 | P3-02, D08 | synthetic replay와 Linux guest 네 가지 runtime 시나리오 통과; test-owned disposable fixtures로 검증 (2026-10-19) |
 | [x] | P4-01 | 동기 집행 아키텍처 결정·검증 설계 | Phase 3 완료, E04/E09, D05 | Go/kernel 책임·run scope·fault·실패 행동 및 제한을 사용자 승인·문서화 (2026-10-20); runtime 검증은 P4-02/04 |
 | [x] | P4-02 | 지원 source·network pre-op 집행 | P4-01 | 별도 direct-file deny 및 source-attempt→network deny guest fixtures에서 실제 EPERM, receiver 비도달, allow 대조군과 Go reference 차이를 검증 (2026-10-21; runner audit coverage limitation은 12.10 최신 업데이트) |
-| [ ] | P4-03 | modes·지원 불가 처리·health·로그 | P4-02 | 실제 action과 상태를 표시 |
+| [x] | P4-03 | modes·지원 불가 처리·health·로그 | P4-02 | monitor/notify/block/kill 16개 scenario 조합, 상태·audit loss 및 fail-before-start 검증 (2026-10-21; 제한은 P4-03 실행 기록) |
 | [ ] | P4-04 | adversarial·장애·아키텍처별 검증 | P4-03, D07 | 지원 범위에 대한 증거 |
 | [ ] | V-01 | Linux MVP 최종 보장 감사 | P4-04 | claim→test 표·Required Final Report |
 | [ ] | DOC-01 | 사용자 안내·운영·문제 해결 문서 | 해당 구현 완료, 최종판은 V-01 | 설치·모드·지원 범위·진단·복구 안내 |
@@ -2069,3 +2069,11 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 세 guest fixture는 각각 PASS했다. `go test ./...`, `go vet ./...`, `go build ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check`도 PASS했다. 이 증거는 해당 fixture와 guest에 한정되며 concurrency, map saturation, 앞선 LSM deny 보존, supervisor 장애, 다른 커널/아키텍처는 P4-04에서 검증한다.
 - runner 전체 결과는 audit completeness 검사 때문에 exit code 1이다. 반복 실행에서 `file-path-unreadable-success=4`가 남는다(일부 실행에는 `process-capture=2`도 보고됨). 개별 BPF-LSM fixture의 syscall 결과·effect 증거는 통과했지만, audit coverage는 완전하지 않으며 이 실행이 전체 runner acceptance를 통과했다는 뜻은 아니다. 해당 path-capture 원인은 미해결이다.
 - 판정: P4-02의 직접 파일 거부와 source-attempt 이후 새 network connect 거부 acceptance는 위 guest 증거로 완료한다. audit coverage의 미해결 제한은 유지한다. 다음 순서 P4-03을 시작할 수 있다. P4-04 항목은 완료로 간주하지 않는다.
+
+#### P4-03 mode·실패 처리 acceptance — 2026-10-21
+
+- CLI에 `monitor`, `notify`, `block`, `kill`을 추가하고 기존 `--observe`/`--block`을 호환 alias로 유지했다. 출력은 requested/active mode, 실제 action, 결과, audit coverage, notification count를 별도로 표시한다. 중복·잘못된 mode 및 비 Linux 실행 경로는 target 시작 전에 거부한다.
+- 활성 BPF-LSM guest Linux `7.0.0-38-generic` aarch64에서 `TestRunPolicyModeScenarioMatrix`의 16개 조합(정상 입력, direct source, fork-child sink, audit-only × 네 mode)이 통과했다. receiver 도달, block의 receiver 비도달, kill의 명시 deny 후 종료, notify와 audit EventID 연결 및 audit coverage 상태를 확인했다.
+- 별도 guest 테스트에서 block은 pre-operation LSM `EPERM`과 receiver 비도달을 확인했다. 명시적인 kill은 정책 이벤트 뒤 run cgroup 종료를 수행하며 이미 발생한 연결 효과를 취소하지 않는 것을 확인했다. 비특권 사용자 실행에서는 block/kill의 private run-scope 준비 실패가 target 시작보다 먼저 반환됐다. 필수 `socket_connect` hook 준비 실패는 dependency injection으로 재현해 target/audit 미시작 및 scope cleanup을 확인했다. 이는 hook 부재 커널에서의 실제 attach 실패 검증은 아니다.
+- host `go test ./...`, `go vet ./...`, `go build ./...`, Linux/arm64 runner test-binary cross-build, `git diff --check`가 통과했다. Linux guest의 네 P4-03 전용 검증도 통과했다.
+- **남은 한계:** runner audit completeness는 path-capture loss로 계속 incomplete이며 해당 error를 숨기지 않는다. BPF-LSM이 없는 guest에서 실제 hook attach 실패, amd64/다른 kernel, race·map saturation·supervisor 방해는 검증하지 않았다. 그러므로 이 acceptance는 mode/action 분기와 지정 guest fixture에 한정한다. Byte-level taint를 주장하지 않는다. block은 pre-operation LSM에서만 의미가 있고, notify와 kill은 post-event 처리다.

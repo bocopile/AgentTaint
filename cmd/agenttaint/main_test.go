@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -57,6 +59,62 @@ func TestParseTargetIdentity(t *testing.T) {
 	for _, value := range []string{"", "1", ":2", "1:", "-1:2", "1:+2", "4294967296:2", "1:2:3"} {
 		if identity, err := parseTargetIdentity(value); err == nil || identity != nil {
 			t.Fatalf("accepted invalid identity %q: %#v %v", value, identity, err)
+		}
+	}
+}
+
+func TestCLIPolicyModesRequireExplicitInputsAndReportPreflight(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	cases := []struct {
+		args    []string
+		message string
+	}{
+		{[]string{"run", "--mode", "unknown", "--", "echo"}, "--mode must be monitor, notify, block, or kill"},
+		{[]string{"run", "--mode", "monitor", "--", "echo"}, "policy modes require --audit-file PATH"},
+		{[]string{"run", "--mode", "notify", "--policy", "policy", "--", "echo"}, "policy modes require --audit-file PATH"},
+		{[]string{"run", "--mode", "block", "--audit-file", "audit", "--", "echo"}, "policy modes require --policy PATH"},
+		{[]string{"run", "--mode", "kill", "--policy", "p", "--audit-file", "a", "--mode", "notify", "--", "echo"}, "specify only one of --mode, --observe, or --block"},
+		{[]string{"run", "--observe", "--mode", "kill", "--policy", "p", "--audit-file", "a", "--", "echo"}, "specify only one of --mode, --observe, or --block"},
+		{[]string{"run", "--block", "--observe", "--policy", "p", "--audit-file", "a", "--", "echo"}, "specify only one of --mode, --observe, or --block"},
+	}
+	for _, test := range cases {
+		var out, diagnostic bytes.Buffer
+		if code := run(test.args, nil, &out, &diagnostic, env.Resolver{}); code != 2 || !strings.Contains(diagnostic.String(), test.message) {
+			t.Fatalf("%q: code=%d stdout=%q stderr=%q; want %q", test.args, code, out.String(), diagnostic.String(), test.message)
+		}
+	}
+
+	policyPath := filepath.Join(t.TempDir(), "missing-policy.yaml")
+	auditPath := filepath.Join(t.TempDir(), "audit.jsonl")
+	var out, diagnostic bytes.Buffer
+	args := []string{"run", "--mode=notify", "--policy", policyPath, "--audit-file", auditPath, "--", "/bin/true"}
+	if code := run(args, nil, &out, &diagnostic, env.Resolver{}); code != 1 || !strings.Contains(diagnostic.String(), "requested=notify active=none") || !strings.Contains(diagnostic.String(), "result=policy_load_failed") {
+		t.Fatalf("policy load preflight: code=%d stdout=%q stderr=%q", code, out.String(), diagnostic.String())
+	}
+}
+
+func TestUnsupportedPolicyModesFailBeforeStartingTarget(t *testing.T) {
+	if runtime.GOOS == "linux" {
+		t.Skip("Linux mode startup is covered by guest integration tests")
+	}
+	root := t.TempDir()
+	policyPath := filepath.Join(root, "policy.yaml")
+	secret := filepath.Join(root, "secret.txt")
+	policyText := fmt.Sprintf("sources:\n  - path: %q\n    label: SECRET\nrules:\n  - name: unsupported-mode-test\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n", secret)
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"monitor", "notify", "block", "kill"} {
+		marker := filepath.Join(root, mode+"-started")
+		auditPath := filepath.Join(root, mode+".jsonl")
+		var out, diagnostic bytes.Buffer
+		args := []string{"run", "--mode", mode, "--policy", policyPath, "--audit-file", auditPath, "--", "/usr/bin/touch", marker}
+		if code := run(args, nil, &out, &diagnostic, env.Resolver{}); code != 1 || !strings.Contains(diagnostic.String(), "active=none") || !strings.Contains(diagnostic.String(), "result=not_started") || !strings.Contains(diagnostic.String(), "target was not started") {
+			t.Fatalf("unsupported %s mode did not report preflight failure: code=%d stdout=%q stderr=%q", mode, code, out.String(), diagnostic.String())
+		}
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Fatalf("unsupported %s mode started its target: marker stat err=%v", mode, err)
 		}
 	}
 }

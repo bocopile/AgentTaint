@@ -111,15 +111,28 @@ func (q *coverageQuality) report() (bool, string) {
 	return true, strings.Join(parts, ", ")
 }
 
-func runObservedPlatform(ctx context.Context, path string, args []string, stdin io.Reader, stdout, stderr io.Writer, auditPath string, snapshot *policy.Snapshot, identity *TargetIdentity) (int, error) {
-	return runProtectedPlatform(ctx, path, args, stdin, stdout, stderr, auditPath, snapshot, identity, false)
+type lockedWriter struct {
+	mu sync.Mutex
+	w  io.Writer
 }
 
-func runBlockedPlatform(ctx context.Context, path string, args []string, stdin io.Reader, stdout, stderr io.Writer, auditPath string, snapshot *policy.Snapshot, identity *TargetIdentity) (int, error) {
-	return runProtectedPlatform(ctx, path, args, stdin, stdout, stderr, auditPath, snapshot, identity, true)
+func (w *lockedWriter) Write(data []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.w.Write(data)
 }
 
-func runProtectedPlatform(ctx context.Context, path string, args []string, stdin io.Reader, stdout, stderr io.Writer, auditPath string, snapshot *policy.Snapshot, identity *TargetIdentity, blocking bool) (code int, returnErr error) {
+type modeActions struct {
+	notifications uint64
+	killed        bool
+}
+
+func runWithModePlatform(ctx context.Context, path string, args []string, stdin io.Reader, stdout, stderr io.Writer, auditPath string, snapshot *policy.Snapshot, identity *TargetIdentity, mode PolicyMode, status *ModeStatus) (int, error) {
+	return runProtectedPlatformWithDependencies(ctx, path, args, stdin, stdout, stderr, auditPath, snapshot, identity, mode, status, createRunCgroup, enforce.New)
+}
+
+func runProtectedPlatformWithDependencies(ctx context.Context, path string, args []string, stdin io.Reader, stdout, stderr io.Writer, auditPath string, snapshot *policy.Snapshot, identity *TargetIdentity, mode PolicyMode, status *ModeStatus, createScope func() (*runCgroup, error), newEnforcer func(policy.KernelProjection, uint64) (*enforce.Enforcer, error)) (code int, returnErr error) {
+	stderr = &lockedWriter{w: stderr}
 	credential, expectedIdentity, err := targetCredential(identity)
 	if err != nil {
 		return 1, err
@@ -128,15 +141,13 @@ func runProtectedPlatform(ctx context.Context, path string, args []string, stdin
 	var blocker *enforce.Enforcer
 	targetStarted := false
 	targetFinished := false
-	if blocking {
+	blocking := mode == ModeBlock
+	needsScope := blocking || mode == ModeKill
+	if needsScope {
 		if snapshot == nil {
-			return 1, errors.New("block mode requires a validated policy snapshot")
+			return 1, fmt.Errorf("%s mode requires a validated policy snapshot", mode)
 		}
-		projection, projectionErr := snapshot.KernelProjection()
-		if projectionErr != nil {
-			return 1, fmt.Errorf("compile enforcement policy subset: %w", projectionErr)
-		}
-		scope, err = createRunCgroup()
+		scope, err = createScope()
 		if err != nil {
 			return 1, fmt.Errorf("prepare run cgroup scope: %w", err)
 		}
@@ -151,9 +162,15 @@ func runProtectedPlatform(ctx context.Context, path string, args []string, stdin
 			}
 			returnErr = errors.Join(returnErr, scope.Close())
 		}()
-		blocker, err = enforce.New(projection, scope.ID())
-		if err != nil {
-			return 1, fmt.Errorf("prepare kernel enforcement hooks: %w", err)
+		if blocking {
+			projection, projectionErr := snapshot.KernelProjection()
+			if projectionErr != nil {
+				return 1, fmt.Errorf("compile enforcement policy subset: %w", projectionErr)
+			}
+			blocker, err = newEnforcer(projection, scope.ID())
+			if err != nil {
+				return 1, fmt.Errorf("prepare kernel enforcement hooks: %w", err)
+			}
 		}
 	}
 	output, err := createAuditFile(auditPath)
@@ -274,9 +291,10 @@ func runProtectedPlatform(ctx context.Context, path string, args []string, stdin
 		}
 	}()
 	eventReaderReady := make(chan struct{})
+	actions := &modeActions{}
 	consumeDone := make(chan error, 1)
 	go func() {
-		consumeDone <- consumeRunEvents(sensor, uint32(cmd.Process.Pid), runID, baselineDrops, queue, quality, waitDone, eventReaderReady, processor, scope)
+		consumeDone <- consumeRunEvents(sensor, uint32(cmd.Process.Pid), runID, baselineDrops, queue, quality, waitDone, eventReaderReady, processor, scope, mode, stderr, actions)
 	}()
 	select {
 	case <-eventReaderReady:
@@ -299,6 +317,11 @@ func runProtectedPlatform(ctx context.Context, path string, args []string, stdin
 	if launchErr != nil {
 		quality.lose("target-exec")
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if status != nil {
+			status.Result = "launch_failed"
+		}
+	} else if status != nil {
+		status.ActiveMode = mode
 	}
 	consumeErr := <-consumeDone
 	close(scopeComplete)
@@ -331,6 +354,36 @@ func runProtectedPlatform(ctx context.Context, path string, args []string, stdin
 	}
 	code = targetExitCode(waitErr, stderr)
 	incomplete, detail := quality.report()
+	if status != nil {
+		if incomplete {
+			status.AuditCoverage = "incomplete"
+		} else {
+			status.AuditCoverage = "complete"
+		}
+		if status.Result != "launch_failed" {
+			status.Result = fmt.Sprintf("target_exit_code=%d", code)
+		}
+		switch mode {
+		case ModeMonitor:
+			status.ActualAction = "observe_only"
+		case ModeNotify:
+			status.Notifications = actions.notifications
+			if actions.notifications > 0 {
+				status.ActualAction = "post_event_notification"
+			} else {
+				status.ActualAction = "none"
+			}
+		case ModeBlock:
+			status.ActualAction = "pre_op_lsm_enforcement_active"
+		case ModeKill:
+			if actions.killed {
+				status.ActualAction = "post_event_kill"
+				status.Result = "cgroup_killed_after_policy_event"
+			} else {
+				status.ActualAction = "none"
+			}
+		}
+	}
 	var errs []error
 	if launchErr != nil {
 		errs = append(errs, launchErr)
@@ -359,7 +412,7 @@ func runProtectedPlatform(ctx context.Context, path string, args []string, stdin
 	return code, nil
 }
 
-func consumeRunEvents(sensor *linux.Sensor, rootPID uint32, runID core.RunID, baseline linux.DropCounts, queue chan<- core.Event, quality *coverageQuality, waitDone <-chan struct{}, readerReady chan<- struct{}, processor *policyAuditProcessor, scope *runCgroup) error {
+func consumeRunEvents(sensor *linux.Sensor, rootPID uint32, runID core.RunID, baseline linux.DropCounts, queue chan<- core.Event, quality *coverageQuality, waitDone <-chan struct{}, readerReady chan<- struct{}, processor *policyAuditProcessor, scope *runCgroup, mode PolicyMode, stderr io.Writer, actions *modeActions) error {
 	members := make(map[core.ProcessKey]struct{})
 	var rootKey core.ProcessKey
 	rootSeen, rootExited, targetDone := false, false, false
@@ -479,12 +532,56 @@ func consumeRunEvents(sensor *linux.Sensor, rootPID uint32, runID core.RunID, ba
 		}
 		for _, auditEvent := range auditEvents {
 			_ = enqueueAudit(queue, auditEvent, quality)
+			record, ok := policyViolation(auditEvent)
+			if !ok {
+				continue
+			}
+			var killRun func() error
+			if scope != nil {
+				killRun = scope.Kill
+			}
+			if err := applyPolicyModeAction(mode, record, stderr, killRun, actions, quality); err != nil {
+				return err
+			}
 		}
 		if rootExited && len(members) == 0 {
 			checkDrops()
 			return nil
 		}
 	}
+}
+
+func policyViolation(event core.Event) (core.PolicyViolationEvent, bool) {
+	switch record := event.(type) {
+	case core.PolicyViolationEvent:
+		return record, true
+	case *core.PolicyViolationEvent:
+		if record != nil {
+			return *record, true
+		}
+	}
+	return core.PolicyViolationEvent{}, false
+}
+
+func applyPolicyModeAction(mode PolicyMode, record core.PolicyViolationEvent, stderr io.Writer, killRun func() error, actions *modeActions, quality *coverageQuality) error {
+	switch mode {
+	case ModeNotify:
+		actions.notifications++
+		if _, err := fmt.Fprintf(stderr, "agenttaint: policy decision observed; audit_event_id=%s policy=%s decision=%s\n", record.EventID, record.Policy, record.Decision); err != nil {
+			quality.lose("notification-write")
+		}
+	case ModeKill:
+		if record.Decision == "deny" && !actions.killed {
+			if killRun == nil {
+				return errors.New("kill mode has no private run cgroup; target was not safely terminated")
+			}
+			if err := killRun(); err != nil {
+				return fmt.Errorf("execute requested post-event kill: %w", err)
+			}
+			actions.killed = true
+		}
+	}
+	return nil
 }
 
 func enqueueAudit(queue chan<- core.Event, event core.Event, quality *coverageQuality) error {
