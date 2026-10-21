@@ -125,6 +125,65 @@ func TestKernelBlockChild(t *testing.T) {
 	os.Exit(0)
 }
 
+func TestKernelExistingSocketSendChild(t *testing.T) {
+	if os.Getenv(blockChildEnv) != "existing-socket-send" {
+		return
+	}
+	address, err := net.ResolveTCPAddr("tcp4", net.JoinHostPort(os.Getenv(blockAddressEnv), os.Getenv(blockPortEnv)))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "resolve preconnected endpoint: %v\n", err)
+		os.Exit(2)
+	}
+
+	preconnectedFD, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "create preconnected socket: %v\n", err)
+		os.Exit(2)
+	}
+	preconnectErr := syscall.Connect(preconnectedFD, &syscall.SockaddrInet4{Port: address.Port, Addr: [4]byte{127, 0, 0, 1}})
+	if preconnectErr != nil {
+		fmt.Fprintf(os.Stderr, "connect before source open: %v\n", preconnectErr)
+		_ = syscall.Close(preconnectedFD)
+		os.Exit(2)
+	}
+
+	sourceFD, sourceOpenErr := syscall.Open(os.Getenv(blockSourceEnv), syscall.O_RDONLY, 0)
+	if sourceOpenErr != nil {
+		fmt.Fprintf(os.Stderr, "open source after connect: %v\n", sourceOpenErr)
+		_ = syscall.Close(preconnectedFD)
+		os.Exit(2)
+	}
+	var sourceBytes [64]byte
+	sourceRead, sourceReadErr := syscall.Read(sourceFD, sourceBytes[:])
+	_ = syscall.Close(sourceFD)
+	if sourceReadErr != nil || sourceRead == 0 {
+		fmt.Fprintf(os.Stderr, "read source after connect: bytes=%d err=%v\n", sourceRead, sourceReadErr)
+		_ = syscall.Close(preconnectedFD)
+		os.Exit(2)
+	}
+
+	payload := []byte("existing-socket-after-source")
+	sent, sendErr := syscall.Write(preconnectedFD, payload)
+	_ = syscall.Close(preconnectedFD)
+	if sendErr != nil {
+		fmt.Fprintf(os.Stderr, "send on preconnected socket after source open: bytes=%d err=%v\n", sent, sendErr)
+		os.Exit(2)
+	}
+
+	newFD, socketErr := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	if socketErr != nil {
+		fmt.Fprintf(os.Stderr, "create post-source control socket: %v\n", socketErr)
+		os.Exit(2)
+	}
+	newConnectErr := syscall.Connect(newFD, &syscall.SockaddrInet4{Port: address.Port, Addr: [4]byte{127, 0, 0, 1}})
+	_ = syscall.Close(newFD)
+	fmt.Printf("preconnect_errno=%d source_open_errno=0 source_read_bytes=%d existing_send_bytes=%d new_connect_errno=%d\n", blockErrno(preconnectErr), sourceRead, sent, blockErrno(newConnectErr))
+	if sent != len(payload) || newConnectErr != syscall.EPERM {
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
 func runConcurrentBlockChild(openErr error) int {
 	workers, err := strconv.Atoi(os.Getenv(blockWorkersEnv))
 	if err != nil || workers < 2 || workers > 64 {
@@ -1189,6 +1248,109 @@ func TestRunBlockedSourceTaintDeniesConnectWithAllowControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("allow-control runner result: code=%d err=%v", allowedCode, allowedErr)
+}
+
+func TestRunBlockExistingSocketSendAfterSourceRemainsOutOfScope(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to load BPF programs and create the run cgroup")
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-existing-socket-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(secret, []byte("synthetic secret for preconnected socket\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	endpoint := listener.Addr().(*net.TCPAddr)
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := fmt.Sprintf("sources:\n  - path: %q\n    label: SECRET\nrules:\n  - name: existing-socket-egress\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n", secret)
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "target")
+	input, err := os.Open(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	if err != nil {
+		_ = input.Close()
+		t.Fatal(err)
+	}
+	_, copyErr := output.ReadFrom(input)
+	closeInputErr := input.Close()
+	closeOutputErr := output.Close()
+	if err := errors.Join(copyErr, closeInputErr, closeOutputErr); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(blockChildEnv, "existing-socket-send")
+	t.Setenv(blockSourceEnv, secret)
+	t.Setenv(blockAddressEnv, endpoint.IP.String())
+	t.Setenv(blockPortEnv, fmt.Sprint(endpoint.Port))
+	var stdout, stderr bytes.Buffer
+	auditPath := filepath.Join(root, "audit.jsonl")
+	code, status, runErr := RunWithPolicyMode(context.Background(), env.Resolver{}, target, []string{target, "-test.run=^TestKernelExistingSocketSendChild$"}, nil, &stdout, &stderr, auditPath, snapshot, &TargetIdentity{UID: 65534, GID: 65534}, ModeBlock)
+	if status.ActiveMode != ModeBlock || status.ActualAction != "pre_op_lsm_enforcement_active" || status.Result != "target_exit_code=0" {
+		t.Fatalf("block run did not complete under the requested mode: code=%d status=%+v err=%v stdout=%q stderr=%q", code, status, runErr, stdout.String(), stderr.String())
+	}
+	wantOutput := "preconnect_errno=0 source_open_errno=0 source_read_bytes="
+	if !strings.Contains(stdout.String(), wantOutput) || !strings.Contains(stdout.String(), fmt.Sprintf("existing_send_bytes=%d new_connect_errno=1", len("existing-socket-after-source"))) {
+		t.Fatalf("target did not demonstrate existing-socket send and new-connect denial after source access: status=%+v err=%v stdout=%q stderr=%q", status, runErr, stdout.String(), stderr.String())
+	}
+	t.Logf("target effects verified; audit_coverage=%s runner_code=%d runner_err=%v", status.AuditCoverage, code, runErr)
+	if status.AuditCoverage == "incomplete" {
+		if code != 1 || runErr == nil || !strings.Contains(runErr.Error(), "audit coverage is incomplete") {
+			t.Fatalf("incomplete audit coverage was not surfaced: status=%+v err=%v", status, runErr)
+		}
+	} else if status.AuditCoverage != "complete" || runErr != nil || code != 0 {
+		t.Fatalf("unexpected block audit result: status=%+v err=%v", status, runErr)
+	}
+
+	tcpListener := listener.(*net.TCPListener)
+	if err := tcpListener.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := tcpListener.Accept()
+	if err != nil {
+		t.Fatalf("receiver did not accept the pre-source connection: %v", err)
+	}
+	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	payload := make([]byte, len("existing-socket-after-source"))
+	if _, err := io.ReadFull(conn, payload); err != nil {
+		t.Fatalf("receiver did not receive the post-source payload: %v", err)
+	}
+	if string(payload) != "existing-socket-after-source" {
+		t.Fatalf("receiver got unexpected payload %q", payload)
+	}
+	if err := tcpListener.SetDeadline(time.Now().Add(250 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	if extra, acceptErr := tcpListener.Accept(); acceptErr == nil {
+		_ = extra.Close()
+		t.Fatal("new post-source connect unexpectedly reached the receiver")
+	} else if timeout, ok := acceptErr.(net.Error); !ok || !timeout.Timeout() {
+		t.Fatalf("receiver control check: %v", acceptErr)
+	}
 }
 
 func TestRunBlockDoesNotLabelPreopenedStdinOrEnvironment(t *testing.T) {

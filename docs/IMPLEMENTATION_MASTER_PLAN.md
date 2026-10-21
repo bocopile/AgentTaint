@@ -2251,3 +2251,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunBlockHookPreparationFailureDoesNotStartTarget`를 Linux/arm64 runner test binary로 BPF-LSM 활성 aarch64 `ebpf-lab`에서 3회 실행해 PASS했다. 필수 `socket_connect` hook attach 실패를 주입했을 때 요청 mode는 `block`으로 남고 `ActiveMode=none`, `ActualAction=none`, `Result=not_started`였다. target marker와 audit 파일이 만들어지지 않았고 synthetic run scope가 정리됐다. 자동 kill/notify fallback은 없었다.
 - 이는 required hook preparation 실패의 no-launch 동작을 확인한다. 실제로 BPF-LSM이 없는 커널의 `block` 요청, resolver 진단과 enforcement 사전 검사의 결합은 `not_tested`; 이 guest는 BPF-LSM 활성 상태였다. P4-04 미완료.
 - 검증: Linux/arm64 runner test-binary cross-compile, 위 guest test 3회, 현재 staged 변경 외 사용자 diff에 대한 `git diff --check` PASS. full `go test ./...` 및 `go vet ./...`는 S26 코드 변경 뒤 이미 PASS했다.
+
+#### P4-04 실행 검증 — S22 source 전 기존 socket send — 2026-10-21
+
+- `TestRunBlockExistingSocketSendAfterSourceRemainsOutOfScope`를 BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 3회 실행해 PASS했다. block target이 source 접근 전에 IPv4 connection을 열고, source file을 성공적으로 읽은 다음 동일 socket으로 28-byte payload를 보냈다. receiver가 payload를 받았다. 이후의 새 IPv4 connect는 `EPERM`을 받았고 receiver에는 두 번째 connection이 도달하지 않았다.
+- target 결과는 세 번 모두 `target_exit_code=0`이었지만 audit는 모두 `AuditCoverage=incomplete`, runner code 1로 반환됐다. 세 run의 원인은 `file-path-unreadable-success=4`였다. 이는 새 connect용 `socket_connect` 집행 범위와 성공한 사전 연결의 `send` 효과가 다름을 보여준다. 기존 연결 send가 차단되거나 감사된다고 주장하지 않는다. 다른 kernel/architecture와 다른 기존 소켓 유형은 `not_tested`; S22 검증 범위만 확인했고 P4-04 미완료다.
+- 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, guest test 3회, `git diff --check` PASS.
