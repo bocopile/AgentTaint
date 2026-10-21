@@ -24,6 +24,13 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const (
+	supervisorCrashFixtureEnv   = "AGENTTAINT_SUPERVISOR_CRASH_FIXTURE"
+	supervisorCrashPolicyEnv    = "AGENTTAINT_SUPERVISOR_CRASH_POLICY"
+	supervisorCrashTargetEnv    = "AGENTTAINT_SUPERVISOR_CRASH_TARGET"
+	supervisorCrashScopePathEnv = "AGENTTAINT_SUPERVISOR_CRASH_SCOPE_PATH"
+)
+
 func TestRunObservedSeparatesConcurrentRuns(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("requires root privileges to load and attach eBPF programs")
@@ -891,6 +898,166 @@ func TestRunKillModeCleansScopeAfterDetachedDescendantDrainLimit(t *testing.T) {
 		t.Fatalf("detached descendant survived run-scope cleanup: marker stat err=%v", err)
 	}
 	t.Logf("kill mode drain-limit cleanup: elapsed=%s cgroup_removed=true descendant_marker_absent=true status=%+v", time.Since(started), status)
+}
+
+// TestRunKillModeSupervisorCrashChild is launched by the companion test and
+// deliberately left running until the parent process kills this supervisor.
+func TestRunKillModeSupervisorCrashChild(t *testing.T) {
+	if os.Getenv(supervisorCrashFixtureEnv) != "1" {
+		return
+	}
+	snapshot, err := policy.Load(os.Getenv(supervisorCrashPolicyEnv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var scopePath string
+	createScope := func() (*runCgroup, error) {
+		scope, err := createRunCgroup()
+		if err != nil {
+			return nil, err
+		}
+		scopePath = scope.path
+		if err := os.WriteFile(os.Getenv(supervisorCrashScopePathEnv), []byte(scopePath), 0o600); err != nil {
+			_ = scope.Kill()
+			_ = scope.Close()
+			return nil, err
+		}
+		return scope, nil
+	}
+	var stdout, stderr bytes.Buffer
+	status := ModeStatus{RequestedMode: ModeKill, ActiveMode: "none", ActualAction: "none", Result: "not_started", AuditCoverage: "unknown"}
+	code, runErr := runProtectedPlatformWithDependencies(context.Background(), os.Getenv(supervisorCrashTargetEnv), []string{os.Getenv(supervisorCrashTargetEnv)}, nil, &stdout, &stderr, os.Getenv(supervisorCrashPolicyEnv)+".audit", snapshot, &TargetIdentity{UID: 65534, GID: 65534}, ModeKill, &status, createScope, enforce.New)
+	t.Errorf("supervisor fixture exited before the test killed it: code=%d status=%+v err=%v stdout=%q stderr=%q scope=%q", code, status, runErr, stdout.String(), stderr.String(), scopePath)
+}
+
+func TestRunKillModeSupervisorCrashLeavesDescendantScopeForExternalCleanup(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to inspect and clean the protected cgroup after supervisor death")
+	}
+	setsid, err := exec.LookPath("setsid")
+	if err != nil {
+		t.Skip("requires util-linux setsid")
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-supervisor-crash-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(secret, []byte("synthetic secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := fmt.Sprintf("sources:\n  - path: %q\n    label: SECRET\nrules:\n  - name: supervisor-crash\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n", secret)
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	targetStarted := filepath.Join(root, "target-started")
+	childStarted := filepath.Join(root, "child-started")
+	for _, path := range []string{targetStarted, childStarted} {
+		if err := os.WriteFile(path, []byte("not-started"), 0o666); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(path, 0o666); err != nil {
+			t.Fatal(err)
+		}
+	}
+	target := filepath.Join(root, "target")
+	child := "printf child-started > " + shellQuote(childStarted) + "; exec /bin/sleep 30"
+	body := fmt.Sprintf("#!/bin/sh\nprintf target-started > %s\n%s /bin/sh -c %s </dev/null >/dev/null 2>&1 &\nwait\n", shellQuote(targetStarted), shellQuote(setsid), shellQuote(child))
+	if err := os.WriteFile(target, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	scopePathFile := filepath.Join(root, "scope-path")
+	var stdout, stderr bytes.Buffer
+	supervisor := exec.Command(os.Args[0], "-test.run=^TestRunKillModeSupervisorCrashChild$")
+	supervisor.Env = append(os.Environ(),
+		supervisorCrashFixtureEnv+"=1",
+		supervisorCrashPolicyEnv+"="+policyPath,
+		supervisorCrashTargetEnv+"="+target,
+		supervisorCrashScopePathEnv+"="+scopePathFile,
+	)
+	supervisor.Stdout, supervisor.Stderr = &stdout, &stderr
+	if err := supervisor.Start(); err != nil {
+		t.Fatal(err)
+	}
+	scopePath := ""
+	defer func() {
+		if supervisor.ProcessState == nil {
+			_ = supervisor.Process.Kill()
+			_ = supervisor.Wait()
+		}
+		if scopePath != "" {
+			if scope, err := openRunCgroup(scopePath); err == nil {
+				_ = scope.Kill()
+				_ = scope.Close()
+			}
+		}
+	}()
+	waitForContent := func(path, expected string, timeout time.Duration) error {
+		t.Helper()
+		deadline := time.Now().Add(timeout)
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			if data, err := os.ReadFile(path); err == nil {
+				got := strings.TrimSpace(string(data))
+				if (expected == "" && got != "") || (expected != "" && got == expected) {
+					return nil
+				}
+			}
+			if time.Now().After(deadline) {
+				return fmt.Errorf("timed out waiting for %s to contain %q", path, expected)
+			}
+			<-ticker.C
+		}
+	}
+	if err := waitForContent(scopePathFile, "", 5*time.Second); err != nil {
+		t.Fatalf("run scope was not created: %v (stdout=%q stderr=%q)", err, stdout.String(), stderr.String())
+	}
+	data, err := os.ReadFile(scopePathFile)
+	if err != nil {
+		t.Fatalf("read private run cgroup path: %v", err)
+	}
+	scopePath = strings.TrimSpace(string(data))
+	if scopePath == "" {
+		t.Fatal("supervisor recorded an empty run cgroup path")
+	}
+	if err := waitForContent(targetStarted, "target-started", 5*time.Second); err != nil {
+		t.Fatalf("target did not start: %v (stdout=%q stderr=%q)", err, stdout.String(), stderr.String())
+	}
+	if err := waitForContent(childStarted, "child-started", 5*time.Second); err != nil {
+		t.Fatalf("detached child did not start: %v (stdout=%q stderr=%q)", err, stdout.String(), stderr.String())
+	}
+	if err := supervisor.Process.Kill(); err != nil {
+		t.Fatalf("kill test-owned supervisor: %v", err)
+	}
+	if err := supervisor.Wait(); err == nil {
+		t.Fatal("SIGKILL unexpectedly returned a successful supervisor exit")
+	}
+	if _, err := os.Stat(scopePath); err != nil {
+		t.Fatalf("supervisor crash unexpectedly removed the cgroup before external cleanup: %v", err)
+	}
+	eventsPath := filepath.Join(scopePath, "cgroup.events")
+	events, err := os.ReadFile(eventsPath)
+	if err != nil || !strings.Contains(string(events), "populated 1") {
+		t.Fatalf("expected the detached child to keep the abandoned run cgroup populated: events=%q err=%v", events, err)
+	}
+	scope, err := openRunCgroup(scopePath)
+	if err != nil {
+		t.Fatalf("open abandoned test-owned scope for cleanup: %v", err)
+	}
+	cleanupErr := errors.Join(scope.Kill(), scope.Close())
+	if cleanupErr != nil {
+		t.Fatalf("externally clean abandoned run scope: %v", cleanupErr)
+	}
+	if _, err := os.Stat(scopePath); !os.IsNotExist(err) {
+		t.Fatalf("external cleanup did not remove abandoned scope: %v", err)
+	}
+	t.Logf("supervisor SIGKILL left detached descendant scope populated until explicit external cgroup.kill; test cleanup removed it")
 }
 
 func shellQuote(value string) string {
