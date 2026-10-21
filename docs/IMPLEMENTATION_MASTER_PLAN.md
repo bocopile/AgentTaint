@@ -2269,3 +2269,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 기존 `TestLoadRejectsIPv6DenyRuleRatherThanSilentlyIgnoringIt` PASS로 IPv6 CIDR deny 입력이 policy load에서 `invalid IPv4 CIDR`로 거부됨을 재확인했다. 새 `TestRunBlockUDPSourceSendtoIsOutsideConnectEnforcement`는 BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 3회 PASS했다. active block target은 source를 열고 읽은 뒤 `connect` 호출 없이 UDP `sendto`로 payload를 전송했고 loopback UDP receiver가 정확한 bytes를 받았다.
 - 세 UDP 실행 모두 target exit 0, `AuditCoverage=incomplete`, runner code 1이었다. 두 실행 원인은 `file-path-unreadable-success=4`, 한 실행은 여기에 `process-capture=2`가 추가됐다. 따라서 증거는 현재 IPv4 connect hook이 UDP `sendto`를 차단하지 않는 이 fixture의 동작만 확인하며, 완전한 event/audit coverage를 확인하지 않는다. IPv6 network runtime, UDP connect/send/receive의 다른 조합, 다른 kernel/architecture는 `not_tested`; 이 경로가 보호된다고 주장하지 않으며 P4-04 미완료다.
 - 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, IPv6 policy rejection test, UDP guest test 3회 및 `git diff --check` PASS.
+
+#### P4-04 실행 보강 — S25 같은 파일의 run별 taint processor 격리 — 2026-10-21
+
+- 새 `TestPolicyAuditProcessorsKeepSameSourceFileStatePerRun` PASS. 두 독립 policy audit processor에 같은 source 경로를 설정하고 동일 PID이지만 서로 다른 birth/scope key를 사용했다. run A의 source open 뒤 run B의 같은 경로 connect는 clean으로 남았고, 이어 각 processor의 connect는 해당 run의 source provenance와 함께 deny record를 만들었다.
+- 이 unit 증거는 run별 processor/taint state 분리에 한정된다. guest `TestRunObservedSeparatesConcurrentRuns`에서 실제 동시 observer 실행의 available audit record 분리 검사는 통과했지만 BPF `file-path-unreadable-success` 손실로 전체 audit completeness 조건은 SKIP된다. 따라서 동시 runtime의 전체 로그 완전 격리 및 무누락은 `not_tested`; S25 acceptance와 P4-04는 미완료다.
+- 검증: targeted unit test, host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile 및 `git diff --check` PASS.

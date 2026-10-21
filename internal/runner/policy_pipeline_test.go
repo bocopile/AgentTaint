@@ -150,6 +150,35 @@ func TestPolicyAuditPipelineProcessesRepeatedConnectRecordsIndependently(t *test
 	}
 }
 
+func TestPolicyAuditProcessorsKeepSameSourceFileStatePerRun(t *testing.T) {
+	runA := core.ProcessContext{ProcessKey: core.ProcessKey{PID: 301, BirthID: "run-a-process", ScopeID: "run-a"}, Comm: "run-a-agent"}
+	runB := core.ProcessContext{ProcessKey: core.ProcessKey{PID: 301, BirthID: "run-b-process", ScopeID: "run-b"}, Comm: "run-b-agent"}
+	processorA := newProcessor(t, "deny")
+	processorB := newProcessor(t, "deny")
+
+	processEvent(t, processorA, fileOpen(sourcePath, runA, core.ResultSuccess))
+	if got := processEvent(t, processorB, connectEvent(runB, core.ResultSuccess)); len(got) != 1 {
+		t.Fatalf("source access in run A affected the same-path clean connection in run B: %#v", got)
+	}
+
+	processEvent(t, processorB, fileOpen(sourcePath, runB, core.ResultSuccess))
+	for _, tc := range []struct {
+		name      string
+		processor *policyAuditProcessor
+		process   core.ProcessContext
+	}{
+		{name: "run A retains its own source state", processor: processorA, process: runA},
+		{name: "run B records its independent source state", processor: processorB, process: runB},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			record := violation(t, processEvent(t, tc.processor, connectEvent(tc.process, core.ResultSuccess)))
+			if record == nil || record.Decision != "deny" || record.Source.Path != sourcePath || record.Process.ProcessKey != tc.process.ProcessKey {
+				t.Fatalf("run-local source state or provenance was lost: %#v", record)
+			}
+		})
+	}
+}
+
 func TestPolicyAuditPipelineIncompleteAndUnsupportedFlows(t *testing.T) {
 	parent := core.ProcessContext{ProcessKey: core.ProcessKey{PID: 201, BirthID: "parent", ScopeID: "scope"}, Comm: "agent"}
 	child := core.ProcessContext{ProcessKey: core.ProcessKey{PID: 202, BirthID: "child", ScopeID: "scope"}, PPID: 201, Comm: "worker"}
