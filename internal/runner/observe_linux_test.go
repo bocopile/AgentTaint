@@ -946,6 +946,24 @@ func TestRunObservedNoNewPrivilegesBlocksSetuidTarget(t *testing.T) {
 	if (code != 0 && !(code == 1 && auditIncomplete)) || (runErr != nil && !auditIncomplete) || strings.TrimSpace(out.String()) != "1000" {
 		t.Fatalf("setuid target regained privileges: code=%d err=%v stdout=%q stderr=%q", code, runErr, out.String(), diagnostic.String())
 	}
+	policyPath := filepath.Join(root, "block-policy.yaml")
+	policyText := "sources:\n  - path: " + setuidBinary + "\n    label: SECRET\nrules:\n  - name: setuid-block-profile\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n"
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var blockOut, blockDiagnostic bytes.Buffer
+	blockCode, blockStatus, blockErr := RunWithPolicyMode(context.Background(), env.Resolver{}, setuidBinary, []string{setuidBinary, "-u"}, nil, &blockOut, &blockDiagnostic, filepath.Join(root, "block-audit.jsonl"), snapshot, identity, ModeBlock)
+	blockAuditIncomplete := blockErr != nil && strings.Contains(blockErr.Error(), "audit coverage is incomplete")
+	if blockStatus.ActiveMode != ModeBlock || blockStatus.ActualAction != "pre_op_lsm_enforcement_active" || blockStatus.Result != "target_exit_code=0" || strings.TrimSpace(blockOut.String()) != "1000" {
+		t.Fatalf("block-mode setuid target regained privileges or block mode was not active: code=%d status=%+v err=%v stdout=%q stderr=%q", blockCode, blockStatus, blockErr, blockOut.String(), blockDiagnostic.String())
+	}
+	if (blockCode != 0 && !(blockCode == 1 && blockAuditIncomplete)) || (blockErr != nil && !blockAuditIncomplete) {
+		t.Fatalf("block-mode setuid target returned unexpected audit/result status: code=%d status=%+v err=%v", blockCode, blockStatus, blockErr)
+	}
 }
 
 func TestRunObservedForwardsCancellationToTargetGroup(t *testing.T) {

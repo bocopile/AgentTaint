@@ -2281,3 +2281,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 새 `TestRunBlockForwardsCancellationAndReportsProtectedMode`를 BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 3회 PASS했다. target이 ready marker를 기록한 뒤 context를 취소했고, 반환 시 `ActiveMode=block`, `ActualAction=pre_op_lsm_enforcement_active`, `Result=target_exit_code=130`, `AuditCoverage=incomplete` 및 `run-canceled` 원인이 확인됐다. target PID는 취소 후 존재하지 않았다.
 - 이 검증은 block-mode target cancellation과 해당 target 종료만 다룬다. 취소 시 audit completeness는 확보되지 않았고, 별도 detached descendants의 전 범위 cleanup이나 다른 kernel/architecture는 `not_tested`; 이를 policy deny 또는 pre-operation prevention의 증거로 해석하지 않으며 P4-04 미완료다.
 - 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check` 및 guest test 3회 PASS.
+
+#### P4-04 실행 보강 — S34 block mode no_new_privs — 2026-10-21
+
+- `TestRunObservedNoNewPrivilegesBlocksSetuidTarget`의 setuid fixture를 block mode에서도 3회 실행해 PASS했다. root 소유 setuid `id` fixture를 UID/GID 1000 target으로 실행했을 때 실제 enforcement가 `ActiveMode=block`, `ActualAction=pre_op_lsm_enforcement_active`로 보고됐고 `id -u`는 계속 `1000`이었다. target exit는 0이었다.
+- 이는 이 게스트의 지정된 setuid 실행 경로에서 block-mode helper가 privilege 상승을 막은 결과다. block mode의 supplementary groups/capabilities 조합, file capabilities, privileged target, management/control socket, 다른 kernel/architecture는 `not_tested`; 모든 privilege 경계의 무누출로 일반화하지 않으며 S34/P4-04 미완료다.
+- 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check` 및 guest test 3회 PASS.
