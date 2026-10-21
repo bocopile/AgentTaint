@@ -2138,3 +2138,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 
 - `TestLoadRejectsIPv6DenyRuleRatherThanSilentlyIgnoringIt`에서 IPv6 CIDR deny rule을 policy loader가 `invalid IPv4 CIDR`로 거부하는 것을 확인했다. unsupported CIDR가 kernel projection에서 조용히 빠져나가는 대신 run 전 입력 검증에서 실패한다. host `go test ./...`, `go vet ./...`, `go build ./...`, `git diff --check` PASS.
 - 이 증거는 IPv6 deny rule의 조기 거부만 다룬다. IPv6 network runtime, UDP send/recv 및 connect 없는 sink는 구현·검증하지 않았고 지원한다고 표시하지 않는다. S24 전체 한계 acceptance 및 P4-04는 미완료다.
+
+#### P4-04 실행 업데이트 — S25 동시 run 격리 — 2026-10-21
+
+- `TestRunObservedSeparatesConcurrentRuns`를 두 동시 target으로 실행했다. target stdout/stderr 유지와 high-FD 비상속 확인은 통과했고, 각 audit에 남은 event는 서로 다른 RunID·ScopeID를 가졌으며 sibling fixture 경로가 관찰된 로그에 섞이지 않았다.
+- 두 run 모두 `file-path-unreadable-success=2`로 audit coverage가 incomplete였다. 테스트는 target/available-record 검사 뒤 SKIP으로 종료되므로 run별 로그의 완전한 격리 acceptance는 `not_tested`다. 부분 로그의 분리는 전체 이력 무누락의 증거가 아니다.
+- 검증: host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile 및 `git diff --check` PASS; guest fixture의 출력·available audit 검사 통과, 전체 audit 조건 SKIP. P4-04 미완료.
