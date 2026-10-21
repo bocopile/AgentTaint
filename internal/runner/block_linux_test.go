@@ -30,6 +30,7 @@ const (
 	blockPortEnv    = "AGENTTAINT_BLOCK_PORT"
 	blockExpectEnv  = "AGENTTAINT_BLOCK_EXPECT"
 	blockWorkersEnv = "AGENTTAINT_BLOCK_WORKERS"
+	blockRaceEnv    = "AGENTTAINT_BLOCK_RACE"
 )
 
 // TestKernelBlockChild is re-executed by the enforcement integration test as
@@ -176,6 +177,203 @@ func runConcurrentBlockChild(openErr error) int {
 		return 1
 	}
 	return 0
+}
+
+func TestKernelBlockSourceConnectRaceChild(t *testing.T) {
+	if os.Getenv(blockRaceEnv) != "1" {
+		return
+	}
+	var allowed unix.CPUSet
+	if err := unix.SchedGetaffinity(0, &allowed); err != nil {
+		t.Fatalf("inspect target CPU affinity: %v", err)
+	}
+	cpus := make([]int, 0, allowed.Count())
+	for cpu := 0; cpu < len(allowed)*64; cpu++ {
+		if allowed.IsSet(cpu) {
+			cpus = append(cpus, cpu)
+		}
+	}
+	if len(cpus) < 2 {
+		t.Fatalf("source/connect race fixture needs two allowed CPUs, found %d", len(cpus))
+	}
+	address, err := net.ResolveTCPAddr("tcp4", net.JoinHostPort(os.Getenv(blockAddressEnv), os.Getenv(blockPortEnv)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	type result struct {
+		err error
+		cpu int
+	}
+	start := make(chan struct{})
+	ready := sync.WaitGroup{}
+	ready.Add(2)
+	sourceResult := make(chan result, 1)
+	connectResult := make(chan result, 1)
+	worker := func(cpu int, run func() error, results chan<- result) {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		var original unix.CPUSet
+		if err := unix.SchedGetaffinity(0, &original); err != nil {
+			ready.Done()
+			results <- result{err: err, cpu: cpu}
+			return
+		}
+		defer unix.SchedSetaffinity(0, &original)
+		var pinned unix.CPUSet
+		pinned.Set(cpu)
+		if err := unix.SchedSetaffinity(0, &pinned); err != nil {
+			ready.Done()
+			results <- result{err: err, cpu: cpu}
+			return
+		}
+		ready.Done()
+		<-start
+		results <- result{err: run(), cpu: cpu}
+	}
+	go worker(cpus[0], func() error {
+		fd, err := syscall.Open(os.Getenv(blockSourceEnv), syscall.O_RDONLY, 0)
+		if err == nil {
+			_ = syscall.Close(fd)
+		}
+		return err
+	}, sourceResult)
+	go worker(cpus[1], func() error {
+		fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+		if err != nil {
+			return err
+		}
+		err = syscall.Connect(fd, &syscall.SockaddrInet4{Port: address.Port, Addr: [4]byte{127, 0, 0, 1}})
+		_ = syscall.Close(fd)
+		return err
+	}, connectResult)
+	ready.Wait()
+	close(start)
+	source := <-sourceResult
+	traced := <-connectResult
+	if source.err != nil {
+		t.Fatalf("configured source open failed in race fixture: %v", source.err)
+	}
+	if traced.err != nil && traced.err != syscall.EPERM {
+		t.Fatalf("racing connect returned an unrelated error: %v", traced.err)
+	}
+	postSocket, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	postErr := syscall.Connect(postSocket, &syscall.SockaddrInet4{Port: address.Port, Addr: [4]byte{127, 0, 0, 1}})
+	_ = syscall.Close(postSocket)
+	if postErr != syscall.EPERM {
+		t.Fatalf("connect after completed source-open did not observe the sticky source state: %v", postErr)
+	}
+	fmt.Printf("source_errno=0 race_connect_errno=%d post_connect_errno=%d source_cpu=%d connect_cpu=%d\n", blockErrno(traced.err), blockErrno(postErr), source.cpu, traced.cpu)
+}
+
+func TestRunBlockSourceConnectRaceAcrossPinnedCPUs(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to load BPF programs and create the block-mode run cgroup")
+	}
+	var allowed unix.CPUSet
+	if err := unix.SchedGetaffinity(0, &allowed); err != nil || allowed.Count() < 2 {
+		t.Skipf("requires two CPUs available to the integration test: cpus=%d err=%v", allowed.Count(), err)
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-source-connect-race-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(secret, []byte("synthetic secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	endpoint := listener.Addr().(*net.TCPAddr)
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := fmt.Sprintf("sources:\n  - path: %q\n    label: SECRET\nrules:\n  - name: source-connect-race\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n", secret)
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "target")
+	input, err := os.Open(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	if err != nil {
+		_ = input.Close()
+		t.Fatal(err)
+	}
+	_, copyErr := output.ReadFrom(input)
+	closeInputErr := input.Close()
+	closeOutputErr := output.Close()
+	if err := errors.Join(copyErr, closeInputErr, closeOutputErr); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(blockSourceEnv, secret)
+	t.Setenv(blockAddressEnv, endpoint.IP.String())
+	t.Setenv(blockPortEnv, fmt.Sprint(endpoint.Port))
+	t.Setenv(blockRaceEnv, "1")
+	var stdout, stderr bytes.Buffer
+	code, status, runErr := RunWithPolicyMode(context.Background(), env.Resolver{}, target, []string{target, "-test.run=^TestKernelBlockSourceConnectRaceChild$"}, nil, &stdout, &stderr, filepath.Join(root, "audit.jsonl"), snapshot, &TargetIdentity{UID: 65534, GID: 65534}, ModeBlock)
+	if status.ActiveMode != ModeBlock || status.ActualAction != "pre_op_lsm_enforcement_active" {
+		t.Fatalf("race run did not have active block enforcement: code=%d status=%+v stderr=%q err=%v", code, status, stderr.String(), runErr)
+	}
+	if status.AuditCoverage == "incomplete" {
+		if runErr == nil || !strings.Contains(runErr.Error(), "audit coverage is incomplete") {
+			t.Fatalf("incomplete audit coverage was not reported: status=%+v err=%v", status, runErr)
+		}
+	} else if status.AuditCoverage != "complete" || runErr != nil {
+		t.Fatalf("unexpected run result: status=%+v err=%v", status, runErr)
+	}
+	line := ""
+	for _, outputLine := range strings.Split(stdout.String(), "\n") {
+		if strings.HasPrefix(outputLine, "source_errno=0 race_connect_errno=") {
+			line = outputLine
+			break
+		}
+	}
+	if line == "" || !strings.Contains(line, "post_connect_errno=1") || !strings.Contains(line, "source_cpu=") || !strings.Contains(line, "connect_cpu=") {
+		t.Fatalf("race target did not report both pinned CPUs and a denied post-source connect: code=%d status=%+v stdout=%q stderr=%q err=%v", code, status, stdout.String(), stderr.String(), runErr)
+	}
+	racingAllowed := strings.Contains(line, "race_connect_errno=0")
+	if err := listener.(*net.TCPListener).SetDeadline(time.Now().Add(300 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	conn, acceptErr := listener.Accept()
+	if racingAllowed {
+		if acceptErr != nil {
+			t.Fatalf("racing connect succeeded but receiver saw no connection: %v line=%q", acceptErr, line)
+		}
+		_ = conn.Close()
+		if err := listener.(*net.TCPListener).SetDeadline(time.Now().Add(250 * time.Millisecond)); err != nil {
+			t.Fatal(err)
+		}
+		conn, acceptErr = listener.Accept()
+		if acceptErr == nil {
+			_ = conn.Close()
+			t.Fatal("post-source connect unexpectedly reached receiver")
+		}
+	} else if acceptErr == nil {
+		_ = conn.Close()
+		t.Fatalf("racing connect was denied but receiver observed a connection: %q", line)
+	}
+	if timeout, ok := acceptErr.(net.Error); !ok || !timeout.Timeout() {
+		t.Fatalf("controlled receiver returned unexpected result after race: %v", acceptErr)
+	}
+	t.Logf("source/connect operations raced across CPUs: %s; receiver effect agreed with syscall result", line)
 }
 
 func TestRunBlockPropagatesSourceToConcurrentWorkerThreads(t *testing.T) {
