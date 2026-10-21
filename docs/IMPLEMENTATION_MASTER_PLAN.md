@@ -2335,3 +2335,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunPolicyModesNotifyAndKillAfterPolicyEvent`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 3회 PASS했다. 각 반복에서 monitor는 target을 계속 실행했고 receiver가 연결을 받았다. notify는 연결 effect와 event-linked notification을 확인했다. kill은 `ActualAction=post_event_kill`, `Result=cgroup_killed_after_policy_event`로 정책 이벤트 후 target scope를 종료했으며 receiver는 이미 발생한 연결 effect를 확인했다.
 - 세 반복 모두 audit coverage는 incomplete였다. monitor/notify는 `file-path-unreadable-other-error=11`, `file-path-unreadable-success=22`; kill은 `file-path-unreadable-other-error=2`, `file-path-unreadable-success=4`로 runner code가 1 또는 kill 결과 137이었다. 사후 kill은 이미 일어난 연결을 되돌리지 않으며 이를 pre-operation block으로 해석하지 않는다. 다른 kernel/architecture와 complete audit history는 `not_tested`; P4-04 미완료다.
 - 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile 및 `git diff --check` PASS; 위 guest test 3회 PASS.
+
+#### P4-04 실행 보강 — S20 필수 hook 실패 no-launch 반복 — 2026-10-21
+
+- `TestRunBlockHookPreparationFailureDoesNotStartTarget`를 BPF-LSM 활성 guest Linux `7.0.0-38-generic`, aarch64에서 3회 PASS했다. required `socket_connect` hook 준비 실패를 주입했을 때 `ActiveMode=none`, `ActualAction=none`, `Result=not_started`였고 target marker 및 audit 파일이 생성되지 않았다.
+- 이 결과는 활성 BPF-LSM 커널에서 hook attach/preparation 실패를 주입한 경로만 다룬다. BPF-LSM 미지원 kernel의 block preflight와 다른 hook/loader failure는 `not_tested`; silent fallback이 모든 실패 경로에서 불가능하다고 일반화하지 않는다. P4-04 미완료다.
+- 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check` PASS; guest test 3회 PASS.
