@@ -3,6 +3,7 @@
 package linux
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
@@ -161,6 +162,70 @@ func TestFileAndConnectObserver(t *testing.T) {
 	})
 	if connectFailure.OperationResult != core.ResultFailure {
 		t.Fatalf("failed IPv4 connect result was not preserved: %+v", connectFailure)
+	}
+}
+
+func TestProcessTrackingExcludesPreexistingExternalProcess(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to load and attach eBPF programs")
+	}
+
+	secretPath := filepath.Join(t.TempDir(), "external-secret.txt")
+	if err := os.WriteFile(secretPath, []byte("external process fixture\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gateReader, gateWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = gateWriter.Close() })
+
+	var output bytes.Buffer
+	command := exec.Command("/bin/sh", "-c", "read -r _; cat \"$1\" >/dev/null && printf external_read_ok", "external", secretPath)
+	command.Stdin = gateReader
+	command.Stdout = &output
+	if err := command.Start(); err != nil {
+		_ = gateReader.Close()
+		t.Fatal(err)
+	}
+	_ = gateReader.Close()
+	childDone := false
+	t.Cleanup(func() {
+		if !childDone {
+			_ = command.Process.Kill()
+			_ = command.Wait()
+		}
+	})
+
+	sensor, err := New(0xA17B)
+	if err != nil {
+		t.Fatalf("load and attach process observer: %v", err)
+	}
+	t.Cleanup(func() { _ = sensor.Close() })
+	rootPID := uint32(os.Getpid())
+	if err := sensor.TrackProcess(rootPID); err != nil {
+		t.Fatalf("track observer test process: %v", err)
+	}
+	var rootScope uint64
+	if err := sensor.objects.TrackedProcesses.Lookup(&rootPID, &rootScope); err != nil {
+		t.Fatalf("tracked run root is absent from scope map: %v", err)
+	}
+	externalPID := uint32(command.Process.Pid)
+	var externalScope uint64
+	if err := sensor.objects.TrackedProcesses.Lookup(&externalPID, &externalScope); !errors.Is(err, ebpf.ErrKeyNotExist) {
+		t.Fatalf("pre-existing external process unexpectedly entered run scope: pid=%d scope=%d err=%v", externalPID, externalScope, err)
+	}
+
+	if _, err := gateWriter.Write([]byte("go\n")); err != nil {
+		t.Fatal(err)
+	}
+	_ = gateWriter.Close()
+	if err := command.Wait(); err != nil {
+		t.Fatalf("pre-existing external process could not read the fixture: %v output=%q", err, output.String())
+	}
+	childDone = true
+	if output.String() != "external_read_ok" {
+		t.Fatalf("external process did not confirm its file read: output=%q", output.String())
 	}
 }
 

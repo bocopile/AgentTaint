@@ -2239,3 +2239,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunObservedSeparatesConcurrentRuns`를 최신 Linux/arm64 runner test binary로 BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 3회 실행했다. 세 실행 모두 test가 `SKIP`으로 끝났다. 첫 두 실행은 두 run 각각 `file-path-unreadable-success=2`; 세 번째 반복은 한 run이 4, 다른 run이 2를 보고했다. 별도 run의 stdout/stderr·target identity/group/capability/FD 검사, fixture 경로 기록, 서로 다른 RunID/ScopeID 검사는 통과했다.
 - skip diagnostic은 이제 정확한 `audit coverage is incomplete` 세부 원인을 표시한다. partial records의 분리와 test assertion은 확인됐으나 전체 event 이력의 분리·완전성은 증명되지 않아 S25 audit-isolation acceptance는 `not_tested`다. BPF path-capture 실패 원인 수정은 이 단위에서 하지 않았다.
 - 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, guest test 3회 및 `git diff --check` PASS. P4-04 미완료.
+
+#### P4-04 실행 검증 — S26 run 외부 프로세스 효과의 범위 — 2026-10-21
+
+- `TestProcessTrackingExcludesPreexistingExternalProcess`를 BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 3회 실행해 PASS했다. observer 초기화 전에 시작해 gate에서 대기한 별도 process가 run root tracking 활성화 뒤 fixture 파일을 실제로 읽었다. BPF `tracked_processes` map에는 run root가 포함되고 해당 외부 PID는 없었다.
+- 이는 pre-existing unrelated process의 effect가 이 observer run 범위에 들어오지 않음을 검증한다. codebase-memory의 `internal/`·`cmd/` Go 검색에서는 MCP/daemon 통합 경로가 발견되지 않았고, 이 test도 remote MCP 실행을 재현하지 않는다. 해당 외부 effect가 block mode에서 정책으로 허용·거부되는지, 모든 OS effect 또는 remote MCP 동작이 보호되는지는 `not_tested`; 전체 host effect에 대한 보장으로 일반화하지 않는다. P4-04 미완료.
+- 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 sensor test-binary cross-compile, 위 guest test 3회 및 `git diff --check` PASS.
