@@ -2401,3 +2401,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunBlockDoesNotLabelPreopenedStdinOrEnvironment`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 3회 PASS했다. supervisor가 run 시작 전 source 파일을 열어 stdin으로 전달했고 같은 synthetic bytes를 environment에도 넣었다. target은 stdin/environment 값 일치를 확인한 뒤 loopback 연결했고 receiver가 이를 수락했다. deny policy가 있어도 이 pre-run input 경로는 source label로 감지되지 않았다.
 - 이 fixture는 protected run 전 열린 FD와 environment 입력 범위의 한계만 확인한다. 이를 데이터가 민감하지 않거나 안전하다는 뜻으로 해석하지 않으며 byte-level taint를 주장하지 않는다. audit completeness와 다른 pre-run input 경로/kernel/architecture는 `not_tested`; P4-04 미완료다.
 - 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check`; guest test 3회 PASS.
+
+#### P4-04 실행 보강 — S32 CPU race/worker/fork 반복 확인 — 2026-10-21
+
+- BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 `TestRunBlockSourceConnectRaceAcrossPinnedCPUs`, `TestRunBlockPropagatesSourceToConcurrentWorkerThreads`, `TestRunBlockPropagatesSourceAcrossForkToChildOnAnotherCPU`를 각각 3회 PASS했다. race fixture에서 source CPU 0/open 성공과 동시 connect CPU 1 결과는 2회 allow, 1회 `EPERM`으로 모두 receiver effect와 일치했고 source open 완료 뒤 connect는 세 번 모두 `EPERM`이었다. worker fixture에서는 4 CPU에 분산한 8개 connect가 모두 `EPERM`; parent source 후 CPU 1 child connect도 `EPERM`이었다.
+- worker runs는 모두 `file-path-unreadable-success=4`, fork runs는 모두 `file-path-unreadable-success=6`, `AuditCoverage=incomplete`, runner code 1이었다. race 결과는 두 동시 독립 syscall의 happens-before를 정의하지 않는다. audit completeness는 `not_tested`로 남기며 이러한 observation-only race를 deterministic ordering 보장으로 일반화하지 않는다.
+- Host `TestEngineReplayUsesInputOrderAndDuplicateStateEventsAreIdempotent`와 `TestPolicyAuditPipelineProcessesRepeatedConnectRecordsIndependently` targeted PASS, `go test ./...`, `go vet ./...`, Linux/arm64 test-binary cross-build, `git diff --check` PASS; 위 세 guest tests 각각 3회 PASS. transport-level replay/drop injection은 `not_tested`; S32/P4-04 미완료다.
