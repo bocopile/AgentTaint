@@ -131,6 +131,7 @@ func TestRunObservedSeparatesConcurrentRuns(t *testing.T) {
 	seenRunIDs := make(map[int]core.RunID, 2)
 	seenScopes := make(map[int]string, 2)
 	auditIncomplete := false
+	auditIncompleteDetails := make([]string, 0, 2)
 	missingFixtureEvent := false
 	var start sync.WaitGroup
 	start.Add(1)
@@ -159,6 +160,9 @@ func TestRunObservedSeparatesConcurrentRuns(t *testing.T) {
 		incomplete := got.err != nil && strings.Contains(got.err.Error(), "audit coverage is incomplete")
 		if got.err != nil && !incomplete {
 			t.Fatalf("run %d: code=%d err=%v", got.index, got.code, got.err)
+		}
+		if incomplete {
+			auditIncompleteDetails = append(auditIncompleteDetails, got.err.Error())
 		}
 		if got.code != 0 && !(incomplete && got.code == 1) {
 			t.Fatalf("run %d target failed: code=%d err=%v", got.index, got.code, got.err)
@@ -240,7 +244,7 @@ func TestRunObservedSeparatesConcurrentRuns(t *testing.T) {
 	}
 	missingRunMetadata := seenRunIDs[0] == "" || seenRunIDs[1] == "" || seenScopes[0] == "" || seenScopes[1] == ""
 	if auditIncomplete || missingFixtureEvent || missingRunMetadata {
-		t.Skipf("target output and descriptor checks passed, but complete run-isolation audit evidence is unavailable: audit_incomplete=%t fixture_event_missing=%t run_metadata_missing=%t distinct_run_ids=%t distinct_scopes=%t", auditIncomplete, missingFixtureEvent, missingRunMetadata, seenRunIDs[0] != "" && seenRunIDs[1] != "" && seenRunIDs[0] != seenRunIDs[1], seenScopes[0] != "" && seenScopes[1] != "" && seenScopes[0] != seenScopes[1])
+		t.Skipf("target output and descriptor checks passed, but complete run-isolation audit evidence is unavailable: audit_incomplete=%t audit_details=%q fixture_event_missing=%t run_metadata_missing=%t distinct_run_ids=%t distinct_scopes=%t", auditIncomplete, auditIncompleteDetails, missingFixtureEvent, missingRunMetadata, seenRunIDs[0] != "" && seenRunIDs[1] != "" && seenRunIDs[0] != seenRunIDs[1], seenScopes[0] != "" && seenScopes[1] != "" && seenScopes[0] != seenScopes[1])
 	}
 }
 

@@ -2232,3 +2232,10 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 `TestRunKillModeSupervisorCrashLeavesDescendantScopeForExternalCleanup` PASS. test-owned supervisor에 `SIGKILL`을 보낸 뒤 detached descendant가 run cgroup에 남아 `cgroup.events`가 `populated 1`을 보고했고, 명시적인 외부 `cgroup.kill` cleanup 이후 cgroup 제거를 확인했다.
 - 이는 supervisor 비정상 종료 뒤 scope가 자동 정리되지 않는 lifecycle 결과와 test-owned 복구 경로만 확인한다. crash 이후 BPF link의 실제 집행 지속 여부, 최종 audit 기록·완전성, 다른 kernel/architecture는 `not_tested`; 보호 지속을 보장하지 않으며 P4-04는 미완료다.
 - 검증: Linux/arm64 runner test-binary cross-compile 및 위 guest test PASS.
+
+
+#### P4-04 실행 진단 — S25 concurrent-run audit isolation — 2026-10-21
+
+- `TestRunObservedSeparatesConcurrentRuns`를 최신 Linux/arm64 runner test binary로 BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 3회 실행했다. 세 실행 모두 test가 `SKIP`으로 끝났다. 첫 두 실행은 두 run 각각 `file-path-unreadable-success=2`; 세 번째 반복은 한 run이 4, 다른 run이 2를 보고했다. 별도 run의 stdout/stderr·target identity/group/capability/FD 검사, fixture 경로 기록, 서로 다른 RunID/ScopeID 검사는 통과했다.
+- skip diagnostic은 이제 정확한 `audit coverage is incomplete` 세부 원인을 표시한다. partial records의 분리와 test assertion은 확인됐으나 전체 event 이력의 분리·완전성은 증명되지 않아 S25 audit-isolation acceptance는 `not_tested`다. BPF path-capture 실패 원인 수정은 이 단위에서 하지 않았다.
+- 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, guest test 3회 및 `git diff --check` PASS. P4-04 미완료.
