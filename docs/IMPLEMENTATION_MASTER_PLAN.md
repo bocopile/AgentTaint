@@ -2341,3 +2341,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunBlockHookPreparationFailureDoesNotStartTarget`를 BPF-LSM 활성 guest Linux `7.0.0-38-generic`, aarch64에서 3회 PASS했다. required `socket_connect` hook 준비 실패를 주입했을 때 `ActiveMode=none`, `ActualAction=none`, `Result=not_started`였고 target marker 및 audit 파일이 생성되지 않았다.
 - 이 결과는 활성 BPF-LSM 커널에서 hook attach/preparation 실패를 주입한 경로만 다룬다. BPF-LSM 미지원 kernel의 block preflight와 다른 hook/loader failure는 `not_tested`; silent fallback이 모든 실패 경로에서 불가능하다고 일반화하지 않는다. P4-04 미완료다.
 - 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check` PASS; guest test 3회 PASS.
+
+#### P4-04 실행 보강 — S21 supervisor crash lifecycle 반복 — 2026-10-21
+
+- `TestRunKillModeSupervisorCrashLeavesDescendantScopeForExternalCleanup`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 3회 PASS했다. supervisor에 `SIGKILL`을 보내자 detached descendant는 cgroup scope에 남아 `populated 1`이었고, 명시적인 외부 `cgroup.kill` 후 test-owned cleanup이 scope를 제거했다.
+- 이는 supervisor 비정상 종료 후 자동 cleanup이 되지 않는 lifecycle 결과와 외부 복구 절차만 증명한다. crash 후 BPF link 집행 지속, audit 최종 기록·완전성 및 자동 복구는 `not_tested`; 보호 지속 또는 자동 정리를 보장하지 않으며 P4-04 미완료다.
+- 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check` PASS; guest lifecycle test 3회 PASS 및 각 test-owned cgroup cleanup 확인.
