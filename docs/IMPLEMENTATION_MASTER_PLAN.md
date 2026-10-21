@@ -2413,3 +2413,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunBlockForwardsCancellationAndReportsProtectedMode`, `TestRunKillModeCleansScopeAfterDetachedDescendantDrainLimit`, `TestRunBlockModeCleansScopeAfterDetachedDescendantDrainLimit`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 각각 3회 PASS했다. block cancellation path test는 반복 통과했다. detached descendant cases는 각 반복에서 약 5.2–5.6초 drain-limit 이후 cgroup scope 제거와 descendant marker 부재를 확인했다.
 - detached kill-mode 결과는 `RequestedMode=kill`, `ActiveMode=kill`, `ActualAction=none`, `target_exit_code=0`; block-mode 결과는 `ActiveMode=block`, `ActualAction=pre_op_lsm_enforcement_active`, `target_exit_code=0`이었다. 보호 mode audit는 incomplete로 남았다. 이 결과를 cancellation 시 모든 descendant 추적 지속 또는 post-event kill의 사후 효과를 prevention으로 일반화하지 않는다. 다른 kernel/architecture와 descendant lifecycle 변형은 `not_tested`; P4-04 미완료다.
 - 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check`; 위 guest tests 각각 3회 PASS.
+
+#### P4-04 실행 보강 — S34 credential/setuid 반복 확인 — 2026-10-21
+
+- `TestRunObservedNoNewPrivilegesBlocksSetuidTarget`와 `TestTargetCredentialRejectsRootAndUnknownIdentity`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 각각 3회 PASS했다. test-owned root-owned setuid `/usr/bin/id` fixture를 UID/GID 1000으로 실행한 observer 및 active block 경로 모두 `id -u=1000`을 반환해 이 fixture에서 setuid 재상승이 발생하지 않았다. root/unknown target identity는 helper validation 단계에서 거부됐다.
+- 이 실행은 단일 UID/GID profile과 해당 setuid exec 경로만 다룬다. supplementary-group/capability 조합, file capabilities, privileged target 및 management socket의 전체 권한 경계는 `not_tested`; 모든 profile로 일반화하지 않는다. audit incompleteness도 setuid assertion과 별도이며 P4-04 미완료다.
+- 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check`; 위 guest tests 각각 3회 PASS.
