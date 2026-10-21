@@ -2124,8 +2124,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 #### P4-04 실행 업데이트 — S37 audit loss 후 복구 특성 — 2026-10-21
 
 - `TestAuditCoverageLossRemainsStickyAfterQueueRecovers`를 Linux/arm64 BPF-LSM guest에서 PASS했다. 합성 audit writer queue를 포화해 `writer-queue-full=1`을 만든 뒤 queue 공간을 회복시켜 후속 이벤트가 다시 enqueue되는 것, coverage 기록이 계속 incomplete인 것, incomplete history 뒤의 연속 sink 이벤트에서 정책 verdict가 생성되지 않는 것을 확인했다.
-- **범위 한계:** 이는 writer queue loss 주입 단위 테스트다. 실제 BPF ring-buffer drop 발생 후 target이 계속 실행되고 drop 증가가 멈춘 구간까지 확인한 것은 아니므로 S37 ring-buffer acceptance는 `not_tested`다. drop 이후 집행 동작의 통합 증거와 mode/audit health 분리는 S36 guest 결과에서 확인된 범위만 참조한다.
-- 검증: host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check`, guest 단위 테스트 PASS. P4-04는 미완료다.
+- `TestKernelRingBufferDropRemainsStickyAfterRecovery`를 BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`) guest에서 3회 연속 PASS했다. reader 없이 tracked child가 `/dev/null` open을 반복해 실제 `file-ring-reserve` counter 증가를 만들고, `pollBPFDropCounts`가 coverage를 incomplete로 기록하는 것을 확인했다. 4,096개 이벤트를 읽은 다음 path marker 이벤트를 관측하고 marker 시도를 마친 시점의 drop counter를 기준값으로 잡았다. 이후 target의 32개 open이 끝날 때까지 file ring drop counter는 증가하지 않았으며 quality report는 incomplete로 유지됐다.
+- **범위 한계:** 실제 kernel drop 및 이후 공간 회복·target continuation을 확인했다. 실제 drop이 난 동일 실행에서 후속 sink의 policy verdict suppression까지 통합한 것은 `not_tested`; 그 부분은 합성 queue loss 단위 테스트의 증거만 있다. 다른 kernel/architecture와 전체 audit completeness도 `not_tested`다. drop 이후 집행 동작과 mode/audit health 분리는 S36 guest 결과에서 확인된 범위만 참조한다.
+- 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check`, S37 queue-loss test 및 실제 kernel ring-buffer guest test 3회 PASS. P4-04는 미완료다.
 
 #### P4-04 실행 업데이트 — S38 supervisor 제어·FD 경계 — 2026-10-21
 
