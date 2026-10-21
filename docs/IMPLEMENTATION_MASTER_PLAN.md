@@ -2347,3 +2347,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunKillModeSupervisorCrashLeavesDescendantScopeForExternalCleanup`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 3회 PASS했다. supervisor에 `SIGKILL`을 보내자 detached descendant는 cgroup scope에 남아 `populated 1`이었고, 명시적인 외부 `cgroup.kill` 후 test-owned cleanup이 scope를 제거했다.
 - 이는 supervisor 비정상 종료 후 자동 cleanup이 되지 않는 lifecycle 결과와 외부 복구 절차만 증명한다. crash 후 BPF link 집행 지속, audit 최종 기록·완전성 및 자동 복구는 `not_tested`; 보호 지속 또는 자동 정리를 보장하지 않으며 P4-04 미완료다.
 - 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check` PASS; guest lifecycle test 3회 PASS 및 각 test-owned cgroup cleanup 확인.
+
+#### P4-04 실행 보강 — S22 기존 socket send 반복 확인 — 2026-10-21
+
+- `TestRunBlockExistingSocketSendAfterSourceRemainsOutOfScope`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 3회 PASS했다. source open 전에 연결한 TCP socket으로 source 접근 후 payload send가 receiver에 도달했다. 같은 target에서 source 이후 새 connect는 `EPERM`을 받았고 두 번째 receiver 연결은 없었다.
+- 세 run 모두 audit coverage incomplete, runner code 1이었다: 한 번은 `file-path-unreadable-success=4`, 두 번은 여기에 `process-capture=2`가 추가됐다. 결과는 새 connect 집행과 기존 socket send의 지원 차이를 보여주는 fixture 한정 증거다. 기존 연결 send의 차단·감사, 다른 socket 종류/kernel/architecture는 `not_tested`; 기존 socket 경로가 보호된다고 표현하지 않는다. P4-04 미완료다.
+- 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check` PASS; guest test 3회 PASS.
