@@ -2389,3 +2389,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 현재 `ebpf-lab`에서 `findmnt -rn -o TARGET,SOURCE,FSTYPE`를 읽기 전용으로 다시 확인했다. `/`는 `/dev/vda1` ext4, `/tmp`는 tmpfs, `/mnt/lima-cidata`는 `/dev/vdb` iso9660로 보였고 목록에 virtiofs/9p/sshfs 또는 project 공유 mount는 없었다.
 - 이 inventory는 현재 guest mount만 말해 준다. host-shared filesystem에서 동일 파일을 읽는 것, UID/mode/inode mapping은 이 guest에 해당 mount가 없어 `not_tested`; 일반 Lima 설정이나 공유 mount 경로의 보장으로 확대하지 않으며 P4-04 미완료다.
 - 검증: guest `findmnt` read-only inventory; host-shared filesystem behavior는 `not_tested`.
+
+#### P4-04 실행 재확인 — S30 amd64 runtime 가용성 — 2026-10-21
+
+- 현재 소스에서 `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build ./...`와 runner test-binary cross-build를 다시 실행해 x86-64 ELF64 산출물을 확인했다. 빌드는 Go module stat-cache write 경고를 냈으나 exit 0이었다.
+- 현재 `limactl list`는 aarch64 `ebpf-lab`만 보였고 `qemu-system-x86_64`/podman은 PATH에서 찾지 못했다. Docker CLI는 있으나 `docker info`의 server 연결은 socket 부재로 실패했다. amd64 guest kernel/BPF verifier/load/attach/runtime은 이 세션에서 실행할 수 없어 `not_tested`; amd64 compile을 runtime evidence로 사용하지 않는다. S30/P4-04 미완료다.
+- 검증: Linux/amd64 package build 및 runner test-binary cross-build PASS; runtime inventory/read-only daemon probe에서 실행 환경 미확보 확인.
