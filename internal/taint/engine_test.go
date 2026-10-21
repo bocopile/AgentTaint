@@ -96,6 +96,56 @@ func TestEngineForkUsesCurrentStateAndDoesNotBackfillChildren(t *testing.T) {
 	}
 }
 
+func TestEngineReplayUsesInputOrderAndDuplicateStateEventsAreIdempotent(t *testing.T) {
+	parent, child := testProcess(10, "parent-birth"), testProcess(11, "child-birth")
+	open := core.FileOpenEvent{Metadata: testMetadata(parent, core.StageCompleted, core.ResultSuccess), Resource: core.FileResource{Path: "/secret"}}
+	open.Timestamp = time.Unix(20, 0)
+	fork := core.ProcessForkEvent{Metadata: testMetadata(parent, core.StageCompleted, core.ResultSuccess), Child: child}
+	fork.Timestamp = time.Unix(10, 0)
+
+	engine, err := NewEngine([]string{"/secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []core.Event{open, open, fork, fork} {
+		if err := engine.Apply(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !engine.HasLabel(child.ProcessKey, core.LabelSecret) {
+		t.Fatal("input-ordered source then fork did not propagate state despite out-of-order timestamps")
+	}
+	if got := engine.SourcePaths(child.ProcessKey); len(got) != 1 || got[0] != "/secret" {
+		t.Fatalf("duplicate source/fork records changed provenance cardinality: %v", got)
+	}
+
+	replayed, err := NewEngine([]string{"/secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []core.Event{open, open, fork, fork} {
+		if err := replayed.Apply(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := replayed.SourcePaths(child.ProcessKey); len(got) != 1 || got[0] != "/secret" || !replayed.HasLabel(child.ProcessKey, core.LabelSecret) {
+		t.Fatalf("replaying the same ordered input produced different state: labels=%v sources=%v", replayed.Labels(child.ProcessKey), got)
+	}
+
+	reordered, err := NewEngine([]string{"/secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []core.Event{fork, open} {
+		if err := reordered.Apply(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if reordered.HasLabel(child.ProcessKey, core.LabelSecret) {
+		t.Fatal("timestamp sorting or backfill changed fork-before-source input semantics")
+	}
+}
+
 func TestEngineProcessKeySeparatesPIDReuseAndScope(t *testing.T) {
 	engine, _ := NewEngine([]string{"/secret"})
 	old := testProcess(42, "birth-old")

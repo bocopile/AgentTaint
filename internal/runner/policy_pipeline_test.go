@@ -134,6 +134,22 @@ func TestPolicyAuditPipelineFourScenarios(t *testing.T) {
 	})
 }
 
+func TestPolicyAuditPipelineProcessesRepeatedConnectRecordsIndependently(t *testing.T) {
+	processor := newProcessor(t, "deny")
+	process := core.ProcessContext{ProcessKey: core.ProcessKey{PID: 201, BirthID: "process-birth", ScopeID: "scope"}, Comm: "fixture"}
+	processEvent(t, processor, fileOpen(sourcePath, process, core.ResultSuccess))
+	connect := connectEvent(process, core.ResultSuccess)
+	connect.EventID = "replayed-connect"
+
+	for i := 0; i < 2; i++ {
+		got := processEvent(t, processor, connect)
+		record := violation(t, got)
+		if record == nil || record.Decision != "deny" || record.Process.ProcessKey != process.ProcessKey {
+			t.Fatalf("repeated input record %d did not independently produce the same policy decision: %#v", i, got)
+		}
+	}
+}
+
 func TestPolicyAuditPipelineIncompleteAndUnsupportedFlows(t *testing.T) {
 	parent := core.ProcessContext{ProcessKey: core.ProcessKey{PID: 201, BirthID: "parent", ScopeID: "scope"}, Comm: "agent"}
 	child := core.ProcessContext{ProcessKey: core.ProcessKey{PID: 202, BirthID: "child", ScopeID: "scope"}, PPID: 201, Comm: "worker"}

@@ -2173,3 +2173,13 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunBlockDoesNotLabelPreopenedStdinOrEnvironment`를 BPF-LSM 활성 aarch64 guest(`7.0.0-38-generic`)에서 PASS했다. supervisor가 protected run 전에 synthetic secret 파일을 열어 stdin으로 전달했고 같은 bytes를 환경변수에도 넣었다. target은 stdin 전체와 환경값 일치를 확인한 뒤 `connect_errno=0`으로 loopback receiver에 연결했으며 receiver도 연결을 수락했다. 정책 source 경로와 deny rule이 설정되어 있었지만 감사 로그에서 deny `PolicyViolationEvent`는 없었다.
 - 이 fixture는 run 이전에 열린 descriptor 및 환경변수의 값이 이번 source tracking 범위에 들어오지 않는 한계를 보여준다. 이를 secret이 없거나 안전하다는 뜻으로 해석하지 않는다. byte-level taint 또는 모든 정보 흐름 추적을 주장하지 않는다. audit incompleteness는 별도로 허용·보고하며 전체 audit coverage는 완료로 판정하지 않는다. 다른 입력 경로·kernel·architecture는 `not_tested`; P4-04 미완료다.
 - 검증: `gofmt`, host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check`, guest fixture PASS.
+
+
+#### P4-04 실행 업데이트 — S32 CPU·fork 인과 순서와 replay 의미 — 2026-10-21
+
+- BPF-LSM 활성 aarch64 guest(`7.0.0-38-generic`)에서 source/connect 경합 fixture PASS: source open은 CPU 0에서 성공했고, 동시에 시작한 connect는 CPU 1에서 `EPERM`; source 완료 뒤 connect도 `EPERM`이었다. receiver 검사에서 연결 효과는 syscall 결과와 일치했다. 이는 이 실행의 관측 결과이며 동시 독립 syscall의 고정된 전역 순서를 주장하지 않는다.
+- 8개 worker thread fixture PASS: source open 성공 뒤 4개 CPU에 고정한 8개 connect가 모두 `EPERM`, 연결 성공 0, 기타 오류 0이었다. 별도 부모→자식 fixture도 PASS: 부모가 CPU 0에서 source를 연 뒤 fork한 자식은 CPU 1에서 connect `EPERM`; target 종료는 0이고 receiver는 연결을 받지 않았다. 세 guest fixture 모두 실제 `block`/`pre_op_lsm_enforcement_active` 상태를 확인했다.
+- audit 경로는 세 실행에서 불완전했다. worker test는 `file-path-unreadable-success=4`, fork test는 `file-path-unreadable-success=6`으로 `AuditCoverage=incomplete` 및 runner code 1을 보고했으며, target 자체는 exit 0이었다. 경합 fixture의 audit completeness도 이 work unit에서는 완전성 증거로 사용하지 않는다. 집행 결과와 audit quality를 혼합하지 않는다.
+- Go reference replay fixture PASS: 같은 ordered input을 새 engine에 다시 적용한 결과 state/provenance가 같았고, source/fork 중복은 집합 상태상 멱등이었다. wall-clock timestamp를 입력 순서와 반대로 설정해도 전달 순서로 처리했으며, fork-before-source는 후속 source로 child에 소급 전파되지 않았다. 기존 missing-fork fixture는 event만으로 누락을 추정하지 않고 외부 `MarkIncomplete` 호출을 받아 incomplete 상태로 남긴다.
+- `policyAuditProcessor`는 동일 EventID의 반복 connect record를 deduplicate하지 않고 각각 같은 deny verdict record를 만든다. 이는 현재 명시한 입력 의미이며 exactly-once/replay deduplication 보장은 아니다. 동일 이벤트 재전달 여부를 transport에서 강제·주입한 runtime 시험과 BPF ring-buffer replay/drop injection은 `not_tested`; audit completeness와 전체 S32 replay acceptance는 미완료다.
+- 검증: `gofmt`, host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check`, source/connect race·worker·fork guest tests PASS. P4-04 미완료.

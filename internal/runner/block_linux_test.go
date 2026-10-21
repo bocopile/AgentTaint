@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -25,14 +26,16 @@ import (
 )
 
 const (
-	blockChildEnv   = "AGENTTAINT_BLOCK_CHILD"
-	blockSourceEnv  = "AGENTTAINT_BLOCK_SOURCE"
-	blockAddressEnv = "AGENTTAINT_BLOCK_ADDRESS"
-	blockPortEnv    = "AGENTTAINT_BLOCK_PORT"
-	blockExpectEnv  = "AGENTTAINT_BLOCK_EXPECT"
-	blockWorkersEnv = "AGENTTAINT_BLOCK_WORKERS"
-	blockRaceEnv    = "AGENTTAINT_BLOCK_RACE"
-	preopenedEnv    = "AGENTTAINT_PREOPENED_SOURCE"
+	blockChildEnv    = "AGENTTAINT_BLOCK_CHILD"
+	blockSourceEnv   = "AGENTTAINT_BLOCK_SOURCE"
+	blockAddressEnv  = "AGENTTAINT_BLOCK_ADDRESS"
+	blockPortEnv     = "AGENTTAINT_BLOCK_PORT"
+	blockExpectEnv   = "AGENTTAINT_BLOCK_EXPECT"
+	blockWorkersEnv  = "AGENTTAINT_BLOCK_WORKERS"
+	blockRaceEnv     = "AGENTTAINT_BLOCK_RACE"
+	preopenedEnv     = "AGENTTAINT_PREOPENED_SOURCE"
+	blockForkEnv     = "AGENTTAINT_BLOCK_FORK"
+	blockChildCPUEnv = "AGENTTAINT_BLOCK_CHILD_CPU"
 )
 
 func TestKernelPreopenedSourceChild(t *testing.T) {
@@ -505,6 +508,198 @@ func TestRunBlockPropagatesSourceToConcurrentWorkerThreads(t *testing.T) {
 	if timeout, ok := acceptErr.(net.Error); !ok || !timeout.Timeout() {
 		t.Fatalf("concurrent-worker receiver check: %v", acceptErr)
 	}
+}
+
+func TestKernelBlockForkParent(t *testing.T) {
+	if os.Getenv(blockForkEnv) != "1" {
+		return
+	}
+	var allowed unix.CPUSet
+	if err := unix.SchedGetaffinity(0, &allowed); err != nil {
+		fmt.Fprintf(os.Stderr, "inspect parent CPU affinity: %v\n", err)
+		os.Exit(2)
+	}
+	cpus := make([]int, 0, allowed.Count())
+	for cpu := 0; cpu < len(allowed)*64; cpu++ {
+		if allowed.IsSet(cpu) {
+			cpus = append(cpus, cpu)
+		}
+	}
+	if len(cpus) < 2 {
+		fmt.Fprintf(os.Stderr, "fork fixture needs two CPUs, found %d\n", len(cpus))
+		os.Exit(2)
+	}
+	runtime.LockOSThread()
+	var original unix.CPUSet
+	if err := unix.SchedGetaffinity(0, &original); err != nil {
+		fmt.Fprintf(os.Stderr, "inspect source worker affinity: %v\n", err)
+		os.Exit(2)
+	}
+	var pinned unix.CPUSet
+	pinned.Set(cpus[0])
+	if err := unix.SchedSetaffinity(0, &pinned); err != nil {
+		fmt.Fprintf(os.Stderr, "pin source worker CPU: %v\n", err)
+		os.Exit(2)
+	}
+	fd, openErr := syscall.Open(os.Getenv(blockSourceEnv), syscall.O_RDONLY, 0)
+	if fd >= 0 {
+		_ = syscall.Close(fd)
+	}
+	if err := unix.SchedSetaffinity(0, &original); err != nil {
+		fmt.Fprintf(os.Stderr, "restore parent CPU affinity: %v\n", err)
+		os.Exit(2)
+	}
+	runtime.UnlockOSThread()
+	if openErr != nil {
+		fmt.Fprintf(os.Stderr, "source open failed: %v\n", openErr)
+		os.Exit(1)
+	}
+	fmt.Printf("source_open_errno=0 source_cpu=%d\n", cpus[0])
+	child := exec.Command(os.Args[0], "-test.run=^TestKernelBlockForkConnectChild$")
+	child.Stdout = os.Stdout
+	child.Stderr = os.Stderr
+	if err := child.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "forked child failed: %v\n", err)
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+func TestKernelBlockForkConnectChild(t *testing.T) {
+	if os.Getenv(blockForkEnv) != "1" {
+		return
+	}
+	cpu, err := strconv.Atoi(os.Getenv(blockChildCPUEnv))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid child CPU: %v\n", err)
+		os.Exit(2)
+	}
+	runtime.LockOSThread()
+	var original unix.CPUSet
+	if err := unix.SchedGetaffinity(0, &original); err != nil {
+		fmt.Fprintf(os.Stderr, "inspect child CPU affinity: %v\n", err)
+		os.Exit(2)
+	}
+	var pinned unix.CPUSet
+	pinned.Set(cpu)
+	if err := unix.SchedSetaffinity(0, &pinned); err != nil {
+		fmt.Fprintf(os.Stderr, "pin child CPU: %v\n", err)
+		os.Exit(2)
+	}
+	address, err := net.ResolveTCPAddr("tcp4", net.JoinHostPort(os.Getenv(blockAddressEnv), os.Getenv(blockPortEnv)))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "resolve child destination: %v\n", err)
+		os.Exit(2)
+	}
+	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "create child socket: %v\n", err)
+		os.Exit(2)
+	}
+	connectErr := syscall.Connect(fd, &syscall.SockaddrInet4{Port: address.Port, Addr: [4]byte{127, 0, 0, 1}})
+	_ = syscall.Close(fd)
+	_ = unix.SchedSetaffinity(0, &original)
+	runtime.UnlockOSThread()
+	fmt.Printf("fork_child_connect_errno=%d child_cpu=%d\n", blockErrno(connectErr), cpu)
+	if connectErr != syscall.EPERM {
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+func TestRunBlockPropagatesSourceAcrossForkToChildOnAnotherCPU(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to load BPF programs and create the block-mode run cgroup")
+	}
+	var allowed unix.CPUSet
+	if err := unix.SchedGetaffinity(0, &allowed); err != nil || allowed.Count() < 2 {
+		t.Skipf("requires two CPUs available to the integration test: cpus=%d err=%v", allowed.Count(), err)
+	}
+	cpus := make([]int, 0, allowed.Count())
+	for cpu := 0; cpu < len(allowed)*64; cpu++ {
+		if allowed.IsSet(cpu) {
+			cpus = append(cpus, cpu)
+		}
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-block-fork-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(secret, []byte("synthetic fork secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	endpoint := listener.Addr().(*net.TCPAddr)
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := fmt.Sprintf("sources:\n  - path: %q\n    label: SECRET\nrules:\n  - name: forked-source-egress\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n", secret)
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "target")
+	input, err := os.Open(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	if err != nil {
+		_ = input.Close()
+		t.Fatal(err)
+	}
+	_, copyErr := output.ReadFrom(input)
+	closeInputErr := input.Close()
+	closeOutputErr := output.Close()
+	if err := errors.Join(copyErr, closeInputErr, closeOutputErr); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(blockForkEnv, "1")
+	t.Setenv(blockSourceEnv, secret)
+	t.Setenv(blockAddressEnv, endpoint.IP.String())
+	t.Setenv(blockPortEnv, fmt.Sprint(endpoint.Port))
+	t.Setenv(blockChildCPUEnv, strconv.Itoa(cpus[1]))
+	var stdout, stderr bytes.Buffer
+	auditPath := filepath.Join(root, "audit.jsonl")
+	code, status, runErr := RunWithPolicyMode(context.Background(), env.Resolver{}, target, []string{target, "-test.run=^TestKernelBlockForkParent$"}, nil, &stdout, &stderr, auditPath, snapshot, &TargetIdentity{UID: 65534, GID: 65534}, ModeBlock)
+	if status.ActiveMode != ModeBlock || status.ActualAction != "pre_op_lsm_enforcement_active" || status.Result != "target_exit_code=0" {
+		t.Fatalf("forked target did not complete under active block enforcement: code=%d status=%+v err=%v stdout=%q stderr=%q", code, status, runErr, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), fmt.Sprintf("source_open_errno=0 source_cpu=%d", cpus[0])) || !strings.Contains(stdout.String(), fmt.Sprintf("fork_child_connect_errno=1 child_cpu=%d", cpus[1])) {
+		t.Fatalf("parent source open and child connect were not confirmed on distinct CPUs: status=%+v stdout=%q stderr=%q err=%v", status, stdout.String(), stderr.String(), runErr)
+	}
+	if status.AuditCoverage == "incomplete" {
+		if runErr == nil || !strings.Contains(runErr.Error(), "audit coverage is incomplete") {
+			t.Fatalf("incomplete audit coverage was not reported: status=%+v err=%v", status, runErr)
+		}
+	} else if status.AuditCoverage != "complete" || runErr != nil || code != 0 {
+		t.Fatalf("unexpected fork-enforcement result: code=%d status=%+v err=%v", code, status, runErr)
+	}
+	if err := listener.(*net.TCPListener).SetDeadline(time.Now().Add(300 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := listener.Accept()
+	if err == nil {
+		_ = conn.Close()
+		t.Fatal("receiver accepted the forked child's denied connection")
+	}
+	if timeout, ok := err.(net.Error); !ok || !timeout.Timeout() {
+		t.Fatalf("forked-child receiver check: %v", err)
+	}
+	t.Logf("forked source state enforced across CPUs: status=%+v code=%d err=%v stdout=%q", status, code, runErr, stdout.String())
 }
 
 func TestRunBlockDoesNotTreatUnrelatedConnectFailureAsPolicyDeny(t *testing.T) {
