@@ -169,6 +169,13 @@ func TestKernelProjectionRejectsUnsupportedCapacityAndPaths(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsIPv6DenyRuleRatherThanSilentlyIgnoringIt(t *testing.T) {
+	text := strings.Replace(validPolicy, "203.0.113.128/25", "2001:db8::/32", 1)
+	if _, err := Load(writePolicy(t, text)); err == nil || !strings.Contains(err.Error(), "invalid IPv4 CIDR") {
+		t.Fatalf("policy loader silently accepted or ignored IPv6 deny rule: %v", err)
+	}
+}
+
 func TestLoadAllowsLiteralDollarInSourcePath(t *testing.T) {
 	text := strings.Replace(validPolicy, "../fixtures/secret.txt", "../fixtures/secret$5.txt", 1)
 	snapshot, err := Load(writePolicy(t, text))

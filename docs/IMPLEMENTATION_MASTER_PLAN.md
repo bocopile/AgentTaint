@@ -2133,3 +2133,8 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestUnprivilegedTargetCannotSignalOrPtraceSupervisor` guest 실행 PASS: target의 supervisor `SIGTERM` 및 ptrace 시도가 모두 `EPERM`이었고 runner는 생존했다. 이 시도에서 runner는 기존 `file-path-unreadable-success=4`로 audit coverage incomplete를 함께 반환했다.
 - `TestRunObservedSeparatesConcurrentRuns` 추가 실행은 `file-path-unreadable-success=2` 때문에 coverage incomplete로 실패했다. 따라서 이 fixture의 run별 audit 격리 assertions는 실행 완료되지 않았으며 S25/S38의 감사 로그 분리 보장은 `not_tested`다. control/high-FD helper test의 직접 descriptor 결과와 혼동하지 않는다.
 - 검증: host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check`, 위 control/high-FD 및 signal/ptrace guest 테스트 PASS. P4-04 전체는 미완료다.
+
+#### P4-04 실행 업데이트 — S24 IPv6 정책 입력 범위 — 2026-10-21
+
+- `TestLoadRejectsIPv6DenyRuleRatherThanSilentlyIgnoringIt`에서 IPv6 CIDR deny rule을 policy loader가 `invalid IPv4 CIDR`로 거부하는 것을 확인했다. unsupported CIDR가 kernel projection에서 조용히 빠져나가는 대신 run 전 입력 검증에서 실패한다. host `go test ./...`, `go vet ./...`, `go build ./...`, `git diff --check` PASS.
+- 이 증거는 IPv6 deny rule의 조기 거부만 다룬다. IPv6 network runtime, UDP send/recv 및 connect 없는 sink는 구현·검증하지 않았고 지원한다고 표시하지 않는다. S24 전체 한계 acceptance 및 P4-04는 미완료다.
