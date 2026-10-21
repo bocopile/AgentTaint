@@ -2287,3 +2287,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunObservedNoNewPrivilegesBlocksSetuidTarget`의 setuid fixture를 block mode에서도 3회 실행해 PASS했다. root 소유 setuid `id` fixture를 UID/GID 1000 target으로 실행했을 때 실제 enforcement가 `ActiveMode=block`, `ActualAction=pre_op_lsm_enforcement_active`로 보고됐고 `id -u`는 계속 `1000`이었다. target exit는 0이었다.
 - 이는 이 게스트의 지정된 setuid 실행 경로에서 block-mode helper가 privilege 상승을 막은 결과다. block mode의 supplementary groups/capabilities 조합, file capabilities, privileged target, management/control socket, 다른 kernel/architecture는 `not_tested`; 모든 privilege 경계의 무누출로 일반화하지 않으며 S34/P4-04 미완료다.
 - 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check` 및 guest test 3회 PASS.
+
+#### P4-04 실행 보강 — S35 policy byte-limit 경계 — 2026-10-21
+
+- 새 `TestLoadAcceptsPolicyAtByteLimit` PASS. valid policy 문서 뒤에 YAML comment padding을 추가해 입력 크기를 정확히 `maxPolicyBytes`(1 MiB)로 맞췄고 loader가 이를 수락했다. 기존 over-limit 거부 검사와 결합해 정확한 상한은 inclusive이고 1 byte 초과는 거부됨을 확인했다.
+- 이는 parser 입력 byte 수 경계에 한정된다. live block run 중 원본 policy 교체의 kernel/user-space 결합, 정확한 최대 source/rule 개수 경계 및 다른 architecture는 `not_tested`; P4-04 미완료.
+- 검증: targeted exact-boundary test, host `go test ./...`, `go vet ./...`, `git diff --check` PASS.

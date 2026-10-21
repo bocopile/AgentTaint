@@ -303,6 +303,23 @@ func TestLoadRejectsSizeAndRuleCountLimits(t *testing.T) {
 	}
 }
 
+func TestLoadAcceptsPolicyAtByteLimit(t *testing.T) {
+	policyText := validPolicy
+	if !strings.HasSuffix(policyText, "\n") {
+		policyText += "\n"
+	}
+	if len(policyText) > maxPolicyBytes {
+		t.Fatalf("valid policy fixture already exceeds byte limit: %d", len(policyText))
+	}
+	policyText += strings.Repeat("#", maxPolicyBytes-len(policyText))
+	if len(policyText) != maxPolicyBytes {
+		t.Fatalf("constructed policy size = %d, want exactly %d", len(policyText), maxPolicyBytes)
+	}
+	if _, err := Load(writePolicy(t, policyText)); err != nil {
+		t.Fatalf("policy at the inclusive byte limit was rejected: %v", err)
+	}
+}
+
 func TestSameActionRuleSelectionIsIndependentOfDeclarationOrder(t *testing.T) {
 	text := `sources:
   - path: /secret
