@@ -2317,3 +2317,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunBlockedSourceTaintDeniesConnectWithAllowControl`와 `TestRunBlockDoesNotTreatUnrelatedConnectFailureAsPolicyDeny`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 각각 3회 실행해 모두 PASS했다. positive control은 source 없는 target의 IPv4 connect 및 receiver accept를 확인했고, tainted target의 connect는 `EPERM`이며 receiver가 받지 않았다. negative control은 listen하지 않는 bound port의 `ECONNREFUSED`를 정책 deny로 오인하지 않았다.
 - 세 positive-control 반복의 block run과 allow-control run 모두 `file-path-unreadable-success=4`, `AuditCoverage=incomplete`, runner code 1이었다. target syscall/effect assertions는 통과했지만 audit completeness는 미검증으로 남는다. 다른 오류 코드와 kernel/architecture는 `not_tested`; P4-04 전체는 미완료다.
 - 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 test-binary cross-compile 및 `git diff --check` PASS; 위 두 guest tests 각각 3회 PASS.
+
+#### P4-04 실행 보강 — S37 ring/queue loss 반복 확인 — 2026-10-21
+
+- `TestKernelRingBufferDropRemainsStickyAfterRecovery`와 `TestAuditCoverageLossRemainsStickyAfterQueueRecovers`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 각각 3회 PASS했다. 실제 kernel ring reserve drop 뒤 target continuation, 회복 후 추가 drop 없음, incomplete quality history 유지가 각 반복에서 확인됐다. 결정적 queue test는 공간 회복 뒤 event 재수용, sticky incomplete 상태, 이후 connect들의 policy verdict 미생성을 확인했다.
+- 실제 kernel drop과 그 동일 run의 후속 sink verdict suppression을 하나의 end-to-end fixture로 결합하는 것은 여전히 `not_tested`; 서로 분리된 guest와 deterministic queue evidence를 합쳐서 단일 통합 수용으로 표시하지 않는다. 다른 kernel/architecture 및 전체 audit completeness도 `not_tested`; P4-04 미완료다.
+- 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile 및 `git diff --check` PASS; 위 guest/unit tests 각각 3회 PASS.
