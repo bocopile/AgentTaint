@@ -837,6 +837,66 @@ func TestRunObservedKeepsBinaryStreamsSeparateFromAudit(t *testing.T) {
 	}
 }
 
+func TestUnprivilegedTargetCannotModifyPolicyAuditOrControl(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires a privileged observer and a separate unprivileged target")
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-target-file-boundary-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyContents := []byte("sources: []\nrules: []\n")
+	if err := os.WriteFile(policyPath, policyContents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	auditPath := filepath.Join(root, "audit.jsonl")
+	t.Setenv("AGENTTAINT_TEST_POLICY_PATH", policyPath)
+	t.Setenv("AGENTTAINT_TEST_AUDIT_PATH", auditPath)
+	target := filepath.Join(root, "target")
+	script := "#!/bin/sh\nif printf tampered >> \"$AGENTTAINT_TEST_POLICY_PATH\" 2>/dev/null; then echo policy_writable=1; exit 1; fi\nif printf tampered >> \"$AGENTTAINT_TEST_AUDIT_PATH\" 2>/dev/null; then echo audit_writable=1; exit 1; fi\nif [ -S /proc/self/fd/3 ]; then echo control_socket_visible=1; exit 1; fi\nprintf 'policy_write_denied=1 audit_write_denied=1 control_fd_hidden=1\\n'\n"
+	if err := os.WriteFile(target, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code, runErr := RunObserved(context.Background(), env.Resolver{}, target, []string{target}, nil, &stdout, &stderr, auditPath, &TargetIdentity{UID: 65534, GID: 65534})
+	if code != 0 && !(code == 1 && runErr != nil && strings.Contains(runErr.Error(), "audit coverage is incomplete")) {
+		t.Fatalf("target failed for a reason other than reported audit incompleteness: code=%d err=%v stdout=%q stderr=%q", code, runErr, stdout.String(), stderr.String())
+	}
+	if stdout.String() != "policy_write_denied=1 audit_write_denied=1 control_fd_hidden=1\n" || !strings.Contains(stderr.String(), "policy.yaml: Permission denied") || !strings.Contains(stderr.String(), "audit.jsonl: Permission denied") {
+		t.Fatalf("target control-boundary probes did not all pass: stdout=%q stderr=%q code=%d err=%v", stdout.String(), stderr.String(), code, runErr)
+	}
+	policyAfter, err := os.ReadFile(policyPath)
+	if err != nil || !bytes.Equal(policyAfter, policyContents) {
+		t.Fatalf("target modified policy file: bytes=%q err=%v", policyAfter, err)
+	}
+	mode, err := os.Stat(auditPath)
+	if err != nil || mode.Mode().Perm() != 0o600 {
+		t.Fatalf("audit file mode = %v, err=%v; want 0600", mode, err)
+	}
+	audit, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, line := range bytes.Split(bytes.TrimSpace(audit), []byte{'\n'}) {
+		if len(line) == 0 {
+			continue
+		}
+		if _, err := core.DecodeEvent(line); err != nil {
+			t.Fatalf("target altered audit file contents: %q: %v", line, err)
+		}
+		count++
+	}
+	if count == 0 {
+		t.Fatal("observer did not leave any independently decodable audit event")
+	}
+}
+
 func TestRunObservedNoNewPrivilegesBlocksSetuidTarget(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("requires root privileges to set up a setuid fixture")
