@@ -2305,3 +2305,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 새 `TestLoadAcceptsMaximumSourceAndRuleCounts` PASS. 정확히 `maxPolicySources`(1024) source 항목과 정확히 `maxPolicyRules`(1024) rule 항목을 각각 포함한 policy를 loader가 수락했다. 기존 `TestLoadRejectsSizeAndRuleCountLimits`는 각각 1025 source와 1025 rule을 거부한다.
 - 이는 parser cardinality 상한의 inclusive 경계만 확인한다. active block run 중 policy 원본 교체 및 다른 architecture는 `not_tested`; P4-04 전체는 미완료다.
 - 검증: targeted cardinality test, `go test ./...`, `go vet ./...`, `git diff --check` PASS.
+
+#### P4-04 실행 보강 — S35 실행 중 policy 원본 교체 — 2026-10-21
+
+- 새 `TestRunBlockUsesLoadedPolicySnapshotAfterPolicyFileMutation`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 3회 실행해 PASS했다. target이 block run 안에서 ready 상태가 된 뒤 원본 policy를 source/rule이 없는 유효 policy로 교체했다. target은 source open 성공 후 loopback connect에서 `EPERM`을 받았고 receiver는 연결을 받지 않았다. 세 번 모두 `ActiveMode=block`, `ActualAction=pre_op_lsm_enforcement_active`, `target_exit_code=0`이었다.
+- 세 run의 audit는 `AuditCoverage=incomplete`, runner code 1, `file-path-unreadable-success=4`였다. 이는 policy snapshot의 enforcement 결과와 분리해 기록한다. 다른 kernel/architecture, audit completeness 및 모든 live policy-update 동작은 `not_tested`; 이 결과는 이미 시작된 run이 전달받은 snapshot을 계속 사용한 이 fixture만 확인한다. P4-04 전체는 미완료다.
+- 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check` 및 guest test 3회 PASS.

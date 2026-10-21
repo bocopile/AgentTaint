@@ -39,6 +39,8 @@ const (
 	blockPipeParentEnv      = "AGENTTAINT_BLOCK_PIPE_PARENT"
 	blockPipeSourceChildEnv = "AGENTTAINT_BLOCK_PIPE_SOURCE_CHILD"
 	blockUDPChildEnv        = "AGENTTAINT_BLOCK_UDP_CHILD"
+	blockGateReadyEnv       = "AGENTTAINT_BLOCK_GATE_READY"
+	blockGateReleaseEnv     = "AGENTTAINT_BLOCK_GATE_RELEASE"
 )
 
 func TestKernelPreopenedSourceChild(t *testing.T) {
@@ -75,6 +77,24 @@ func TestKernelPreopenedSourceChild(t *testing.T) {
 func TestKernelBlockChild(t *testing.T) {
 	if os.Getenv(blockChildEnv) != "1" {
 		return
+	}
+	if readyPath := os.Getenv(blockGateReadyEnv); readyPath != "" {
+		if err := os.WriteFile(readyPath, []byte("ready\n"), 0o644); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "write block gate ready marker: %v\n", err)
+			os.Exit(2)
+		}
+		releasePath := os.Getenv(blockGateReleaseEnv)
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			if _, err := os.Stat(releasePath); err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				_, _ = fmt.Fprintln(os.Stderr, "timed out waiting for block gate release")
+				os.Exit(2)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
 	}
 
 	path := os.Getenv(blockSourceEnv)
@@ -979,6 +999,139 @@ func TestRunBlockDoesNotTreatUnrelatedConnectFailureAsPolicyDeny(t *testing.T) {
 		if violation, ok := event.(*core.PolicyViolationEvent); ok && violation.Decision == "deny" {
 			t.Fatalf("unlabeled process was reported as an AgentTaint deny: %#v", violation)
 		}
+	}
+}
+
+func TestRunBlockUsesLoadedPolicySnapshotAfterPolicyFileMutation(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to load BPF programs and create the block-mode run cgroup")
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-block-policy-snapshot-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(secret, []byte("synthetic secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	port := listener.Addr().(*net.TCPAddr).Port
+	policyPath := filepath.Join(root, "policy.yaml")
+	initialPolicy := fmt.Sprintf("sources:\n  - path: %q\n    label: SECRET\nrules:\n  - name: snapshot-deny\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n", secret)
+	if err := os.WriteFile(policyPath, []byte(initialPolicy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "target")
+	input, err := os.Open(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	if err != nil {
+		_ = input.Close()
+		t.Fatal(err)
+	}
+	_, copyErr := output.ReadFrom(input)
+	closeInputErr := input.Close()
+	closeOutputErr := output.Close()
+	if err := errors.Join(copyErr, closeInputErr, closeOutputErr); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	readyPath := filepath.Join(root, "target-ready")
+	releasePath := filepath.Join(root, "target-release")
+	if err := os.WriteFile(readyPath, nil, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(readyPath, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(blockChildEnv, "1")
+	t.Setenv(blockSourceEnv, secret)
+	t.Setenv(blockAddressEnv, "127.0.0.1")
+	t.Setenv(blockPortEnv, fmt.Sprint(port))
+	t.Setenv(blockExpectEnv, "deny")
+	t.Setenv(blockGateReadyEnv, readyPath)
+	t.Setenv(blockGateReleaseEnv, releasePath)
+	var stdout, stderr bytes.Buffer
+	type runResult struct {
+		code   int
+		status ModeStatus
+		err    error
+	}
+	result := make(chan runResult, 1)
+	go func() {
+		code, status, runErr := RunWithPolicyMode(context.Background(), env.Resolver{}, target, []string{target, "-test.run=^TestKernelBlockChild$"}, nil, &stdout, &stderr, filepath.Join(root, "audit.jsonl"), snapshot, &TargetIdentity{UID: 65534, GID: 65534}, ModeBlock)
+		result <- runResult{code: code, status: status, err: runErr}
+	}()
+	readyDeadline := time.Now().Add(15 * time.Second)
+	for {
+		if ready, err := os.ReadFile(readyPath); err == nil && strings.TrimSpace(string(ready)) == "ready" {
+			break
+		}
+		select {
+		case run := <-result:
+			t.Fatalf("block target exited before its ready marker: code=%d status=%+v stdout=%q stderr=%q err=%v", run.code, run.status, stdout.String(), stderr.String(), run.err)
+		default:
+		}
+		if time.Now().After(readyDeadline) {
+			t.Fatal("timed out waiting for block target ready marker")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	// A valid replacement policy no longer labels the fixture source and has no deny rule.
+	// The already-running enforcement must continue using the loaded deny snapshot.
+	replacement := "sources: []\nrules: []\n"
+	if err := os.WriteFile(policyPath, []byte(replacement), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(releasePath, []byte("continue\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var run runResult
+	select {
+	case run = <-result:
+	case <-time.After(20 * time.Second):
+		t.Fatal("timed out waiting for block run after policy replacement")
+	}
+	if run.status.ActiveMode != ModeBlock || run.status.ActualAction != "pre_op_lsm_enforcement_active" || run.status.Result != "target_exit_code=0" {
+		t.Fatalf("target did not complete under active block enforcement: code=%d status=%+v stdout=%q stderr=%q err=%v", run.code, run.status, stdout.String(), stderr.String(), run.err)
+	}
+	if !strings.Contains(stdout.String(), "open_errno=0 connect_errno=1") {
+		t.Fatalf("connection was not denied by the loaded snapshot after policy replacement: status=%+v stdout=%q stderr=%q err=%v", run.status, stdout.String(), stderr.String(), run.err)
+	}
+	t.Logf("loaded snapshot remained active after policy replacement: status=%+v code=%d err=%v stdout=%q", run.status, run.code, run.err, stdout.String())
+	if run.status.AuditCoverage == "incomplete" {
+		if run.err == nil || !strings.Contains(run.err.Error(), "audit coverage is incomplete") {
+			t.Fatalf("incomplete audit coverage was not reported: status=%+v err=%v", run.status, run.err)
+		}
+	} else if run.status.AuditCoverage != "complete" || run.err != nil || run.code != 0 {
+		t.Fatalf("unexpected snapshot enforcement result: code=%d status=%+v err=%v", run.code, run.status, run.err)
+	}
+	if err := listener.SetDeadline(time.Now().Add(300 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := listener.AcceptTCP()
+	if err == nil {
+		_ = conn.Close()
+		t.Fatal("receiver accepted a connection after the policy file was replaced with an allow policy")
+	}
+	if timeout, ok := err.(net.Error); !ok || !timeout.Timeout() {
+		t.Fatalf("receiver check after policy replacement: %v", err)
 	}
 }
 
