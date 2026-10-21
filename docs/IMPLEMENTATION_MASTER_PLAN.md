@@ -2329,3 +2329,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestObserveHelperClosesControlFDBeforeTargetExec`, `TestUnprivilegedTargetCannotModifyPolicyAuditOrControl`, `TestUnprivilegedTargetCannotSignalOrPtraceSupervisor`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 각각 3회 PASS했다. target exec 전에 control FD가 닫히고 high FD가 상속되지 않는 것, 비특권 target의 policy/audit/control 변경 실패, supervisor에 대한 signal/ptrace `EPERM` 및 observer/block runner 생존을 확인했다.
 - signal/ptrace block probe는 세 번 모두 `file-path-unreadable-success=4`, `AuditCoverage=incomplete`, runner code 1을 반환했지만 target errno는 signal/ptrace 각각 `EPERM`이고 helper assertion은 PASS했다. S25 concurrent-run 전체 audit isolation, 다른 kernel/architecture 및 모든 내부 FD 조작은 `not_tested`; S38/P4-04 전체 완료로 일반화하지 않는다.
 - 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile 및 `git diff --check` PASS; 위 guest tests 각각 3회 PASS.
+
+#### P4-04 실행 보강 — S19 monitor/notify/kill 반복 확인 — 2026-10-21
+
+- `TestRunPolicyModesNotifyAndKillAfterPolicyEvent`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 3회 PASS했다. 각 반복에서 monitor는 target을 계속 실행했고 receiver가 연결을 받았다. notify는 연결 effect와 event-linked notification을 확인했다. kill은 `ActualAction=post_event_kill`, `Result=cgroup_killed_after_policy_event`로 정책 이벤트 후 target scope를 종료했으며 receiver는 이미 발생한 연결 effect를 확인했다.
+- 세 반복 모두 audit coverage는 incomplete였다. monitor/notify는 `file-path-unreadable-other-error=11`, `file-path-unreadable-success=22`; kill은 `file-path-unreadable-other-error=2`, `file-path-unreadable-success=4`로 runner code가 1 또는 kill 결과 137이었다. 사후 kill은 이미 일어난 연결을 되돌리지 않으며 이를 pre-operation block으로 해석하지 않는다. 다른 kernel/architecture와 complete audit history는 `not_tested`; P4-04 미완료다.
+- 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile 및 `git diff --check` PASS; 위 guest test 3회 PASS.
