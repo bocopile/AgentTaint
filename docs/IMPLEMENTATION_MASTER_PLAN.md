@@ -2183,3 +2183,12 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - Go reference replay fixture PASS: 같은 ordered input을 새 engine에 다시 적용한 결과 state/provenance가 같았고, source/fork 중복은 집합 상태상 멱등이었다. wall-clock timestamp를 입력 순서와 반대로 설정해도 전달 순서로 처리했으며, fork-before-source는 후속 source로 child에 소급 전파되지 않았다. 기존 missing-fork fixture는 event만으로 누락을 추정하지 않고 외부 `MarkIncomplete` 호출을 받아 incomplete 상태로 남긴다.
 - `policyAuditProcessor`는 동일 EventID의 반복 connect record를 deduplicate하지 않고 각각 같은 deny verdict record를 만든다. 이는 현재 명시한 입력 의미이며 exactly-once/replay deduplication 보장은 아니다. 동일 이벤트 재전달 여부를 transport에서 강제·주입한 runtime 시험과 BPF ring-buffer replay/drop injection은 `not_tested`; audit completeness와 전체 S32 replay acceptance는 미완료다.
 - 검증: `gofmt`, host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check`, source/connect race·worker·fork guest tests PASS. P4-04 미완료.
+
+
+#### P4-04 실행 업데이트 — S33 자손 drain·취소·scope 정리 — 2026-10-21
+
+- `TestRunObservedForwardsCancellationToTargetGroup` guest PASS. 명시적 context 취소 후 target process group 종료를 확인했고 결과는 exit code 130과 `run-canceled`였다. 이 증거는 observer mode 경로다.
+- `TestRunObservedKeepsObserverUntilSetsidDescendantExits` guest PASS. root target은 먼저 종료했지만 setsid 자손이 drain grace 이후에도 실행 중임을 marker로 확인했다. observer는 grace 전에 반환하지 않고 `descendant-remained-after-drain-limit`로 incomplete 결과를 냈다. 반환 시점에 자손은 아직 남아 있었으며 observer가 자손 종료까지 계속 추적한다는 증거는 아니다.
+- `TestRunKillModeCleansScopeAfterDetachedDescendantDrainLimit`와 새 block-mode 대응 fixture가 모두 guest PASS. 각 root target 종료 뒤 detached `sleep` 자손이 남은 상태에서 약 5.3~5.6초 drain 후 한계 오류를 보고했고, 해당 cgroup scope가 없어졌으며 자손의 생존 marker도 생성되지 않았다. block fixture 상태는 `ActiveMode=block`, `ActualAction=pre_op_lsm_enforcement_active`, target exit 0이었다. `ModeKill`의 사후 종료를 block prevention으로 해석하지 않는다.
+- 보호 mode fixture의 `AuditCoverage=incomplete`는 유지했다. audit incompleteness의 구체 원인, BPF-LSM block mode에서의 직접 context-cancel 시험, 다른 kernel/architecture는 `not_tested`. S33의 관찰 취소·drain-limit·kill/block scope cleanup 범위는 확인했으나 P4-04 전체는 미완료다.
+- 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check`; guest observer cancellation/drain 및 kill/block detached-descendant cleanup PASS.

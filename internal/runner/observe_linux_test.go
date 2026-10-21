@@ -1034,8 +1034,17 @@ func TestRunObservedKeepsObserverUntilSetsidDescendantExits(t *testing.T) {
 }
 
 func TestRunKillModeCleansScopeAfterDetachedDescendantDrainLimit(t *testing.T) {
+	runProtectedModeCleansScopeAfterDetachedDescendantDrainLimit(t, ModeKill)
+}
+
+func TestRunBlockModeCleansScopeAfterDetachedDescendantDrainLimit(t *testing.T) {
+	runProtectedModeCleansScopeAfterDetachedDescendantDrainLimit(t, ModeBlock)
+}
+
+func runProtectedModeCleansScopeAfterDetachedDescendantDrainLimit(t *testing.T, mode PolicyMode) {
+	t.Helper()
 	if os.Geteuid() != 0 {
-		t.Skip("requires root privileges to create and kill the protected run cgroup")
+		t.Skip("requires root privileges to create and clean the protected run cgroup")
 	}
 	setsid, err := exec.LookPath("setsid")
 	if err != nil {
@@ -1083,14 +1092,17 @@ func TestRunKillModeCleansScopeAfterDetachedDescendantDrainLimit(t *testing.T) {
 		}
 		return scope, err
 	}
-	status := ModeStatus{RequestedMode: ModeKill, ActiveMode: "none", ActualAction: "none", Result: "not_started", AuditCoverage: "unknown"}
+	status := ModeStatus{RequestedMode: mode, ActiveMode: "none", ActualAction: "none", Result: "not_started", AuditCoverage: "unknown"}
 	started := time.Now()
-	code, runErr := runProtectedPlatformWithDependencies(context.Background(), script, []string{script}, nil, io.Discard, io.Discard, filepath.Join(root, "audit.jsonl"), snapshot, &TargetIdentity{UID: 65534, GID: 65534}, ModeKill, &status, createScope, enforce.New)
+	code, runErr := runProtectedPlatformWithDependencies(context.Background(), script, []string{script}, nil, io.Discard, io.Discard, filepath.Join(root, "audit.jsonl"), snapshot, &TargetIdentity{UID: 65534, GID: 65534}, mode, &status, createScope, enforce.New)
 	if time.Since(started) < childDrainGrace {
 		t.Fatalf("runner detached before its descendant drain limit: elapsed=%s status=%+v err=%v", time.Since(started), status, runErr)
 	}
 	if runErr == nil || !strings.Contains(runErr.Error(), "descendant-remained-after-drain-limit") || code == 0 {
 		t.Fatalf("detached descendant did not produce the configured drain-limit result: code=%d status=%+v err=%v", code, status, runErr)
+	}
+	if mode == ModeBlock && (status.ActiveMode != ModeBlock || status.ActualAction != "pre_op_lsm_enforcement_active") {
+		t.Fatalf("block mode was not actively enforced while draining descendants: status=%+v err=%v", status, runErr)
 	}
 	if scopePath == "" {
 		t.Fatal("run cgroup was not created")
@@ -1101,7 +1113,7 @@ func TestRunKillModeCleansScopeAfterDetachedDescendantDrainLimit(t *testing.T) {
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Fatalf("detached descendant survived run-scope cleanup: marker stat err=%v", err)
 	}
-	t.Logf("kill mode drain-limit cleanup: elapsed=%s cgroup_removed=true descendant_marker_absent=true status=%+v", time.Since(started), status)
+	t.Logf("%s mode drain-limit cleanup: elapsed=%s cgroup_removed=true descendant_marker_absent=true status=%+v", mode, time.Since(started), status)
 }
 
 // TestRunKillModeSupervisorCrashChild is launched by the companion test and
