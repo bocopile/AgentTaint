@@ -26,16 +26,18 @@ import (
 )
 
 const (
-	blockChildEnv    = "AGENTTAINT_BLOCK_CHILD"
-	blockSourceEnv   = "AGENTTAINT_BLOCK_SOURCE"
-	blockAddressEnv  = "AGENTTAINT_BLOCK_ADDRESS"
-	blockPortEnv     = "AGENTTAINT_BLOCK_PORT"
-	blockExpectEnv   = "AGENTTAINT_BLOCK_EXPECT"
-	blockWorkersEnv  = "AGENTTAINT_BLOCK_WORKERS"
-	blockRaceEnv     = "AGENTTAINT_BLOCK_RACE"
-	preopenedEnv     = "AGENTTAINT_PREOPENED_SOURCE"
-	blockForkEnv     = "AGENTTAINT_BLOCK_FORK"
-	blockChildCPUEnv = "AGENTTAINT_BLOCK_CHILD_CPU"
+	blockChildEnv           = "AGENTTAINT_BLOCK_CHILD"
+	blockSourceEnv          = "AGENTTAINT_BLOCK_SOURCE"
+	blockAddressEnv         = "AGENTTAINT_BLOCK_ADDRESS"
+	blockPortEnv            = "AGENTTAINT_BLOCK_PORT"
+	blockExpectEnv          = "AGENTTAINT_BLOCK_EXPECT"
+	blockWorkersEnv         = "AGENTTAINT_BLOCK_WORKERS"
+	blockRaceEnv            = "AGENTTAINT_BLOCK_RACE"
+	preopenedEnv            = "AGENTTAINT_PREOPENED_SOURCE"
+	blockForkEnv            = "AGENTTAINT_BLOCK_FORK"
+	blockChildCPUEnv        = "AGENTTAINT_BLOCK_CHILD_CPU"
+	blockPipeParentEnv      = "AGENTTAINT_BLOCK_PIPE_PARENT"
+	blockPipeSourceChildEnv = "AGENTTAINT_BLOCK_PIPE_SOURCE_CHILD"
 )
 
 func TestKernelPreopenedSourceChild(t *testing.T) {
@@ -179,6 +181,88 @@ func TestKernelExistingSocketSendChild(t *testing.T) {
 	_ = syscall.Close(newFD)
 	fmt.Printf("preconnect_errno=%d source_open_errno=0 source_read_bytes=%d existing_send_bytes=%d new_connect_errno=%d\n", blockErrno(preconnectErr), sourceRead, sent, blockErrno(newConnectErr))
 	if sent != len(payload) || newConnectErr != syscall.EPERM {
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+func TestKernelPipeSourceChild(t *testing.T) {
+	if os.Getenv(blockPipeSourceChildEnv) != "1" {
+		return
+	}
+	sourceFD, err := syscall.Open(os.Getenv(blockSourceEnv), syscall.O_RDONLY, 0)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "open child source: %v\n", err)
+		os.Exit(2)
+	}
+	var data [1024]byte
+	read, readErr := syscall.Read(sourceFD, data[:])
+	_ = syscall.Close(sourceFD)
+	if readErr != nil || read == 0 {
+		fmt.Fprintf(os.Stderr, "read child source: bytes=%d err=%v\n", read, readErr)
+		os.Exit(2)
+	}
+	pipe := os.NewFile(3, "source-to-parent-pipe")
+	if pipe == nil {
+		fmt.Fprintln(os.Stderr, "source-to-parent pipe fd 3 is missing")
+		os.Exit(2)
+	}
+	written, writeErr := pipe.Write(data[:read])
+	_ = pipe.Close()
+	fmt.Printf("pipe_child_open_errno=0 pipe_child_bytes=%d\n", read)
+	if writeErr != nil || written != read {
+		fmt.Fprintf(os.Stderr, "write child source to pipe: bytes=%d want=%d err=%v\n", written, read, writeErr)
+		os.Exit(2)
+	}
+	os.Exit(0)
+}
+
+func TestKernelPipeParentChild(t *testing.T) {
+	if os.Getenv(blockPipeParentEnv) != "1" {
+		return
+	}
+	pipeReader, pipeWriter, err := os.Pipe()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "create child-to-parent pipe: %v\n", err)
+		os.Exit(2)
+	}
+	child := exec.Command(os.Args[0], "-test.run=^TestKernelPipeSourceChild$")
+	child.Env = append(os.Environ(), blockPipeSourceChildEnv+"=1")
+	child.ExtraFiles = []*os.File{pipeWriter}
+	child.Stdout = os.Stdout
+	child.Stderr = os.Stderr
+	if err := child.Start(); err != nil {
+		_ = pipeReader.Close()
+		_ = pipeWriter.Close()
+		fmt.Fprintf(os.Stderr, "start source-reading child: %v\n", err)
+		os.Exit(2)
+	}
+	_ = pipeWriter.Close()
+	data, readErr := io.ReadAll(pipeReader)
+	_ = pipeReader.Close()
+	waitErr := child.Wait()
+	if err := errors.Join(readErr, waitErr); err != nil || len(data) == 0 {
+		fmt.Fprintf(os.Stderr, "receive child source bytes: bytes=%d err=%v\n", len(data), err)
+		os.Exit(2)
+	}
+	address, err := net.ResolveTCPAddr("tcp4", net.JoinHostPort(os.Getenv(blockAddressEnv), os.Getenv(blockPortEnv)))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "resolve parent API endpoint: %v\n", err)
+		os.Exit(2)
+	}
+	socket, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "create parent API socket: %v\n", err)
+		os.Exit(2)
+	}
+	connectErr := syscall.Connect(socket, &syscall.SockaddrInet4{Port: address.Port, Addr: [4]byte{127, 0, 0, 1}})
+	sent := 0
+	if connectErr == nil {
+		sent, err = syscall.Write(socket, data)
+	}
+	_ = syscall.Close(socket)
+	fmt.Printf("pipe_parent_bytes=%d parent_connect_errno=%d parent_send_bytes=%d\n", len(data), blockErrno(connectErr), sent)
+	if connectErr != nil || err != nil || sent != len(data) {
 		os.Exit(1)
 	}
 	os.Exit(0)
@@ -1350,6 +1434,101 @@ func TestRunBlockExistingSocketSendAfterSourceRemainsOutOfScope(t *testing.T) {
 		t.Fatal("new post-source connect unexpectedly reached the receiver")
 	} else if timeout, ok := acceptErr.(net.Error); !ok || !timeout.Timeout() {
 		t.Fatalf("receiver control check: %v", acceptErr)
+	}
+}
+
+func TestRunBlockDoesNotPropagateChildSourceThroughPipeToParent(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to load BPF programs and create the run cgroup")
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-child-pipe-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secretContents := []byte("synthetic child-only source bytes\n")
+	secret := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(secret, secretContents, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	endpoint := listener.Addr().(*net.TCPAddr)
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := fmt.Sprintf("sources:\n  - path: %q\n    label: SECRET\nrules:\n  - name: child-pipe-egress\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n", secret)
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "target")
+	input, err := os.Open(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	if err != nil {
+		_ = input.Close()
+		t.Fatal(err)
+	}
+	_, copyErr := output.ReadFrom(input)
+	closeInputErr := input.Close()
+	closeOutputErr := output.Close()
+	if err := errors.Join(copyErr, closeInputErr, closeOutputErr); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(blockPipeParentEnv, "1")
+	t.Setenv(blockSourceEnv, secret)
+	t.Setenv(blockAddressEnv, endpoint.IP.String())
+	t.Setenv(blockPortEnv, fmt.Sprint(endpoint.Port))
+	var stdout, stderr bytes.Buffer
+	auditPath := filepath.Join(root, "audit.jsonl")
+	code, status, runErr := RunWithPolicyMode(context.Background(), env.Resolver{}, target, []string{target, "-test.run=^TestKernelPipeParentChild$"}, nil, &stdout, &stderr, auditPath, snapshot, &TargetIdentity{UID: 65534, GID: 65534}, ModeBlock)
+	if status.ActiveMode != ModeBlock || status.ActualAction != "pre_op_lsm_enforcement_active" || status.Result != "target_exit_code=0" {
+		t.Fatalf("block run did not complete under the requested mode: code=%d status=%+v err=%v stdout=%q stderr=%q", code, status, runErr, stdout.String(), stderr.String())
+	}
+	wantOutput := fmt.Sprintf("pipe_child_open_errno=0 pipe_child_bytes=%d", len(secretContents))
+	if !strings.Contains(stdout.String(), wantOutput) || !strings.Contains(stdout.String(), fmt.Sprintf("pipe_parent_bytes=%d parent_connect_errno=0 parent_send_bytes=%d", len(secretContents), len(secretContents))) {
+		t.Fatalf("child source-to-parent API path did not complete: status=%+v err=%v stdout=%q stderr=%q", status, runErr, stdout.String(), stderr.String())
+	}
+	t.Logf("child-to-parent effect verified; audit_coverage=%s runner_code=%d runner_err=%v", status.AuditCoverage, code, runErr)
+	if status.AuditCoverage == "incomplete" {
+		if code != 1 || runErr == nil || !strings.Contains(runErr.Error(), "audit coverage is incomplete") {
+			t.Fatalf("incomplete audit coverage was not surfaced: status=%+v err=%v", status, runErr)
+		}
+	} else if status.AuditCoverage != "complete" || runErr != nil || code != 0 {
+		t.Fatalf("unexpected block audit result: status=%+v err=%v", status, runErr)
+	}
+
+	tcpListener := listener.(*net.TCPListener)
+	if err := tcpListener.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := tcpListener.Accept()
+	if err != nil {
+		t.Fatalf("receiver did not accept parent API connection: %v", err)
+	}
+	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	received := make([]byte, len(secretContents))
+	if _, err := io.ReadFull(conn, received); err != nil {
+		t.Fatalf("receiver did not get bytes delivered through the child-to-parent pipe: %v", err)
+	}
+	if !bytes.Equal(received, secretContents) {
+		t.Fatalf("receiver got unexpected data %q", received)
 	}
 }
 

@@ -2257,3 +2257,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunBlockExistingSocketSendAfterSourceRemainsOutOfScope`를 BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 3회 실행해 PASS했다. block target이 source 접근 전에 IPv4 connection을 열고, source file을 성공적으로 읽은 다음 동일 socket으로 28-byte payload를 보냈다. receiver가 payload를 받았다. 이후의 새 IPv4 connect는 `EPERM`을 받았고 receiver에는 두 번째 connection이 도달하지 않았다.
 - target 결과는 세 번 모두 `target_exit_code=0`이었지만 audit는 모두 `AuditCoverage=incomplete`, runner code 1로 반환됐다. 세 run의 원인은 `file-path-unreadable-success=4`였다. 이는 새 connect용 `socket_connect` 집행 범위와 성공한 사전 연결의 `send` 효과가 다름을 보여준다. 기존 연결 send가 차단되거나 감사된다고 주장하지 않는다. 다른 kernel/architecture와 다른 기존 소켓 유형은 `not_tested`; S22 검증 범위만 확인했고 P4-04 미완료다.
 - 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, guest test 3회, `git diff --check` PASS.
+
+#### P4-04 실행 검증 — S23 child source → pipe → parent API — 2026-10-21
+
+- `TestRunBlockDoesNotPropagateChildSourceThroughPipeToParent`를 BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 3회 실행해 PASS했다. 자식은 source file을 열고 synthetic bytes를 상속 pipe로 부모에게 전달했다. 부모는 받은 bytes를 payload로 사용해 source 접근 이후 loopback API에 연결하고 모두 전송했으며 receiver가 동일 bytes를 받았다. 각 target은 exit 0, active block mode였다.
+- 이 결과는 이번 Phase의 fork 기반 하향 전파만으로 자식의 source label이 부모에게 역전파되지 않는 pipe 경로를 보여준다. pipe 기반 propagation은 Phase 6 범위다. 이 fixture의 audit는 세 번 모두 `file-path-unreadable-success=6`, `AuditCoverage=incomplete`, runner code 1이었다. 집행 상태·target 효과와 audit 불완전성을 구분한다. 다른 pipe 방향/종류, 다른 kernel/architecture, 완전한 audit coverage는 `not_tested`; byte-level taint 또는 모든 정보 흐름 추적을 주장하지 않으며 P4-04 미완료다.
+- 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, guest test 3회 및 `git diff --check` PASS.
