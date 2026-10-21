@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -998,6 +999,94 @@ func TestRunObservedForwardsCancellationToTargetGroup(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("target group did not terminate after cancellation")
+	}
+}
+
+func TestRunBlockForwardsCancellationAndReportsProtectedMode(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to load BPF programs and create the run cgroup")
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-block-cancel-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(secret, []byte("synthetic secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := "sources:\n  - path: " + secret + "\n    label: SECRET\nrules:\n  - name: cancel-block-target\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n"
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	markerBase := fmt.Sprintf("/tmp/agenttaint-block-cancel-%d", os.Getpid())
+	readyPath := markerBase + ".ready"
+	pidPath := markerBase + ".pid"
+	_ = os.Remove(readyPath)
+	_ = os.Remove(pidPath)
+	defer os.Remove(readyPath)
+	defer os.Remove(pidPath)
+	target := filepath.Join(root, "target.sh")
+	script := "#!/bin/sh\necho $$ > " + shellQuote(pidPath) + "\n: > " + shellQuote(readyPath) + "\nexec /bin/sleep 30\n"
+	if err := os.WriteFile(target, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	type result struct {
+		code   int
+		status ModeStatus
+		err    error
+	}
+	done := make(chan result, 1)
+	auditPath := filepath.Join(root, "audit.jsonl")
+	go func() {
+		code, status, runErr := RunWithPolicyMode(ctx, env.Resolver{}, target, []string{target}, nil, io.Discard, io.Discard, auditPath, snapshot, &TargetIdentity{UID: 65534, GID: 65534}, ModeBlock)
+		done <- result{code: code, status: status, err: runErr}
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(readyPath); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			cancel()
+			got := <-done
+			t.Fatalf("block target did not reach its ready marker: code=%d status=%+v err=%v", got.code, got.status, got.err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	pidData, err := os.ReadFile(pidPath)
+	if err != nil {
+		cancel()
+		<-done
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(pidData)))
+	if err != nil {
+		cancel()
+		<-done
+		t.Fatalf("parse target pid %q: %v", pidData, err)
+	}
+	cancel()
+	got := <-done
+	if got.code != 130 || got.status.ActiveMode != ModeBlock || got.status.ActualAction != "pre_op_lsm_enforcement_active" || got.status.Result != "target_exit_code=130" || got.status.AuditCoverage != "incomplete" {
+		t.Fatalf("canceled protected run returned unexpected status: code=%d status=%+v err=%v", got.code, got.status, got.err)
+	}
+	if got.err == nil || !strings.Contains(got.err.Error(), "run-canceled") {
+		t.Fatalf("cancellation was not preserved as an incomplete run condition: status=%+v err=%v", got.status, got.err)
+	}
+	if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
+		t.Fatalf("target process %d remains after cancellation: %v", pid, err)
 	}
 }
 

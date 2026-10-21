@@ -2275,3 +2275,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 새 `TestPolicyAuditProcessorsKeepSameSourceFileStatePerRun` PASS. 두 독립 policy audit processor에 같은 source 경로를 설정하고 동일 PID이지만 서로 다른 birth/scope key를 사용했다. run A의 source open 뒤 run B의 같은 경로 connect는 clean으로 남았고, 이어 각 processor의 connect는 해당 run의 source provenance와 함께 deny record를 만들었다.
 - 이 unit 증거는 run별 processor/taint state 분리에 한정된다. guest `TestRunObservedSeparatesConcurrentRuns`에서 실제 동시 observer 실행의 available audit record 분리 검사는 통과했지만 BPF `file-path-unreadable-success` 손실로 전체 audit completeness 조건은 SKIP된다. 따라서 동시 runtime의 전체 로그 완전 격리 및 무누락은 `not_tested`; S25 acceptance와 P4-04는 미완료다.
 - 검증: targeted unit test, host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile 및 `git diff --check` PASS.
+
+#### P4-04 실행 보강 — S33 block mode 취소 — 2026-10-21
+
+- 새 `TestRunBlockForwardsCancellationAndReportsProtectedMode`를 BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 3회 PASS했다. target이 ready marker를 기록한 뒤 context를 취소했고, 반환 시 `ActiveMode=block`, `ActualAction=pre_op_lsm_enforcement_active`, `Result=target_exit_code=130`, `AuditCoverage=incomplete` 및 `run-canceled` 원인이 확인됐다. target PID는 취소 후 존재하지 않았다.
+- 이 검증은 block-mode target cancellation과 해당 target 종료만 다룬다. 취소 시 audit completeness는 확보되지 않았고, 별도 detached descendants의 전 범위 cleanup이나 다른 kernel/architecture는 `not_tested`; 이를 policy deny 또는 pre-operation prevention의 증거로 해석하지 않으며 P4-04 미완료다.
+- 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check` 및 guest test 3회 PASS.
