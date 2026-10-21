@@ -2438,3 +2438,10 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunBlockedFileOpenDenyWithAllowControl`을 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 3회 PASS했다. 직접 deny target의 source file open은 `EPERM`이었고 receiver에는 연결이 도달하지 않았다. non-source allow control은 file open과 IPv4 connect가 성공했고 receiver가 연결을 수락했다.
 - 세 반복의 두 run 모두 audit coverage incomplete (`file-path-unreadable-success=4`, runner code 1)로 반환됐다. target syscall/effect assertions는 통과했으나 전체 audit completeness는 확인되지 않았다. 다른 kernel/architecture의 direct file enforcement는 `not_tested`; P4-04 전체는 미완료다.
 - 검증: 기존 guest Linux/arm64 runner test binary에서 위 테스트 3회 PASS; 각 반복의 deny/allow control 모두 assertion 통과.
+
+#### P4-04 재현 — S25 concurrent audit capture completeness — 2026-10-21
+
+- 현재 소스에서 Linux/arm64 runner test binary를 새로 cross-compile하고 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 `TestRunObservedSeparatesConcurrentRuns`를 5회 실행했다. 다섯 번 모두 target stdout/stderr, 권한·FD 검사, 각 target fixture event, RunID/ScopeID 구분 검사는 통과했고 sibling fixture 경로 혼합도 관측되지 않았다.
+- 다섯 번 모두 audit coverage는 `file-path-unreadable-success`로 incomplete여서 테스트가 `SKIP`됐다. 두 run 각각의 카운트는 3회 `4`, 2회 `2`였다. 따라서 partial audit record의 run 식별성은 재확인됐지만 complete audit isolation 및 무누락 조건은 충족되지 않았다.
+- 현재 BPF 손실 이유는 syscall 종류를 보존하지 않아 실패한 path copy가 `openat`인지 `openat2`인지 구별되지 않는다. 정확한 syscall과 원인은 `not_tested`; 진단 목적의 ABI/카운터 확장은 별도 범위 검토 전 적용하지 않는다. S25 및 P4-04 미완료다.
+- 검증: Linux/arm64 runner test-binary cross-compile PASS; guest targeted test 5회 모두 incomplete-evidence SKIP. 이 turn에서 전체 Go suite 및 amd64 runtime은 실행하지 않았다.
