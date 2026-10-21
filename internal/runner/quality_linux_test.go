@@ -174,6 +174,7 @@ func TestKernelRingBufferDropSuppressesSubsequentPolicyVerdict(t *testing.T) {
 	if !incomplete || detail == "" {
 		t.Fatalf("actual kernel loss was not recorded as incomplete coverage: incomplete=%t detail=%q", incomplete, detail)
 	}
+	t.Logf("drop causes after the controlled file flood: %s", detail)
 	processor.MarkIncomplete(detail)
 
 	// The ring is deliberately left unread during the flood. Free its bounded

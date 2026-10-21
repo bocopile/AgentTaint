@@ -2425,3 +2425,10 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestKernelRingBufferDropSuppressesSubsequentPolicyVerdict`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 3회 PASS했다. 같은 실행에서 target의 synthetic source open을 kernel observer가 capture하고 Go reference에 `SECRET` label을 부여한 뒤, target의 `/dev/null` open flood로 실제 file ring reserve-drop counter 증가를 확인했다. 손실을 policy audit processor에 전달한 후 ring을 drain하고 같은 target의 IPv4 loopback connect를 관측·처리했다. 이때 불완전한 history로 policy violation verdict가 생성되지 않았고, receiver는 연결을 수락했으며 이후에도 incomplete 상태가 유지됐다.
 - 이는 observer ring loss 이후의 audit verdict 억제와 event recovery를 한 guest run 안에서 결합한 결과다. 이 검사는 audit 경로이며 connect 자체를 차단하지 않는다. syscall/path capture의 다른 손실 원인, 완전한 audit history, 다른 kernel/architecture, arm64 이외의 syscall ABI는 `not_tested`; P4-04는 미완료다.
 - 검증: host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build, `git diff --check` PASS; guest integration test 3회 PASS.
+
+#### P4-04 진단 — S25 path capture 손실 범위 분리 — 2026-10-21
+
+- 기존 `TestFileAndConnectObserver`를 Linux/arm64 BPF-LSM guest에서 `taskset -c 0` 및 `taskset -c 1`로 각각 3회 실행해 모두 PASS했다. 이 fixture는 성공·실패 `openat`, `openat2`, 상대 경로 및 IPv4 connect event의 관측을 확인했지만, run supervisor의 전체 audit completeness를 검사하지는 않는다.
+- S37의 통제된 `/dev/null` open flood 세 반복에서 실제 `file-ring-reserve=187808`만 quality detail에 기록됐고 `file-path-unreadable-success`는 관측되지 않았다. 따라서 S25의 `file-path-unreadable-success=2` 원인은 이 통제된 ring overflow 부하로 재현되지 않았다.
+- CPU별 기본 observer 시나리오는 통과했지만 S25 동시 `RunObserved` 환경의 syscall/path capture 누락 원인은 아직 식별하지 못했다. 정확한 실패 syscall·원인과 complete concurrent audit isolation은 `not_tested`; S25 및 P4-04 미완료다.
+- 검증: host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build, `git diff --check` PASS; guest CPU 0/1 observer test 각 3회 및 S37 통합 test 3회 PASS.
