@@ -2353,3 +2353,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunBlockExistingSocketSendAfterSourceRemainsOutOfScope`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 3회 PASS했다. source open 전에 연결한 TCP socket으로 source 접근 후 payload send가 receiver에 도달했다. 같은 target에서 source 이후 새 connect는 `EPERM`을 받았고 두 번째 receiver 연결은 없었다.
 - 세 run 모두 audit coverage incomplete, runner code 1이었다: 한 번은 `file-path-unreadable-success=4`, 두 번은 여기에 `process-capture=2`가 추가됐다. 결과는 새 connect 집행과 기존 socket send의 지원 차이를 보여주는 fixture 한정 증거다. 기존 연결 send의 차단·감사, 다른 socket 종류/kernel/architecture는 `not_tested`; 기존 socket 경로가 보호된다고 표현하지 않는다. P4-04 미완료다.
 - 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check` PASS; guest test 3회 PASS.
+
+#### P4-04 실행 보강 — S23 child-to-parent pipe 반복 확인 — 2026-10-21
+
+- `TestRunBlockDoesNotPropagateChildSourceThroughPipeToParent`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 3회 PASS했다. child가 source file을 성공적으로 열어 synthetic bytes를 pipe로 parent에 보냈고, parent는 받은 bytes를 사용해 API loopback 연결·전송을 완료했으며 receiver가 payload를 받았다. 따라서 이 방향의 child source label 역전파는 현재 지원되지 않는다.
+- 세 run의 audit는 `file-path-unreadable-success=6`, `AuditCoverage=incomplete`, runner code 1이었다. target effect와 audit completeness를 분리한다. 다른 pipe 방향·종류, 다른 kernel/architecture 및 전체 byte-level flow 추적은 `not_tested`; byte-level taint 또는 모든 정보 흐름 추적을 주장하지 않으며 P4-04 미완료다.
+- 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check`; guest test 3회 PASS.
