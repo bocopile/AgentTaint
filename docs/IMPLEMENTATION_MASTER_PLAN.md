@@ -2209,3 +2209,11 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 새 `TestCLIMalformedPolicyFailsBeforeStartingTarget` PASS: 중복 top-level `sources` key가 있는 policy에서 CLI가 `active=none`, `result=policy_load_failed`로 종료했고 target marker와 audit 파일은 생성되지 않았다. invalid policy load 실패 전에 target 실행·audit 생성이 없음을 확인했다.
 - 이번 범위는 Go snapshot/parser 및 CLI preflight다. byte limit의 정확한 경계값(정확히 최대 허용 크기), 실제 target 실행 중 원본 policy 파일을 바꾸는 guest 시나리오, 다른 kernel/architecture는 `not_tested`; 이 증거를 audit completeness나 BPF 집행 효과로 일반화하지 않는다.
 - 검증: host `gofmt`, `go test -v ./internal/policy ./cmd/agenttaint`, `go test ./...`, `go vet ./...`, `git diff --check` PASS. P4-04 전체는 미완료다.
+
+
+#### P4-04 실행 보강 — S36 receiver/양성 대조군 — 2026-10-21
+
+- 최신 Linux/arm64 runner test binary로 BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 `TestRunBlockedSourceTaintDeniesConnectWithAllowControl` PASS. 준비된 loopback receiver에서 source open 성공 후 tainted connect가 `EPERM`을 받고 receiver는 연결을 받지 않았다. 이어 non-source control은 connect 성공 및 receiver accept를 모두 확인했다. 두 run 모두 `file-path-unreadable-success=4`로 audit coverage incomplete가 반환됐지만 target effect와 audit 상태는 별도 판정됐다.
+- 같은 guest에서 `TestRunBlockDoesNotTreatUnrelatedConnectFailureAsPolicyDeny` PASS. server가 listen하지 않는 bound loopback port에 대한 일반 target connect는 `ECONNREFUSED`였고 test는 이를 AgentTaint deny로 계산하지 않았다. test assertions는 active block 상태, target exit 0, deny violation 부재를 확인했다.
+- 이 실행은 수신기 준비 여부에 따른 positive control과 unrelated connect failure의 negative control을 확인한다. `TestRunBlockDoesNotTreatUnrelatedConnectFailureAsPolicyDeny`의 상세 audit coverage branch는 test output에 기록되지 않아 `not_observed`; incomplete가 발생한 경우 error branch는 test가 검증한다. 별도 kernel/architecture 및 전체 audit completeness는 `not_tested`; S36의 이 게스트 대조군 범위만 확인했으며 P4-04 전체는 미완료다.
+- 검증: 최신 Linux/arm64 runner test-binary cross-compile 및 위 두 guest tests PASS. P4-04 S36 보강 기록에 한정.
