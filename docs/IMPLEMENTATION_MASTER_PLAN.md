@@ -2218,3 +2218,10 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 같은 guest에서 `TestRunBlockDoesNotTreatUnrelatedConnectFailureAsPolicyDeny` PASS. server가 listen하지 않는 bound loopback port에 대한 일반 target connect는 `ECONNREFUSED`였고 test는 이를 AgentTaint deny로 계산하지 않았다. test assertions는 active block 상태, target exit 0, deny violation 부재를 확인했다.
 - 이 실행은 수신기 준비 여부에 따른 positive control과 unrelated connect failure의 negative control을 확인한다. `TestRunBlockDoesNotTreatUnrelatedConnectFailureAsPolicyDeny`의 상세 audit coverage branch는 test output에 기록되지 않아 `not_observed`; incomplete가 발생한 경우 error branch는 test가 검증한다. 별도 kernel/architecture 및 전체 audit completeness는 `not_tested`; S36의 이 게스트 대조군 범위만 확인했으며 P4-04 전체는 미완료다.
 - 검증: 최신 Linux/arm64 runner test-binary cross-compile 및 위 두 guest tests PASS. P4-04 S36 보강 기록에 한정.
+
+
+#### P4-04 실행 검증 — S14 enforcement process-map saturation — 2026-10-21
+
+- BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 `TestEnforceProcessMapSaturationFailsClosed` PASS. enforcement process map의 `MaxEntries=16384`까지 채운 뒤 추가 삽입이 거부됐고, 해당 run cgroup의 비특권 target은 source file open과 이어진 IPv4 connect 모두 `EPERM`을 받았다. sticky enforcement fault가 `0x1`로 설정됐고 receiver는 연결을 받지 않았으며 test-owned cgroup·enforcer cleanup도 성공했다.
+- 이 증거는 enforcement process map 포화 시 fail-closed 처리에 한정된다. 다른 kernel/architecture, taint·event map의 실제 메모리 부족, kernel OOM 조건은 `not_tested`; P4-04 전체는 미완료다.
+- 검증: Linux/arm64 enforcement test-binary cross-compile, 위 guest test PASS, `git diff --check` PASS.
