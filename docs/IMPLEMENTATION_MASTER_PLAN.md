@@ -2263,3 +2263,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunBlockDoesNotPropagateChildSourceThroughPipeToParent`를 BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 3회 실행해 PASS했다. 자식은 source file을 열고 synthetic bytes를 상속 pipe로 부모에게 전달했다. 부모는 받은 bytes를 payload로 사용해 source 접근 이후 loopback API에 연결하고 모두 전송했으며 receiver가 동일 bytes를 받았다. 각 target은 exit 0, active block mode였다.
 - 이 결과는 이번 Phase의 fork 기반 하향 전파만으로 자식의 source label이 부모에게 역전파되지 않는 pipe 경로를 보여준다. pipe 기반 propagation은 Phase 6 범위다. 이 fixture의 audit는 세 번 모두 `file-path-unreadable-success=6`, `AuditCoverage=incomplete`, runner code 1이었다. 집행 상태·target 효과와 audit 불완전성을 구분한다. 다른 pipe 방향/종류, 다른 kernel/architecture, 완전한 audit coverage는 `not_tested`; byte-level taint 또는 모든 정보 흐름 추적을 주장하지 않으며 P4-04 미완료다.
 - 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, guest test 3회 및 `git diff --check` PASS.
+
+#### P4-04 실행 검증 — S24 UDP sendto 및 IPv6 입력 범위 — 2026-10-21
+
+- 기존 `TestLoadRejectsIPv6DenyRuleRatherThanSilentlyIgnoringIt` PASS로 IPv6 CIDR deny 입력이 policy load에서 `invalid IPv4 CIDR`로 거부됨을 재확인했다. 새 `TestRunBlockUDPSourceSendtoIsOutsideConnectEnforcement`는 BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 3회 PASS했다. active block target은 source를 열고 읽은 뒤 `connect` 호출 없이 UDP `sendto`로 payload를 전송했고 loopback UDP receiver가 정확한 bytes를 받았다.
+- 세 UDP 실행 모두 target exit 0, `AuditCoverage=incomplete`, runner code 1이었다. 두 실행 원인은 `file-path-unreadable-success=4`, 한 실행은 여기에 `process-capture=2`가 추가됐다. 따라서 증거는 현재 IPv4 connect hook이 UDP `sendto`를 차단하지 않는 이 fixture의 동작만 확인하며, 완전한 event/audit coverage를 확인하지 않는다. IPv6 network runtime, UDP connect/send/receive의 다른 조합, 다른 kernel/architecture는 `not_tested`; 이 경로가 보호된다고 주장하지 않으며 P4-04 미완료다.
+- 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, IPv6 policy rejection test, UDP guest test 3회 및 `git diff --check` PASS.

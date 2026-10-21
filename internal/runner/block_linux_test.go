@@ -38,6 +38,7 @@ const (
 	blockChildCPUEnv        = "AGENTTAINT_BLOCK_CHILD_CPU"
 	blockPipeParentEnv      = "AGENTTAINT_BLOCK_PIPE_PARENT"
 	blockPipeSourceChildEnv = "AGENTTAINT_BLOCK_PIPE_SOURCE_CHILD"
+	blockUDPChildEnv        = "AGENTTAINT_BLOCK_UDP_CHILD"
 )
 
 func TestKernelPreopenedSourceChild(t *testing.T) {
@@ -181,6 +182,41 @@ func TestKernelExistingSocketSendChild(t *testing.T) {
 	_ = syscall.Close(newFD)
 	fmt.Printf("preconnect_errno=%d source_open_errno=0 source_read_bytes=%d existing_send_bytes=%d new_connect_errno=%d\n", blockErrno(preconnectErr), sourceRead, sent, blockErrno(newConnectErr))
 	if sent != len(payload) || newConnectErr != syscall.EPERM {
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+func TestKernelUDPSourceSendtoChild(t *testing.T) {
+	if os.Getenv(blockUDPChildEnv) != "1" {
+		return
+	}
+	sourceFD, err := syscall.Open(os.Getenv(blockSourceEnv), syscall.O_RDONLY, 0)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "open UDP source: %v\n", err)
+		os.Exit(2)
+	}
+	var source [128]byte
+	read, readErr := syscall.Read(sourceFD, source[:])
+	_ = syscall.Close(sourceFD)
+	if readErr != nil || read == 0 {
+		fmt.Fprintf(os.Stderr, "read UDP source: bytes=%d err=%v\n", read, readErr)
+		os.Exit(2)
+	}
+	address, err := net.ResolveUDPAddr("udp4", net.JoinHostPort(os.Getenv(blockAddressEnv), os.Getenv(blockPortEnv)))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "resolve UDP receiver: %v\n", err)
+		os.Exit(2)
+	}
+	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, 0)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "create UDP socket: %v\n", err)
+		os.Exit(2)
+	}
+	sendErr := syscall.Sendto(fd, source[:read], 0, &syscall.SockaddrInet4{Port: address.Port, Addr: [4]byte{127, 0, 0, 1}})
+	_ = syscall.Close(fd)
+	fmt.Printf("udp_source_open_errno=0 udp_source_bytes=%d udp_sendto_errno=%d udp_sendto_bytes=%d\n", read, blockErrno(sendErr), read)
+	if sendErr != nil {
 		os.Exit(1)
 	}
 	os.Exit(0)
@@ -1529,6 +1565,92 @@ func TestRunBlockDoesNotPropagateChildSourceThroughPipeToParent(t *testing.T) {
 	}
 	if !bytes.Equal(received, secretContents) {
 		t.Fatalf("receiver got unexpected data %q", received)
+	}
+}
+
+func TestRunBlockUDPSourceSendtoIsOutsideConnectEnforcement(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to load BPF programs and create the run cgroup")
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-udp-sendto-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secretContents := []byte("synthetic UDP source payload\n")
+	secret := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(secret, secretContents, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	endpoint := listener.LocalAddr().(*net.UDPAddr)
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := fmt.Sprintf("sources:\n  - path: %q\n    label: SECRET\nrules:\n  - name: udp-sendto-egress\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n", secret)
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "target")
+	input, err := os.Open(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	if err != nil {
+		_ = input.Close()
+		t.Fatal(err)
+	}
+	_, copyErr := output.ReadFrom(input)
+	closeInputErr := input.Close()
+	closeOutputErr := output.Close()
+	if err := errors.Join(copyErr, closeInputErr, closeOutputErr); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(blockUDPChildEnv, "1")
+	t.Setenv(blockSourceEnv, secret)
+	t.Setenv(blockAddressEnv, endpoint.IP.String())
+	t.Setenv(blockPortEnv, fmt.Sprint(endpoint.Port))
+	var stdout, stderr bytes.Buffer
+	auditPath := filepath.Join(root, "audit.jsonl")
+	code, status, runErr := RunWithPolicyMode(context.Background(), env.Resolver{}, target, []string{target, "-test.run=^TestKernelUDPSourceSendtoChild$"}, nil, &stdout, &stderr, auditPath, snapshot, &TargetIdentity{UID: 65534, GID: 65534}, ModeBlock)
+	if status.ActiveMode != ModeBlock || status.ActualAction != "pre_op_lsm_enforcement_active" || status.Result != "target_exit_code=0" {
+		t.Fatalf("block run did not complete under the requested mode: code=%d status=%+v err=%v stdout=%q stderr=%q", code, status, runErr, stdout.String(), stderr.String())
+	}
+	wantOutput := fmt.Sprintf("udp_source_open_errno=0 udp_source_bytes=%d udp_sendto_errno=0 udp_sendto_bytes=%d", len(secretContents), len(secretContents))
+	if !strings.Contains(stdout.String(), wantOutput) {
+		t.Fatalf("target did not report source read followed by successful UDP sendto: status=%+v err=%v stdout=%q stderr=%q", status, runErr, stdout.String(), stderr.String())
+	}
+	t.Logf("UDP sendto effect verified; audit_coverage=%s runner_code=%d runner_err=%v", status.AuditCoverage, code, runErr)
+	if status.AuditCoverage == "incomplete" {
+		if code != 1 || runErr == nil || !strings.Contains(runErr.Error(), "audit coverage is incomplete") {
+			t.Fatalf("incomplete audit coverage was not surfaced: status=%+v err=%v", status, runErr)
+		}
+	} else if status.AuditCoverage != "complete" || runErr != nil || code != 0 {
+		t.Fatalf("unexpected block audit result: status=%+v err=%v", status, runErr)
+	}
+	if err := listener.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	buffer := make([]byte, 256)
+	read, _, err := listener.ReadFromUDP(buffer)
+	if err != nil {
+		t.Fatalf("UDP receiver did not get source payload: %v", err)
+	}
+	if !bytes.Equal(buffer[:read], secretContents) {
+		t.Fatalf("UDP receiver got unexpected payload %q", buffer[:read])
 	}
 }
 
