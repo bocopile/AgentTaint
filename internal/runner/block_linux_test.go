@@ -8,7 +8,10 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -17,6 +20,7 @@ import (
 	"github.com/bocopile/AgentTaint/internal/env"
 	"github.com/bocopile/AgentTaint/internal/policy"
 	"github.com/bocopile/AgentTaint/internal/taint"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -25,6 +29,7 @@ const (
 	blockAddressEnv = "AGENTTAINT_BLOCK_ADDRESS"
 	blockPortEnv    = "AGENTTAINT_BLOCK_PORT"
 	blockExpectEnv  = "AGENTTAINT_BLOCK_EXPECT"
+	blockWorkersEnv = "AGENTTAINT_BLOCK_WORKERS"
 )
 
 // TestKernelBlockChild is re-executed by the enforcement integration test as
@@ -38,6 +43,9 @@ func TestKernelBlockChild(t *testing.T) {
 	fd, openErr := syscall.Open(path, syscall.O_RDONLY, 0)
 	if openErr == nil {
 		_ = syscall.Close(fd)
+	}
+	if os.Getenv(blockWorkersEnv) != "" {
+		os.Exit(runConcurrentBlockChild(openErr))
 	}
 	if os.Getenv(blockExpectEnv) == "file-deny" {
 		_, _ = fmt.Fprintf(os.Stdout, "open_errno=%d\n", blockErrno(openErr))
@@ -74,6 +82,194 @@ func TestKernelBlockChild(t *testing.T) {
 		os.Exit(1)
 	}
 	os.Exit(0)
+}
+
+func runConcurrentBlockChild(openErr error) int {
+	workers, err := strconv.Atoi(os.Getenv(blockWorkersEnv))
+	if err != nil || workers < 2 || workers > 64 {
+		_, _ = fmt.Fprintf(os.Stdout, "invalid_worker_count=%q\n", os.Getenv(blockWorkersEnv))
+		return 2
+	}
+	address, err := net.ResolveTCPAddr("tcp4", net.JoinHostPort(os.Getenv(blockAddressEnv), os.Getenv(blockPortEnv)))
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stdout, "resolve_error=%q\n", err)
+		return 2
+	}
+	runtime.GOMAXPROCS(workers)
+	ready := sync.WaitGroup{}
+	ready.Add(workers)
+	start := make(chan struct{})
+	var allowed unix.CPUSet
+	if err := unix.SchedGetaffinity(0, &allowed); err != nil {
+		_, _ = fmt.Fprintf(os.Stdout, "get_affinity_error=%q\n", err)
+		return 2
+	}
+	cpus := make([]int, 0, allowed.Count())
+	for cpu := 0; cpu < len(allowed)*64; cpu++ {
+		if allowed.IsSet(cpu) {
+			cpus = append(cpus, cpu)
+		}
+	}
+	if len(cpus) < 2 {
+		_, _ = fmt.Fprintf(os.Stdout, "available_cpus=%d need_at_least=2\n", len(cpus))
+		return 2
+	}
+	type workerResult struct {
+		err      error
+		cpu      int
+		setupErr error
+	}
+	results := make(chan workerResult, workers)
+	for worker := range workers {
+		cpu := cpus[worker%len(cpus)]
+		go func() {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			var original unix.CPUSet
+			if err := unix.SchedGetaffinity(0, &original); err != nil {
+				ready.Done()
+				results <- workerResult{setupErr: err, cpu: cpu}
+				return
+			}
+			defer unix.SchedSetaffinity(0, &original)
+			var pinned unix.CPUSet
+			pinned.Set(cpu)
+			if err := unix.SchedSetaffinity(0, &pinned); err != nil {
+				ready.Done()
+				results <- workerResult{setupErr: err, cpu: cpu}
+				return
+			}
+			ready.Done()
+			<-start
+			fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+			if err != nil {
+				results <- workerResult{err: err, cpu: cpu}
+				return
+			}
+			err = syscall.Connect(fd, &syscall.SockaddrInet4{Port: address.Port, Addr: [4]byte{127, 0, 0, 1}})
+			_ = syscall.Close(fd)
+			results <- workerResult{err: err, cpu: cpu}
+		}()
+	}
+	ready.Wait()
+	close(start)
+	denied, connected, unexpected := 0, 0, 0
+	usedCPUs := make(map[int]struct{}, len(cpus))
+	for range workers {
+		result := <-results
+		usedCPUs[result.cpu] = struct{}{}
+		if result.setupErr != nil {
+			_, _ = fmt.Fprintf(os.Stdout, "worker_cpu=%d setup_error=%q\n", result.cpu, result.setupErr)
+			return 2
+		}
+		switch result.err {
+		case syscall.EPERM:
+			denied++
+		case nil:
+			connected++
+		default:
+			unexpected++
+		}
+	}
+	_, _ = fmt.Fprintf(os.Stdout, "open_errno=%d workers=%d cpus=%d denied=%d connected=%d unexpected=%d\n", blockErrno(openErr), workers, len(usedCPUs), denied, connected, unexpected)
+	if openErr != nil || denied != workers || connected != 0 || unexpected != 0 || len(usedCPUs) < 2 {
+		return 1
+	}
+	return 0
+}
+
+func TestRunBlockPropagatesSourceToConcurrentWorkerThreads(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to load BPF programs and create the block-mode run cgroup")
+	}
+	var allowedCPUs unix.CPUSet
+	if err := unix.SchedGetaffinity(0, &allowedCPUs); err != nil {
+		t.Skipf("cannot inspect CPUs available to this test: %v", err)
+	}
+	if allowedCPUs.Count() < 2 {
+		t.Skipf("requires at least two available CPUs for pinned worker concurrency; found %d", allowedCPUs.Count())
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-block-workers-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(secret, []byte("synthetic secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	endpoint := listener.Addr().(*net.TCPAddr)
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := fmt.Sprintf("sources:\n  - path: %q\n    label: SECRET\nrules:\n  - name: concurrent-worker-deny\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n", secret)
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "target")
+	input, err := os.Open(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	if err != nil {
+		_ = input.Close()
+		t.Fatal(err)
+	}
+	_, copyErr := output.ReadFrom(input)
+	closeInputErr := input.Close()
+	closeOutputErr := output.Close()
+	if err := errors.Join(copyErr, closeInputErr, closeOutputErr); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(blockChildEnv, "1")
+	t.Setenv(blockSourceEnv, secret)
+	t.Setenv(blockAddressEnv, endpoint.IP.String())
+	t.Setenv(blockPortEnv, fmt.Sprint(endpoint.Port))
+	t.Setenv(blockExpectEnv, "deny")
+	const workers = 8
+	t.Setenv(blockWorkersEnv, strconv.Itoa(workers))
+	var stdout, stderr bytes.Buffer
+	code, status, runErr := RunWithPolicyMode(context.Background(), env.Resolver{}, target, []string{target, "-test.run=^TestKernelBlockChild$"}, nil, &stdout, &stderr, filepath.Join(root, "audit.jsonl"), snapshot, &TargetIdentity{UID: 65534, GID: 65534}, ModeBlock)
+	t.Logf("target=%q requested=%s active=%s action=%s result=%s audit_coverage=%s code=%d err=%v", stdout.String(), status.RequestedMode, status.ActiveMode, status.ActualAction, status.Result, status.AuditCoverage, code, runErr)
+	if status.RequestedMode != ModeBlock || status.ActiveMode != ModeBlock || status.ActualAction != "pre_op_lsm_enforcement_active" {
+		t.Fatalf("block mode did not report active pre-operation enforcement: code=%d status=%+v stderr=%q err=%v", code, status, stderr.String(), runErr)
+	}
+	want := fmt.Sprintf("open_errno=0 workers=%d cpus=%d denied=%d connected=0 unexpected=0", workers, min(workers, allowedCPUs.Count()), workers)
+	if !strings.Contains(stdout.String(), want) {
+		t.Fatalf("source state was not enforced for every concurrent target worker: want %q, stdout=%q stderr=%q code=%d err=%v", want, stdout.String(), stderr.String(), code, runErr)
+	}
+	if status.AuditCoverage == "incomplete" {
+		if runErr == nil || !strings.Contains(runErr.Error(), "audit coverage is incomplete") {
+			t.Fatalf("incomplete audit coverage was not reported separately: status=%+v err=%v", status, runErr)
+		}
+	} else if status.AuditCoverage != "complete" || runErr != nil {
+		t.Fatalf("unexpected run result: status=%+v err=%v", status, runErr)
+	}
+	if err := listener.(*net.TCPListener).SetDeadline(time.Now().Add(250 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	conn, acceptErr := listener.Accept()
+	if acceptErr == nil {
+		_ = conn.Close()
+		t.Fatal("receiver accepted a connection from a concurrent worker denied by block mode")
+	}
+	if timeout, ok := acceptErr.(net.Error); !ok || !timeout.Timeout() {
+		t.Fatalf("concurrent-worker receiver check: %v", acceptErr)
+	}
 }
 
 func TestRunFailedSourceOpenTaintsKernelButNotReference(t *testing.T) {
