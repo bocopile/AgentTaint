@@ -2377,3 +2377,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestProcessTrackingExcludesPreexistingExternalProcess`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64의 Linux/arm64 sensor test binary로 3회 PASS했다. observer scope tracking 전부터 시작해 gate에서 기다린 unrelated process가 fixture 파일을 실제로 읽었다. run root는 tracked-process map에 있었고, 이미 존재하던 외부 PID는 없었다.
 - 이는 observer의 해당 run scope가 미리 존재한 unrelated PID의 effect를 자동 편입하지 않음을 확인한다. remote MCP 수행, daemon 경유 효과, 해당 effect에 대한 block policy 판정은 재현하지 않았고 `not_tested`; 이를 host 전체 효과 보호로 확대하지 않는다. P4-04 미완료다.
 - 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 sensor test-binary cross-build 및 `git diff --check`; guest test 3회 PASS.
+
+#### P4-04 실행 보강 — S27 binary stream/audit 분리 반복 — 2026-10-21
+
+- `TestRunObservedKeepsBinaryStreamsSeparateFromAudit`를 Linux/arm64 BPF-LSM guest에서 3회 PASS했다. stdin의 NUL/`0xff` 포함 bytes가 target에 보존됐고 stdout의 입력 echo/추가 binary 및 stderr marker가 각각 기대 bytes와 일치했다. audit는 별도 파일로 유지됐으며 non-empty JSONL records는 decoder 검사를 통과했다.
+- 이 fixture의 assertions는 사용자 stream과 audit storage 분리만 확인하고 incomplete audit condition은 별도로 허용한다. 전체 audit completeness, 다른 kernel/architecture 및 더 큰 stream/용량 경계는 `not_tested`; P4-04 미완료다.
+- 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check`; guest test 3회 PASS.
