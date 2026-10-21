@@ -2383,3 +2383,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunObservedKeepsBinaryStreamsSeparateFromAudit`를 Linux/arm64 BPF-LSM guest에서 3회 PASS했다. stdin의 NUL/`0xff` 포함 bytes가 target에 보존됐고 stdout의 입력 echo/추가 binary 및 stderr marker가 각각 기대 bytes와 일치했다. audit는 별도 파일로 유지됐으며 non-empty JSONL records는 decoder 검사를 통과했다.
 - 이 fixture의 assertions는 사용자 stream과 audit storage 분리만 확인하고 incomplete audit condition은 별도로 허용한다. 전체 audit completeness, 다른 kernel/architecture 및 더 큰 stream/용량 경계는 `not_tested`; P4-04 미완료다.
 - 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check`; guest test 3회 PASS.
+
+#### P4-04 실행 재확인 — S29 guest filesystem inventory — 2026-10-21
+
+- 현재 `ebpf-lab`에서 `findmnt -rn -o TARGET,SOURCE,FSTYPE`를 읽기 전용으로 다시 확인했다. `/`는 `/dev/vda1` ext4, `/tmp`는 tmpfs, `/mnt/lima-cidata`는 `/dev/vdb` iso9660로 보였고 목록에 virtiofs/9p/sshfs 또는 project 공유 mount는 없었다.
+- 이 inventory는 현재 guest mount만 말해 준다. host-shared filesystem에서 동일 파일을 읽는 것, UID/mode/inode mapping은 이 guest에 해당 mount가 없어 `not_tested`; 일반 Lima 설정이나 공유 mount 경로의 보장으로 확대하지 않으며 P4-04 미완료다.
+- 검증: guest `findmnt` read-only inventory; host-shared filesystem behavior는 `not_tested`.
