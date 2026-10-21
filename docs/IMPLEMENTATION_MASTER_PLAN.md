@@ -2452,3 +2452,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 새 Linux/arm64 runner test binary에서 S25 `TestRunObservedSeparatesConcurrentRuns`를 5회 실행했다. 다섯 번 모두 `file-openat-path-unreadable-success`가 발생했고 값은 run별 2 또는 4였다. `openat2` path failure는 발생하지 않았다. fixture event와 서로 다른 RunID/ScopeID는 확인됐지만 audit incomplete로 인해 다섯 번 모두 `SKIP`; complete concurrent audit isolation 및 무누락은 여전히 `not_tested`다. 손실의 더 구체적인 경로/원인은 미해결이다.
 - regenerated BPF에서 `TestFileAndConnectObserver`를 taskset CPU 0 및 CPU 1에서 각각 3회 PASS했다. CPU pinning이 없는 실행은 첫 파일 이벤트 timeout으로 3회 실패했고 drop counters는 모두 0이었다. 이는 observer event delivery의 실행 조건 민감성을 보여주지만 원인을 특정하지 못했으며, pinning된 테스트 결과를 전 CPU 보장으로 일반화하지 않는다.
 - 검증: host `gofmt`, `go test ./...`, `go vet ./...`, `go build ./...`(모두 exit 0; build에서 module stat-cache write 경고), Linux/arm64 runner 및 sensor test-binary cross-build, `git diff --check`, guest S25 5회 incomplete-evidence SKIP, guest observer CPU 0/1 각각 3회 PASS. 이 turn에서 amd64 runtime은 실행하지 않았다.
+
+#### P4-04 재현 — S25 path loss의 단일 run 대조 — 2026-10-21
+
+- `TestRunObservedPolicyAuditPipeline` 단일 `RunObserved` fixture를 BPF-LSM guest에서 3회 실행했다. 세 번 모두 `file-openat-path-unreadable-success=6` 및 `file-openat-path-unreadable-other-error=4`로 coverage incomplete가 발생해 assertion 경로가 실패했다. 따라서 syscall별 path capture 손실은 S25 동시 실행에서만 생기는 현상은 아니다.
+- 이 대조는 단일 run의 동일 openat capture gap을 확인하지만 S25의 두 run 간 audit 혼합 여부를 판정하지 않는다. helper의 `-EFAULT` 사례가 앞선 P4-02 기록에서 확인됐더라도 이 fixture의 각 손실 이벤트를 path·개별 syscall과 연결하지는 못했다. 정확한 원인은 `not_tested`; 완전한 run별 audit completeness는 계속 미완료다.
+- 검증: 기존 Linux/arm64 runner test binary의 단일-run policy audit test 3회 실행, 모두 incomplete-coverage failure. 제품 보안 동작이나 성공적인 audit acceptance로 계산하지 않는다.
