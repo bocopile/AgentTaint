@@ -2200,3 +2200,12 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestTargetCredentialRejectsRootAndUnknownIdentity` guest PASS. `TestUnprivilegedTargetCannotModifyPolicyAuditOrControl` guest PASS: unprivileged target은 policy/audit에 쓰지 못했고 helper control socket FD 3도 보이지 않았다. `TestRunObservedSeparatesConcurrentRuns`에서는 두 target의 UID/GID, 빈 supplementary groups, `no_new_privs=1`, effective/permitted/inheritable/ambient capability 0 및 high FD 비노출 검사가 target output을 통해 통과했고 run ID/scope도 서로 달랐다. 다만 전체 test는 audit coverage incomplete 때문에 `SKIP`으로 끝났으므로 audit-isolation acceptance는 완료로 판정하지 않는다.
 - S34에서 직접 다룬 것은 observer-mode helper의 실행이다. capability-bearing setuid/file-capability 조합, block-mode에서의 동일 unprivileged profile, 다른 kernel/architecture는 `not_tested`. 이 기록은 테스트에서 확인한 privilege profile만 다루며 privilege 누출 부재를 모든 실행 경로에 일반화하지 않는다. P4-04는 미완료다.
 - 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check` PASS. guest setuid/no_new_privs 및 credential-rejection tests PASS; policy/audit/control boundary test PASS; concurrent groups/capabilities/FD assertion 통과, 최종 audit-completeness test는 `SKIP`.
+
+
+#### P4-04 실행 업데이트 — S35 policy snapshot·입력 거부 — 2026-10-21
+
+- `TestLoadResolvesSourceAndFreezesSnapshot` PASS: load 후 policy 파일을 invalid 내용으로 덮어쓴 뒤에도 snapshot의 digest와 `SECRET` 연결 `DENY` decision은 유지됐고, `SourcePaths` 반환 slice 변경도 내부 상태를 바꾸지 않았다.
+- `TestLoadRejectsMalformedOrUnsupportedPolicy` PASS: 중복 key, unknown field, 복수 YAML document, anchor/alias/merge, invalid label/action/CIDR/port, duplicate rule, path expansion 및 source 누락을 모두 거부했다. `TestLoadRejectsSizeAndRuleCountLimits`도 over-limit byte 크기, rule 수, source 수를 각각 거부했다.
+- 새 `TestCLIMalformedPolicyFailsBeforeStartingTarget` PASS: 중복 top-level `sources` key가 있는 policy에서 CLI가 `active=none`, `result=policy_load_failed`로 종료했고 target marker와 audit 파일은 생성되지 않았다. invalid policy load 실패 전에 target 실행·audit 생성이 없음을 확인했다.
+- 이번 범위는 Go snapshot/parser 및 CLI preflight다. byte limit의 정확한 경계값(정확히 최대 허용 크기), 실제 target 실행 중 원본 policy 파일을 바꾸는 guest 시나리오, 다른 kernel/architecture는 `not_tested`; 이 증거를 audit completeness나 BPF 집행 효과로 일반화하지 않는다.
+- 검증: host `gofmt`, `go test -v ./internal/policy ./cmd/agenttaint`, `go test ./...`, `go vet ./...`, `git diff --check` PASS. P4-04 전체는 미완료다.

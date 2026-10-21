@@ -94,6 +94,27 @@ func TestCLIPolicyModesRequireExplicitInputsAndReportPreflight(t *testing.T) {
 	}
 }
 
+func TestCLIMalformedPolicyFailsBeforeStartingTarget(t *testing.T) {
+	root := t.TempDir()
+	policyPath := filepath.Join(root, "policy.yaml")
+	if err := os.WriteFile(policyPath, []byte("sources: []\nsources: []\nrules: []\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(root, "target-started")
+	auditPath := filepath.Join(root, "audit.jsonl")
+	args := []string{"run", "--mode", "monitor", "--policy", policyPath, "--audit-file", auditPath, "--", "/usr/bin/touch", marker}
+	var out, diagnostic bytes.Buffer
+	if code := run(args, nil, &out, &diagnostic, env.Resolver{}); code != 1 || !strings.Contains(diagnostic.String(), "active=none") || !strings.Contains(diagnostic.String(), "result=policy_load_failed") {
+		t.Fatalf("malformed policy did not fail preflight: code=%d stdout=%q stderr=%q", code, out.String(), diagnostic.String())
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("target started after malformed policy rejection: marker stat err=%v", err)
+	}
+	if _, err := os.Stat(auditPath); !os.IsNotExist(err) {
+		t.Fatalf("audit file was created before malformed policy rejection: stat err=%v", err)
+	}
+}
+
 func TestUnsupportedPolicyModesFailBeforeStartingTarget(t *testing.T) {
 	if runtime.GOOS == "linux" {
 		t.Skip("Linux mode startup is covered by guest integration tests")
