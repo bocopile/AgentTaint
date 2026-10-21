@@ -2166,3 +2166,10 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 
 - amd64 Linux runner test binary와 전체 Go packages의 `GOOS=linux GOARCH=amd64` cross-build PASS; 생성 binary는 x86-64 ELF64로 확인했다.
 - 실제 runtime inventory에는 aarch64 `ebpf-lab`만 있었다. `qemu-system-x86_64`는 PATH에서 발견되지 않았고 Docker CLI는 daemon socket 부재로 연결되지 않았다. amd64 guest의 kernel/BPF verifier/load/attach 및 지원 scenario 실행은 `not_tested`; compile 결과를 runtime 증거로 간주하지 않는다. S30/P4-04 미완료.
+
+
+#### P4-04 실행 업데이트 — S31 실행 전에 열거나 환경으로 받은 데이터 — 2026-10-21
+
+- `TestRunBlockDoesNotLabelPreopenedStdinOrEnvironment`를 BPF-LSM 활성 aarch64 guest(`7.0.0-38-generic`)에서 PASS했다. supervisor가 protected run 전에 synthetic secret 파일을 열어 stdin으로 전달했고 같은 bytes를 환경변수에도 넣었다. target은 stdin 전체와 환경값 일치를 확인한 뒤 `connect_errno=0`으로 loopback receiver에 연결했으며 receiver도 연결을 수락했다. 정책 source 경로와 deny rule이 설정되어 있었지만 감사 로그에서 deny `PolicyViolationEvent`는 없었다.
+- 이 fixture는 run 이전에 열린 descriptor 및 환경변수의 값이 이번 source tracking 범위에 들어오지 않는 한계를 보여준다. 이를 secret이 없거나 안전하다는 뜻으로 해석하지 않는다. byte-level taint 또는 모든 정보 흐름 추적을 주장하지 않는다. audit incompleteness는 별도로 허용·보고하며 전체 audit coverage는 완료로 판정하지 않는다. 다른 입력 경로·kernel·architecture는 `not_tested`; P4-04 미완료다.
+- 검증: `gofmt`, host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check`, guest fixture PASS.

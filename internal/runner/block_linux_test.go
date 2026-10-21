@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -31,7 +32,37 @@ const (
 	blockExpectEnv  = "AGENTTAINT_BLOCK_EXPECT"
 	blockWorkersEnv = "AGENTTAINT_BLOCK_WORKERS"
 	blockRaceEnv    = "AGENTTAINT_BLOCK_RACE"
+	preopenedEnv    = "AGENTTAINT_PREOPENED_SOURCE"
 )
+
+func TestKernelPreopenedSourceChild(t *testing.T) {
+	if os.Getenv(blockChildEnv) != "preopened-source" {
+		return
+	}
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	environmentData := []byte(os.Getenv(preopenedEnv))
+	address, err := net.ResolveTCPAddr("tcp4", net.JoinHostPort(os.Getenv(blockAddressEnv), os.Getenv(blockPortEnv)))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	socket, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	connectErr := syscall.Connect(socket, &syscall.SockaddrInet4{Port: address.Port, Addr: [4]byte{127, 0, 0, 1}})
+	_ = syscall.Close(socket)
+	fmt.Printf("preopened_bytes=%d env_match=%t connect_errno=%d\n", len(data), bytes.Equal(data, environmentData), blockErrno(connectErr))
+	if len(data) == 0 || !bytes.Equal(data, environmentData) || connectErr != nil {
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
 
 // TestKernelBlockChild is re-executed by the enforcement integration test as
 // the unprivileged target process. The parent test filters it out.
@@ -963,4 +994,107 @@ func TestRunBlockedSourceTaintDeniesConnectWithAllowControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("allow-control runner result: code=%d err=%v", allowedCode, allowedErr)
+}
+
+func TestRunBlockDoesNotLabelPreopenedStdinOrEnvironment(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires a privileged runner and an unprivileged target")
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-preopened-source-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secretContents := []byte("synthetic preopened secret\n")
+	secret := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(secret, secretContents, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	endpoint := listener.Addr().(*net.TCPAddr)
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := fmt.Sprintf("sources:\n  - path: %q\n    label: SECRET\nrules:\n  - name: preopened-egress\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n", secret)
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// This open occurs in the supervisor before the protected run begins.
+	preopened, err := os.Open(secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer preopened.Close()
+	target := filepath.Join(root, "target")
+	input, err := os.Open(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	if err != nil {
+		_ = input.Close()
+		t.Fatal(err)
+	}
+	_, copyErr := output.ReadFrom(input)
+	closeInputErr := input.Close()
+	closeOutputErr := output.Close()
+	if err := errors.Join(copyErr, closeInputErr, closeOutputErr); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(blockChildEnv, "preopened-source")
+	t.Setenv(preopenedEnv, string(secretContents))
+	t.Setenv(blockAddressEnv, endpoint.IP.String())
+	t.Setenv(blockPortEnv, fmt.Sprint(endpoint.Port))
+	var stdout, stderr bytes.Buffer
+	auditPath := filepath.Join(root, "audit.jsonl")
+	code, status, runErr := RunWithPolicyMode(context.Background(), env.Resolver{}, target, []string{target, "-test.run=^TestKernelPreopenedSourceChild$"}, preopened, &stdout, &stderr, auditPath, snapshot, &TargetIdentity{UID: 65534, GID: 65534}, ModeBlock)
+	if status.ActiveMode != ModeBlock || status.ActualAction != "pre_op_lsm_enforcement_active" || status.Result != "target_exit_code=0" {
+		t.Fatalf("block mode or target result was not reported accurately: code=%d status=%+v err=%v stdout=%q stderr=%q", code, status, runErr, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), fmt.Sprintf("preopened_bytes=%d env_match=true connect_errno=0", len(secretContents))) {
+		t.Fatalf("target did not consume the pre-opened/environment inputs and complete connect: code=%d status=%+v err=%v stdout=%q stderr=%q", code, status, runErr, stdout.String(), stderr.String())
+	}
+	if status.AuditCoverage == "incomplete" {
+		if runErr == nil || !strings.Contains(runErr.Error(), "audit coverage is incomplete") {
+			t.Fatalf("incomplete audit coverage was not distinguished: status=%+v err=%v", status, runErr)
+		}
+	} else if status.AuditCoverage != "complete" || runErr != nil || code != 0 {
+		t.Fatalf("unexpected pre-opened-source run result: code=%d status=%+v err=%v", code, status, runErr)
+	}
+	if err := listener.(*net.TCPListener).SetDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := listener.Accept()
+	if err != nil {
+		t.Fatalf("receiver did not observe the untainted pre-opened-source connection: %v", err)
+	}
+	_ = conn.Close()
+	audit, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range bytes.Split(bytes.TrimSpace(audit), []byte{'\n'}) {
+		if len(line) == 0 {
+			continue
+		}
+		event, err := core.DecodeEvent(line)
+		if err != nil {
+			t.Fatalf("decode pre-opened-source audit event: %v", err)
+		}
+		if violation, ok := event.(*core.PolicyViolationEvent); ok && violation.Decision == "deny" {
+			t.Fatalf("pre-opened source or environment unexpectedly produced a policy deny: %#v", violation)
+		}
+	}
 }
