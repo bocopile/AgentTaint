@@ -2161,3 +2161,8 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 
 - 기존 `ebpf-lab` guest에서 읽기 전용 `findmnt -rn -o TARGET,SOURCE,FSTYPE`를 확인했다. `/`는 `/dev/vda1` ext4, `/tmp`는 tmpfs이며 목록에서 virtiofs/9p/sshfs 또는 host project 공유 mount는 보이지 않았다. 이 guest에서 복사·생성한 검증 artifact는 guest-local 경로를 사용했다.
 - host-shared filesystem의 동일 파일 접근, permission mapping, identity/inode 차이는 이 환경에 mount가 없어 실행하지 않았으며 `not_tested`다. mount inventory는 현재 guest 설정에 한정되고 일반 Lima 공유 mount의 동작 보장이 아니다. P4-04 미완료.
+
+#### P4-04 실행 업데이트 — S30 amd64 교차 아키텍처 — 2026-10-21
+
+- amd64 Linux runner test binary와 전체 Go packages의 `GOOS=linux GOARCH=amd64` cross-build PASS; 생성 binary는 x86-64 ELF64로 확인했다.
+- 실제 runtime inventory에는 aarch64 `ebpf-lab`만 있었다. `qemu-system-x86_64`는 PATH에서 발견되지 않았고 Docker CLI는 daemon socket 부재로 연결되지 않았다. amd64 guest의 kernel/BPF verifier/load/attach 및 지원 scenario 실행은 `not_tested`; compile 결과를 runtime 증거로 간주하지 않는다. S30/P4-04 미완료.
