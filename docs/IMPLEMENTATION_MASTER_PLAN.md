@@ -2126,3 +2126,10 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestAuditCoverageLossRemainsStickyAfterQueueRecovers`를 Linux/arm64 BPF-LSM guest에서 PASS했다. 합성 audit writer queue를 포화해 `writer-queue-full=1`을 만든 뒤 queue 공간을 회복시켜 후속 이벤트가 다시 enqueue되는 것, coverage 기록이 계속 incomplete인 것, incomplete history 뒤의 연속 sink 이벤트에서 정책 verdict가 생성되지 않는 것을 확인했다.
 - **범위 한계:** 이는 writer queue loss 주입 단위 테스트다. 실제 BPF ring-buffer drop 발생 후 target이 계속 실행되고 drop 증가가 멈춘 구간까지 확인한 것은 아니므로 S37 ring-buffer acceptance는 `not_tested`다. drop 이후 집행 동작의 통합 증거와 mode/audit health 분리는 S36 guest 결과에서 확인된 범위만 참조한다.
 - 검증: host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check`, guest 단위 테스트 PASS. P4-04는 미완료다.
+
+#### P4-04 실행 업데이트 — S38 supervisor 제어·FD 경계 — 2026-10-21
+
+- `TestObserveHelperClosesControlFDBeforeTargetExec`를 BPF-LSM 활성 aarch64 guest에서 PASS했다. launch helper가 exec 직전 control FD에 `FD_CLOEXEC`를 적용한 뒤 target script는 fd 3이 socket이 아님과 parent가 열어 둔 fd 200이 target에 없음을 확인했다.
+- `TestUnprivilegedTargetCannotSignalOrPtraceSupervisor` guest 실행 PASS: target의 supervisor `SIGTERM` 및 ptrace 시도가 모두 `EPERM`이었고 runner는 생존했다. 이 시도에서 runner는 기존 `file-path-unreadable-success=4`로 audit coverage incomplete를 함께 반환했다.
+- `TestRunObservedSeparatesConcurrentRuns` 추가 실행은 `file-path-unreadable-success=2` 때문에 coverage incomplete로 실패했다. 따라서 이 fixture의 run별 audit 격리 assertions는 실행 완료되지 않았으며 S25/S38의 감사 로그 분리 보장은 `not_tested`다. control/high-FD helper test의 직접 descriptor 결과와 혼동하지 않는다.
+- 검증: host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check`, 위 control/high-FD 및 signal/ptrace guest 테스트 PASS. P4-04 전체는 미완료다.

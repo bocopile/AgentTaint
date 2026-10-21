@@ -34,6 +34,62 @@ const (
 	supervisorTamperTargetEnv   = "AGENTTAINT_SUPERVISOR_TAMPER_TARGET"
 )
 
+func TestObserveHelperClosesControlFDBeforeTargetExec(t *testing.T) {
+	identity := &TargetIdentity{UID: uint32(os.Geteuid()), GID: uint32(os.Getegid())}
+	if os.Geteuid() == 0 {
+		identity = &TargetIdentity{UID: 65534, GID: 65534}
+	}
+	credential, expectedIdentity, err := targetCredential(identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-control-fd-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	markerFD, err := unix.Open("/dev/null", unix.O_RDONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	highFD, err := unix.FcntlInt(uintptr(markerFD), unix.F_DUPFD, 200)
+	_ = unix.Close(markerFD)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Close(highFD)
+	target := filepath.Join(root, "target")
+	script := fmt.Sprintf("#!/bin/sh\nif [ -S /proc/self/fd/3 ]; then echo control_fd_unavailable=0; exit 1; fi\nif [ -e /proc/self/fd/%d ]; then echo unrelated_fd_unavailable=0; exit 1; fi\necho control_fd_unavailable=1 unrelated_fd_unavailable=1\n", highFD)
+	if err := os.WriteFile(target, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	cmd, controlFD, nonce, err := startObserveHelper(context.Background(), target, []string{target}, nil, &stdout, &stderr, credential, expectedIdentity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Close(controlFD)
+	if err := writeLaunchPermit(controlFD, helperStartFrame(nonce)); err != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		t.Fatalf("send exact launch permit: %v", err)
+	}
+	if err := waitHelperExec(controlFD, 5*time.Second); err != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		t.Fatalf("target helper did not close its control channel on exec: %v stderr=%q", err, stderr.String())
+	}
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("target control-fd probe failed: %v stdout=%q stderr=%q", err, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "control_fd_unavailable=1 unrelated_fd_unavailable=1") {
+		t.Fatalf("target did not confirm supervisor and unrelated high FDs were unavailable: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
 func TestRunObservedSeparatesConcurrentRuns(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("requires root privileges to load and attach eBPF programs")
