@@ -2419,3 +2419,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunObservedNoNewPrivilegesBlocksSetuidTarget`와 `TestTargetCredentialRejectsRootAndUnknownIdentity`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 각각 3회 PASS했다. test-owned root-owned setuid `/usr/bin/id` fixture를 UID/GID 1000으로 실행한 observer 및 active block 경로 모두 `id -u=1000`을 반환해 이 fixture에서 setuid 재상승이 발생하지 않았다. root/unknown target identity는 helper validation 단계에서 거부됐다.
 - 이 실행은 단일 UID/GID profile과 해당 setuid exec 경로만 다룬다. supplementary-group/capability 조합, file capabilities, privileged target 및 management socket의 전체 권한 경계는 `not_tested`; 모든 profile로 일반화하지 않는다. audit incompleteness도 setuid assertion과 별도이며 P4-04 미완료다.
 - 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check`; 위 guest tests 각각 3회 PASS.
+
+#### P4-04 실행 보강 — S37 실제 kernel ring loss 후 policy verdict 억제 통합 — 2026-10-21
+
+- `TestKernelRingBufferDropSuppressesSubsequentPolicyVerdict`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 3회 PASS했다. 같은 실행에서 target의 synthetic source open을 kernel observer가 capture하고 Go reference에 `SECRET` label을 부여한 뒤, target의 `/dev/null` open flood로 실제 file ring reserve-drop counter 증가를 확인했다. 손실을 policy audit processor에 전달한 후 ring을 drain하고 같은 target의 IPv4 loopback connect를 관측·처리했다. 이때 불완전한 history로 policy violation verdict가 생성되지 않았고, receiver는 연결을 수락했으며 이후에도 incomplete 상태가 유지됐다.
+- 이는 observer ring loss 이후의 audit verdict 억제와 event recovery를 한 guest run 안에서 결합한 결과다. 이 검사는 audit 경로이며 connect 자체를 차단하지 않는다. syscall/path capture의 다른 손실 원인, 완전한 audit history, 다른 kernel/architecture, arm64 이외의 syscall ABI는 `not_tested`; P4-04는 미완료다.
+- 검증: host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build, `git diff --check` PASS; guest integration test 3회 PASS.
