@@ -2225,3 +2225,10 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 `TestEnforceProcessMapSaturationFailsClosed` PASS. enforcement process map의 `MaxEntries=16384`까지 채운 뒤 추가 삽입이 거부됐고, 해당 run cgroup의 비특권 target은 source file open과 이어진 IPv4 connect 모두 `EPERM`을 받았다. sticky enforcement fault가 `0x1`로 설정됐고 receiver는 연결을 받지 않았으며 test-owned cgroup·enforcer cleanup도 성공했다.
 - 이 증거는 enforcement process map 포화 시 fail-closed 처리에 한정된다. 다른 kernel/architecture, taint·event map의 실제 메모리 부족, kernel OOM 조건은 `not_tested`; P4-04 전체는 미완료다.
 - 검증: Linux/arm64 enforcement test-binary cross-compile, 위 guest test PASS, `git diff --check` PASS.
+
+
+#### P4-04 실행 검증 — S21 supervisor crash와 잔류 scope — 2026-10-21
+
+- BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 `TestRunKillModeSupervisorCrashLeavesDescendantScopeForExternalCleanup` PASS. test-owned supervisor에 `SIGKILL`을 보낸 뒤 detached descendant가 run cgroup에 남아 `cgroup.events`가 `populated 1`을 보고했고, 명시적인 외부 `cgroup.kill` cleanup 이후 cgroup 제거를 확인했다.
+- 이는 supervisor 비정상 종료 뒤 scope가 자동 정리되지 않는 lifecycle 결과와 test-owned 복구 경로만 확인한다. crash 이후 BPF link의 실제 집행 지속 여부, 최종 audit 기록·완전성, 다른 kernel/architecture는 `not_tested`; 보호 지속을 보장하지 않으며 P4-04는 미완료다.
+- 검증: Linux/arm64 runner test-binary cross-compile 및 위 guest test PASS.
