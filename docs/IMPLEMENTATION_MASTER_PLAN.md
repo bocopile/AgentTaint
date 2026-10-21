@@ -2120,3 +2120,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - target의 실제 종료는 `status.Result=target_exit_code=0`이었다. runner 호출은 기존 `file-path-unreadable-success=4`로 audit coverage incomplete를 반환해 process-level code 1이었으며 이를 target 실패로 오인하지 않도록 구분했다.
 - 본 결과는 일반 연결 실패가 정책 deny와 구별되는 해당 syscall fixture 증거다. 수신 측 서버가 준비된 positive/negative effect 대조군, 다른 오류 코드·kernel·architecture, 전체 audit completeness는 별도 검증 대상이며 여기서 완료로 간주하지 않는다. 기존 `file-path-unreadable-success` 제한도 유지된다.
 - 이 작업 단위 검증: `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile 및 `git diff --check` PASS; 게스트 대상 테스트 PASS. P4-04 전체는 미완료다.
+
+#### P4-04 실행 업데이트 — S37 audit loss 후 복구 특성 — 2026-10-21
+
+- `TestAuditCoverageLossRemainsStickyAfterQueueRecovers`를 Linux/arm64 BPF-LSM guest에서 PASS했다. 합성 audit writer queue를 포화해 `writer-queue-full=1`을 만든 뒤 queue 공간을 회복시켜 후속 이벤트가 다시 enqueue되는 것, coverage 기록이 계속 incomplete인 것, incomplete history 뒤의 연속 sink 이벤트에서 정책 verdict가 생성되지 않는 것을 확인했다.
+- **범위 한계:** 이는 writer queue loss 주입 단위 테스트다. 실제 BPF ring-buffer drop 발생 후 target이 계속 실행되고 drop 증가가 멈춘 구간까지 확인한 것은 아니므로 S37 ring-buffer acceptance는 `not_tested`다. drop 이후 집행 동작의 통합 증거와 mode/audit health 분리는 S36 guest 결과에서 확인된 범위만 참조한다.
+- 검증: host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check`, guest 단위 테스트 PASS. P4-04는 미완료다.
