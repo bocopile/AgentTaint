@@ -2144,3 +2144,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunObservedSeparatesConcurrentRuns`를 두 동시 target으로 실행했다. target stdout/stderr 유지와 high-FD 비상속 확인은 통과했고, 각 audit에 남은 event는 서로 다른 RunID·ScopeID를 가졌으며 sibling fixture 경로가 관찰된 로그에 섞이지 않았다.
 - 두 run 모두 `file-path-unreadable-success=2`로 audit coverage가 incomplete였다. 테스트는 target/available-record 검사 뒤 SKIP으로 종료되므로 run별 로그의 완전한 격리 acceptance는 `not_tested`다. 부분 로그의 분리는 전체 이력 무누락의 증거가 아니다.
 - 검증: host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile 및 `git diff --check` PASS; guest fixture의 출력·available audit 검사 통과, 전체 audit 조건 SKIP. P4-04 미완료.
+
+#### P4-04 실행 업데이트 — S27 바이너리 stream·audit 분리 — 2026-10-21
+
+- `TestRunObservedKeepsBinaryStreamsSeparateFromAudit`를 Linux/arm64 guest에서 PASS했다. target stdin에 NUL/`0xff`를 포함한 bytes를 전달하고, stdout의 원본+추가 binary 및 stderr의 별도 binary marker가 바이트 단위로 보존됐다. audit는 별도 파일에 기록됐고 각 non-empty line이 `core.DecodeEvent`를 통과했다.
+- 테스트는 알려진 audit incompleteness를 target stream 실패와 구별해 허용하므로 이 결과를 coverage complete로 해석하지 않는다. 사용자 출력 stream과 JSON audit 저장 경계만 검증했으며 다른 kernel/architecture는 `not_tested`; P4-04 미완료다.
+- 검증: host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check` 및 guest fixture PASS.

@@ -790,6 +790,53 @@ func TestRunBlockHookPreparationFailureDoesNotStartTarget(t *testing.T) {
 	}
 }
 
+func TestRunObservedKeepsBinaryStreamsSeparateFromAudit(t *testing.T) {
+	root, err := os.MkdirTemp("/tmp", "agenttaint-binary-streams-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "target")
+	script := "#!/bin/sh\ncat\nprintf '\\377\\000'\nprintf '\\000\\376err' >&2\n"
+	if err := os.WriteFile(target, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	identity := &TargetIdentity{UID: uint32(os.Geteuid()), GID: uint32(os.Getegid())}
+	if os.Geteuid() == 0 {
+		identity = &TargetIdentity{UID: 65534, GID: 65534}
+	}
+	stdin := []byte{0x00, 0xff, 'j', 's', 'o', 'n', '\n'}
+	wantStdout := append(append([]byte(nil), stdin...), 0xff, 0x00)
+	wantStderr := []byte{0x00, 0xfe, 'e', 'r', 'r'}
+	var stdout, stderr bytes.Buffer
+	auditPath := filepath.Join(root, "audit.jsonl")
+	code, runErr := RunObserved(context.Background(), env.Resolver{}, target, []string{target}, bytes.NewReader(stdin), &stdout, &stderr, auditPath, identity)
+	if code != 0 && !(code == 1 && runErr != nil && strings.Contains(runErr.Error(), "audit coverage is incomplete")) {
+		t.Fatalf("target failed for a reason other than reported audit incompleteness: code=%d err=%v stdout=%v stderr=%v", code, runErr, stdout.Bytes(), stderr.Bytes())
+	}
+	if !bytes.Equal(stdout.Bytes(), wantStdout) {
+		t.Fatalf("binary stdin/stdout changed: got=%v want=%v", stdout.Bytes(), wantStdout)
+	}
+	if !bytes.Equal(stderr.Bytes(), wantStderr) {
+		t.Fatalf("binary stderr changed or contains non-target diagnostics: got=%v want=%v", stderr.Bytes(), wantStderr)
+	}
+	audit, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range bytes.Split(bytes.TrimSpace(audit), []byte{'\n'}) {
+		if len(line) == 0 {
+			continue
+		}
+		if _, err := core.DecodeEvent(line); err != nil {
+			t.Fatalf("audit contains target stream bytes or an invalid event: %q: %v", line, err)
+		}
+	}
+}
+
 func TestRunObservedNoNewPrivilegesBlocksSetuidTarget(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("requires root privileges to set up a setuid fixture")
