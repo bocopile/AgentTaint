@@ -2395,3 +2395,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 현재 소스에서 `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build ./...`와 runner test-binary cross-build를 다시 실행해 x86-64 ELF64 산출물을 확인했다. 빌드는 Go module stat-cache write 경고를 냈으나 exit 0이었다.
 - 현재 `limactl list`는 aarch64 `ebpf-lab`만 보였고 `qemu-system-x86_64`/podman은 PATH에서 찾지 못했다. Docker CLI는 있으나 `docker info`의 server 연결은 socket 부재로 실패했다. amd64 guest kernel/BPF verifier/load/attach/runtime은 이 세션에서 실행할 수 없어 `not_tested`; amd64 compile을 runtime evidence로 사용하지 않는다. S30/P4-04 미완료다.
 - 검증: Linux/amd64 package build 및 runner test-binary cross-build PASS; runtime inventory/read-only daemon probe에서 실행 환경 미확보 확인.
+
+#### P4-04 실행 보강 — S31 pre-run inputs 반복 확인 — 2026-10-21
+
+- `TestRunBlockDoesNotLabelPreopenedStdinOrEnvironment`를 BPF-LSM guest Linux `7.0.0-38-generic`, aarch64에서 3회 PASS했다. supervisor가 run 시작 전 source 파일을 열어 stdin으로 전달했고 같은 synthetic bytes를 environment에도 넣었다. target은 stdin/environment 값 일치를 확인한 뒤 loopback 연결했고 receiver가 이를 수락했다. deny policy가 있어도 이 pre-run input 경로는 source label로 감지되지 않았다.
+- 이 fixture는 protected run 전 열린 FD와 environment 입력 범위의 한계만 확인한다. 이를 데이터가 민감하지 않거나 안전하다는 뜻으로 해석하지 않으며 byte-level taint를 주장하지 않는다. audit completeness와 다른 pre-run input 경로/kernel/architecture는 `not_tested`; P4-04 미완료다.
+- 검증: 기존 host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check`; guest test 3회 PASS.
