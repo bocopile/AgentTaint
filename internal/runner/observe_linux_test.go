@@ -1452,13 +1452,36 @@ func TestSupervisorTamperRunnerChild(t *testing.T) {
 		t.Fatalf("target could signal or ptrace the privileged runner, or probe output is missing: code=%d err=%v stdout=%q stderr=%q", code, runErr, stdout.String(), stderr.String())
 	}
 	fmt.Printf("tamper_probe code=%d audit_error=%v target=%q\n", code, runErr, strings.TrimSpace(stdout.String()))
+	secret := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(secret, []byte("synthetic secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	policyPath := filepath.Join(root, "block-policy.yaml")
+	policyText := "sources:\n  - path: " + secret + "\n    label: SECRET\nrules:\n  - name: supervisor-tamper-block\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n"
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var blockStdout, blockStderr bytes.Buffer
+	blockCode, blockStatus, blockErr := RunWithPolicyMode(context.Background(), env.Resolver{}, target, []string{target, "-test.run=^TestObserveTargetSupervisorTamperChild$"}, nil, &blockStdout, &blockStderr, filepath.Join(root, "block-audit.jsonl"), snapshot, &TargetIdentity{UID: 65534, GID: 65534}, ModeBlock)
+	blockAuditIncomplete := blockErr != nil && strings.Contains(blockErr.Error(), "audit coverage is incomplete")
+	if blockStatus.ActiveMode != ModeBlock || blockStatus.ActualAction != "pre_op_lsm_enforcement_active" || blockStatus.Result != "target_exit_code=0" || !strings.Contains(blockStdout.String(), "signal_errno=1 ptrace_errno=1") {
+		t.Fatalf("block-mode runner control boundary failed: code=%d status=%+v err=%v stdout=%q stderr=%q", blockCode, blockStatus, blockErr, blockStdout.String(), blockStderr.String())
+	}
+	if (blockCode != 0 && !(blockCode == 1 && blockAuditIncomplete)) || (blockErr != nil && !blockAuditIncomplete) {
+		t.Fatalf("block-mode tamper probe returned unexpected audit/result status: code=%d status=%+v err=%v", blockCode, blockStatus, blockErr)
+	}
+	t.Logf("block-mode tamper probe: audit_coverage=%s code=%d err=%v", blockStatus.AuditCoverage, blockCode, blockErr)
 }
 
 func TestUnprivilegedTargetCannotSignalOrPtraceSupervisor(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("requires a privileged runner and a separate unprivileged target")
 	}
-	command := exec.Command(os.Args[0], "-test.run=^TestSupervisorTamperRunnerChild$")
+	command := exec.Command(os.Args[0], "-test.run=^TestSupervisorTamperRunnerChild$", "-test.v")
 	command.Env = append(os.Environ(), supervisorTamperRunnerEnv+"=1")
 	output, err := command.CombinedOutput()
 	if err != nil {

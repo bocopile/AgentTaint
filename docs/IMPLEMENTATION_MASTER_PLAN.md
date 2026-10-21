@@ -2293,3 +2293,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 새 `TestLoadAcceptsPolicyAtByteLimit` PASS. valid policy 문서 뒤에 YAML comment padding을 추가해 입력 크기를 정확히 `maxPolicyBytes`(1 MiB)로 맞췄고 loader가 이를 수락했다. 기존 over-limit 거부 검사와 결합해 정확한 상한은 inclusive이고 1 byte 초과는 거부됨을 확인했다.
 - 이는 parser 입력 byte 수 경계에 한정된다. live block run 중 원본 policy 교체의 kernel/user-space 결합, 정확한 최대 source/rule 개수 경계 및 다른 architecture는 `not_tested`; P4-04 미완료.
 - 검증: targeted exact-boundary test, host `go test ./...`, `go vet ./...`, `git diff --check` PASS.
+
+#### P4-04 실행 보강 — S38 block mode supervisor signal/ptrace 경계 — 2026-10-21
+
+- `TestUnprivilegedTargetCannotSignalOrPtraceSupervisor`를 observer harness의 block-mode path까지 확장해 BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 3회 PASS했다. UID/GID 65534 target의 privileged supervisor `SIGTERM`과 ptrace 시도가 각각 `EPERM`이었고 runner는 계속 동작했다. block run은 `ActiveMode=block`, `ActualAction=pre_op_lsm_enforcement_active`, target exit 0이었다.
+- 각 block run의 audit는 `file-path-unreadable-success=4`, `AuditCoverage=incomplete`, runner code 1이었다. 이는 process-control 권한 결과와 분리해 보고한다. 다른 kernel/architecture, privileged/same-UID target 및 모든 내부 descriptor 접근은 `not_tested`; 전체 control 경계 acceptance와 P4-04는 미완료다.
+- 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check` 및 observer/block guest test 3회 PASS.
