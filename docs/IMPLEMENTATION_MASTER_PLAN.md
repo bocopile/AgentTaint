@@ -2458,3 +2458,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunObservedPolicyAuditPipeline` 단일 `RunObserved` fixture를 BPF-LSM guest에서 3회 실행했다. 세 번 모두 `file-openat-path-unreadable-success=6` 및 `file-openat-path-unreadable-other-error=4`로 coverage incomplete가 발생해 assertion 경로가 실패했다. 따라서 syscall별 path capture 손실은 S25 동시 실행에서만 생기는 현상은 아니다.
 - 이 대조는 단일 run의 동일 openat capture gap을 확인하지만 S25의 두 run 간 audit 혼합 여부를 판정하지 않는다. helper의 `-EFAULT` 사례가 앞선 P4-02 기록에서 확인됐더라도 이 fixture의 각 손실 이벤트를 path·개별 syscall과 연결하지는 못했다. 정확한 원인은 `not_tested`; 완전한 run별 audit completeness는 계속 미완료다.
 - 검증: 기존 Linux/arm64 runner test binary의 단일-run policy audit test 3회 실행, 모두 incomplete-coverage failure. 제품 보안 동작이나 성공적인 audit acceptance로 계산하지 않는다.
+
+#### P4-04 재현 — S25 CPU 고정 대조 — 2026-10-21
+
+- S25 `TestRunObservedSeparatesConcurrentRuns`를 BPF-LSM guest에서 supervisor와 target이 CPU 0에 고정된 상태로 3회, CPU 1 고정으로 3회 실행했다. 여섯 번 모두 target output/FD checks, fixture event 및 서로 다른 RunID/ScopeID 검사는 통과했으나 `file-openat-path-unreadable-success`로 coverage incomplete가 되어 SKIP됐다. 각 run의 손실 수는 2 또는 4였다.
+- 따라서 S25 `openat` 경로 캡처 손실은 이 guest CPU 0/1 affinity 조건에서 CPU migration으로 설명되지 않는다. 단일 run에서도 같은 reason이 반복됐으므로 동시 실행 전용 문제도 아니다. 실패 path의 실제 문자열/호출 지점과 helper 접근 실패의 원인은 여전히 `not_tested`; S25 complete audit isolation 미완료다.
+- 검증: guest Linux/arm64 BPF-LSM S25 test CPU 0 고정 3회, CPU 1 고정 3회, 모두 incomplete-evidence SKIP.
