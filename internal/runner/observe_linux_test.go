@@ -822,6 +822,77 @@ func TestRunObservedKeepsObserverUntilSetsidDescendantExits(t *testing.T) {
 	}
 }
 
+func TestRunKillModeCleansScopeAfterDetachedDescendantDrainLimit(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to create and kill the protected run cgroup")
+	}
+	setsid, err := exec.LookPath("setsid")
+	if err != nil {
+		t.Skip("requires util-linux setsid")
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-kill-descendant-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(root, "secret.txt")
+	if err := os.WriteFile(secret, []byte("synthetic secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := fmt.Sprintf("sources:\n  - path: %q\n    label: SECRET\nrules:\n  - name: detached-descendant\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n", secret)
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readyFIFO := filepath.Join(root, "descendant-ready")
+	if err := unix.Mkfifo(readyFIFO, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(readyFIFO, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(root, "descendant-survived")
+	script := filepath.Join(root, "target")
+	body := fmt.Sprintf("#!/bin/sh\n%s /bin/sh -c 'printf ready > %s; /bin/sleep 30; : > %s' </dev/null >/dev/null 2>&1 &\nIFS= read -r _ < %s\nexit 0\n", shellQuote(setsid), shellQuote(readyFIFO), shellQuote(marker), shellQuote(readyFIFO))
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var scopePath string
+	createScope := func() (*runCgroup, error) {
+		scope, err := createRunCgroup()
+		if err == nil {
+			scopePath = scope.path
+		}
+		return scope, err
+	}
+	status := ModeStatus{RequestedMode: ModeKill, ActiveMode: "none", ActualAction: "none", Result: "not_started", AuditCoverage: "unknown"}
+	started := time.Now()
+	code, runErr := runProtectedPlatformWithDependencies(context.Background(), script, []string{script}, nil, io.Discard, io.Discard, filepath.Join(root, "audit.jsonl"), snapshot, &TargetIdentity{UID: 65534, GID: 65534}, ModeKill, &status, createScope, enforce.New)
+	if time.Since(started) < childDrainGrace {
+		t.Fatalf("runner detached before its descendant drain limit: elapsed=%s status=%+v err=%v", time.Since(started), status, runErr)
+	}
+	if runErr == nil || !strings.Contains(runErr.Error(), "descendant-remained-after-drain-limit") || code == 0 {
+		t.Fatalf("detached descendant did not produce the configured drain-limit result: code=%d status=%+v err=%v", code, status, runErr)
+	}
+	if scopePath == "" {
+		t.Fatal("run cgroup was not created")
+	}
+	if _, err := os.Stat(scopePath); !os.IsNotExist(err) {
+		t.Fatalf("run cgroup scope was not removed after descendant cleanup: path=%q stat err=%v", scopePath, err)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("detached descendant survived run-scope cleanup: marker stat err=%v", err)
+	}
+	t.Logf("kill mode drain-limit cleanup: elapsed=%s cgroup_removed=true descendant_marker_absent=true status=%+v", time.Since(started), status)
+}
+
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
