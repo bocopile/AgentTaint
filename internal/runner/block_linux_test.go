@@ -75,6 +75,12 @@ func TestKernelBlockChild(t *testing.T) {
 	})
 	_ = syscall.Close(socket)
 	_, _ = fmt.Fprintf(os.Stdout, "open_errno=%d connect_errno=%d\n", blockErrno(openErr), blockErrno(connectErr))
+	if os.Getenv(blockExpectEnv) == "refused" {
+		if openErr != nil || connectErr != syscall.ECONNREFUSED {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 	want := "allow"
 	if os.Getenv(blockExpectEnv) == "deny" || os.Getenv(blockExpectEnv) == "source-open-fails" {
 		want = "deny"
@@ -467,6 +473,107 @@ func TestRunBlockPropagatesSourceToConcurrentWorkerThreads(t *testing.T) {
 	}
 	if timeout, ok := acceptErr.(net.Error); !ok || !timeout.Timeout() {
 		t.Fatalf("concurrent-worker receiver check: %v", acceptErr)
+	}
+}
+
+func TestRunBlockDoesNotTreatUnrelatedConnectFailureAsPolicyDeny(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to load BPF programs and create the block-mode run cgroup")
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-block-negative-control-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(root, "secret.txt")
+	normal := filepath.Join(root, "normal.txt")
+	for path, contents := range map[string]string{secret: "synthetic secret\n", normal: "ordinary data\n"} {
+		if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reserved, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Close(reserved)
+	if err := syscall.Bind(reserved, &syscall.SockaddrInet4{Addr: [4]byte{127, 0, 0, 1}}); err != nil {
+		t.Fatal(err)
+	}
+	bound, err := syscall.Getsockname(reserved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := bound.(*syscall.SockaddrInet4).Port
+	policyPath := filepath.Join(root, "policy.yaml")
+	policyText := fmt.Sprintf("sources:\n  - path: %q\n    label: SECRET\nrules:\n  - name: unrelated-connect-failure\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: deny\n", secret)
+	if err := os.WriteFile(policyPath, []byte(policyText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := policy.Load(policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "target")
+	input, err := os.Open(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	if err != nil {
+		_ = input.Close()
+		t.Fatal(err)
+	}
+	_, copyErr := output.ReadFrom(input)
+	closeInputErr := input.Close()
+	closeOutputErr := output.Close()
+	if err := errors.Join(copyErr, closeInputErr, closeOutputErr); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(blockChildEnv, "1")
+	t.Setenv(blockSourceEnv, normal)
+	t.Setenv(blockAddressEnv, "127.0.0.1")
+	t.Setenv(blockPortEnv, fmt.Sprint(port))
+	t.Setenv(blockExpectEnv, "refused")
+	var stdout, stderr bytes.Buffer
+	code, status, runErr := RunWithPolicyMode(context.Background(), env.Resolver{}, target, []string{target, "-test.run=^TestKernelBlockChild$"}, nil, &stdout, &stderr, filepath.Join(root, "audit.jsonl"), snapshot, &TargetIdentity{UID: 65534, GID: 65534}, ModeBlock)
+	if status.Result != "target_exit_code=0" {
+		t.Fatalf("negative-control target did not exit successfully: code=%d status=%+v stdout=%q stderr=%q err=%v", code, status, stdout.String(), stderr.String(), runErr)
+	}
+	if !strings.Contains(stdout.String(), "open_errno=0 connect_errno=111") {
+		t.Fatalf("closed, reserved port did not produce the expected unrelated ECONNREFUSED: code=%d status=%+v stdout=%q stderr=%q err=%v", code, status, stdout.String(), stderr.String(), runErr)
+	}
+	if status.ActiveMode != ModeBlock || status.ActualAction != "pre_op_lsm_enforcement_active" {
+		t.Fatalf("block capability status was lost during the negative control: %+v", status)
+	}
+	if status.AuditCoverage == "incomplete" {
+		if runErr == nil || !strings.Contains(runErr.Error(), "audit coverage is incomplete") {
+			t.Fatalf("incomplete audit coverage was not reported: %+v err=%v", status, runErr)
+		}
+	} else if status.AuditCoverage != "complete" || runErr != nil {
+		t.Fatalf("unexpected negative-control result: %+v err=%v", status, runErr)
+	}
+	audit, err := os.ReadFile(filepath.Join(root, "audit.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range bytes.Split(bytes.TrimSpace(audit), []byte{'\n'}) {
+		if len(line) == 0 {
+			continue
+		}
+		event, err := core.DecodeEvent(line)
+		if err != nil {
+			t.Fatalf("decode negative-control audit event: %v", err)
+		}
+		if violation, ok := event.(*core.PolicyViolationEvent); ok && violation.Decision == "deny" {
+			t.Fatalf("unlabeled process was reported as an AgentTaint deny: %#v", violation)
+		}
 	}
 }
 

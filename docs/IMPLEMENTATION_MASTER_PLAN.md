@@ -2113,3 +2113,10 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestRunBlockSourceConnectRaceAcrossPinnedCPUs` ran ten times in active BPF-LSM guest Linux `7.0.0-38-generic`, aarch64. Source-open and IPv4-connect syscalls started together on separate locked OS threads pinned to CPU 0 and CPU 1. The connect was allowed in 7/10 runs and returned `EPERM` in 3/10; controlled receiver effects matched each connect result. In all ten runs, a new connect issued after source-open completion returned `EPERM`.
 - Host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build and `git diff --check` passed.
 - **해석 한계:** the simultaneous syscalls have no happens-before relation; this fixture does not establish that a connect whose userspace call begins after source-open begins must be denied. It documents both legal hook orderings observed under the current synchronous projection and sticky post-source state. A stricter “source intent precedes all concurrent sinks” guarantee would require a defined synchronization contract beyond this result. The guest/kernel evidence is arm64-only; P4-04 remains in progress.
+
+#### P4-04 실행 업데이트 — S36 부정 대조군 — 2026-10-21
+
+- `TestRunBlockDoesNotTreatUnrelatedConnectFailureAsPolicyDeny`를 BPF-LSM 활성 aarch64 guest(`7.0.0-38-generic`)에서 실행해 PASS했다. 미태그 target은 일반 파일 open을 성공시킨 뒤, listen하지 않고 bind된 loopback port로 연결해 `ECONNREFUSED`를 받았다. AgentTaint의 block mode와 pre-op hook 상태는 유지됐고, audit에 deny `PolicyViolationEvent`가 없었다.
+- target의 실제 종료는 `status.Result=target_exit_code=0`이었다. runner 호출은 기존 `file-path-unreadable-success=4`로 audit coverage incomplete를 반환해 process-level code 1이었으며 이를 target 실패로 오인하지 않도록 구분했다.
+- 본 결과는 일반 연결 실패가 정책 deny와 구별되는 해당 syscall fixture 증거다. 수신 측 서버가 준비된 positive/negative effect 대조군, 다른 오류 코드·kernel·architecture, 전체 audit completeness는 별도 검증 대상이며 여기서 완료로 간주하지 않는다. 기존 `file-path-unreadable-success` 제한도 유지된다.
+- 이 작업 단위 검증: `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile 및 `git diff --check` PASS; 게스트 대상 테스트 PASS. P4-04 전체는 미완료다.
