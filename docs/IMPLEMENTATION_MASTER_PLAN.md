@@ -2101,3 +2101,9 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - `TestEnforceProcessMapSaturationFailsClosed` passed in active BPF-LSM guest Linux `7.0.0-38-generic`, aarch64. It filled the live per-run enforcement process map to its runtime-reported capacity of 16,384 entries and confirmed an additional userspace insertion failed. A nonprivileged target in that run scope then attempted the configured source open and an IPv4 connect: both returned `EPERM`; the sticky kernel fault map read back `0x1`; the controlled receiver accepted no connection.
 - Host `go test ./...`, `go vet ./...`, Linux/arm64 enforce test-binary cross-build and `git diff --check` passed. The guest fixture destroyed its test-owned map/link and cgroup resources after the assertions.
 - This confirms fail-closed behavior for the enforcement process-state insertion failure on this guest/kernel. It does not characterize ring-buffer saturation, observer process-map saturation, other BPF maps, amd64, or kernels with different verifier/runtime behavior.
+
+#### P4-04 S38 target-to-supervisor control probe — 2026-10-21
+
+- `TestUnprivilegedTargetCannotSignalOrPtraceSupervisor` passed in active BPF-LSM guest Linux `7.0.0-38-generic`, aarch64. A root-owned runner subprocess launched a UID/GID 65534 target. The target's `kill(SIGTERM, parent)` and `ptrace(PTRACE_ATTACH, parent)` both returned `EPERM`; the runner subprocess remained alive and completed the run.
+- Host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build and `git diff --check` passed.
+- This covers only target signal and ptrace attempts against the runner parent on this guest. Existing P2 evidence separately checks that an unrelated high-numbered FD is not inherited; this probe does not enumerate every supervisor FD/control path. Internal-FD tampering, alternate UID/capability profiles, amd64 and other kernels remain `not_tested`. P4-04 stays in progress.

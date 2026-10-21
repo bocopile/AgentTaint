@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -29,6 +30,8 @@ const (
 	supervisorCrashPolicyEnv    = "AGENTTAINT_SUPERVISOR_CRASH_POLICY"
 	supervisorCrashTargetEnv    = "AGENTTAINT_SUPERVISOR_CRASH_TARGET"
 	supervisorCrashScopePathEnv = "AGENTTAINT_SUPERVISOR_CRASH_SCOPE_PATH"
+	supervisorTamperRunnerEnv   = "AGENTTAINT_SUPERVISOR_TAMPER_RUNNER"
+	supervisorTamperTargetEnv   = "AGENTTAINT_SUPERVISOR_TAMPER_TARGET"
 )
 
 func TestRunObservedSeparatesConcurrentRuns(t *testing.T) {
@@ -1058,6 +1061,88 @@ func TestRunKillModeSupervisorCrashLeavesDescendantScopeForExternalCleanup(t *te
 		t.Fatalf("external cleanup did not remove abandoned scope: %v", err)
 	}
 	t.Logf("supervisor SIGKILL left detached descendant scope populated until explicit external cgroup.kill; test cleanup removed it")
+}
+
+func TestObserveTargetSupervisorTamperChild(t *testing.T) {
+	if os.Getenv(supervisorTamperTargetEnv) != "1" {
+		return
+	}
+	parent := os.Getppid()
+	signalErr := syscall.Kill(parent, syscall.SIGTERM)
+	ptraceErr := unix.PtraceAttach(parent)
+	if ptraceErr == nil {
+		_ = unix.PtraceDetach(parent)
+	}
+	var signalErrno, ptraceErrno syscall.Errno
+	if signalErr != nil {
+		_ = errors.As(signalErr, &signalErrno)
+	}
+	if ptraceErr != nil {
+		_ = errors.As(ptraceErr, &ptraceErrno)
+	}
+	fmt.Printf("target_control parent_pid=%d signal_errno=%d ptrace_errno=%d\n", parent, signalErrno, ptraceErrno)
+	if signalErrno != syscall.EPERM || ptraceErrno != syscall.EPERM {
+		t.Fatalf("unprivileged target could control its privileged runner: signal=%v ptrace=%v", signalErr, ptraceErr)
+	}
+}
+
+func TestSupervisorTamperRunnerChild(t *testing.T) {
+	if os.Getenv(supervisorTamperRunnerEnv) != "1" {
+		return
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-supervisor-tamper-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, "target")
+	input, err := os.Open(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	if err != nil {
+		_ = input.Close()
+		t.Fatal(err)
+	}
+	_, copyErr := output.ReadFrom(input)
+	closeInputErr := input.Close()
+	closeOutputErr := output.Close()
+	if err := errors.Join(copyErr, closeInputErr, closeOutputErr); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(supervisorTamperTargetEnv, "1")
+	var stdout, stderr bytes.Buffer
+	code, runErr := RunObserved(context.Background(), env.Resolver{}, target, []string{target, "-test.run=^TestObserveTargetSupervisorTamperChild$"}, nil, &stdout, &stderr, filepath.Join(root, "audit.jsonl"), &TargetIdentity{UID: 65534, GID: 65534})
+	if code != 0 && (runErr == nil || !strings.Contains(runErr.Error(), "audit coverage is incomplete")) {
+		t.Fatalf("runner was terminated or target failed during the tampering probe: code=%d err=%v stdout=%q stderr=%q", code, runErr, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "signal_errno=1 ptrace_errno=1") {
+		t.Fatalf("target could signal or ptrace the privileged runner, or probe output is missing: code=%d err=%v stdout=%q stderr=%q", code, runErr, stdout.String(), stderr.String())
+	}
+	fmt.Printf("tamper_probe code=%d audit_error=%v target=%q\n", code, runErr, strings.TrimSpace(stdout.String()))
+}
+
+func TestUnprivilegedTargetCannotSignalOrPtraceSupervisor(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires a privileged runner and a separate unprivileged target")
+	}
+	command := exec.Command(os.Args[0], "-test.run=^TestSupervisorTamperRunnerChild$")
+	command.Env = append(os.Environ(), supervisorTamperRunnerEnv+"=1")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("runner harness did not survive the target's control attempts: err=%v output=%q", err, output)
+	}
+	if !bytes.Contains(output, []byte("signal_errno=1 ptrace_errno=1")) {
+		t.Fatalf("guest harness did not record both permission denials: %q", output)
+	}
+	t.Logf("privileged runner survived; target signal and ptrace attempts returned EPERM: %s", strings.TrimSpace(string(output)))
 }
 
 func shellQuote(value string) string {
