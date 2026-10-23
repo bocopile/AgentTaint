@@ -109,6 +109,7 @@ static __always_inline void file_enter_openat(const char *filename, __u64 flags,
 	long copied = bpf_probe_read_user_str(pending.path, sizeof(pending.path), filename);
 	if (copied <= 0) {
 		pending.flags |= AGENTTAINT_PENDING_PATH_CAPTURE_FAILED;
+		pending.path_read_result = (__s32)copied;
 	} else {
 		if (copied >= sizeof(pending.path))
 			pending.flags |= AGENTTAINT_PATH_TRUNCATED;
@@ -126,15 +127,37 @@ static __always_inline void file_exit_openat(long result)
 	if (!pending)
 		return;
 	if (pending->flags & AGENTTAINT_PENDING_PATH_CAPTURE_FAILED) {
+		struct agenttaint_raw_file_open *diagnostic =
+			bpf_ringbuf_reserve(&process_events, sizeof(*diagnostic), 0);
+		if (diagnostic) {
+			__s16 helper_result = (__s16)pending->path_read_result;
+			__s32 syscall_result = (__s32)result;
+			__builtin_memset(diagnostic, 0, sizeof(*diagnostic));
+			diagnostic->process = pending->process;
+			diagnostic->access = pending->syscall_kind;
+			__builtin_memcpy(diagnostic->reserved, &helper_result,
+					 sizeof(helper_result));
+			__builtin_memcpy(&diagnostic->reserved[2], &syscall_result,
+					 sizeof(syscall_result));
+			diagnostic->header.magic = AGENTTAINT_RAW_MAGIC;
+			diagnostic->header.version = AGENTTAINT_RAW_VERSION;
+			diagnostic->header.length = sizeof(*diagnostic);
+			diagnostic->header.monotonic_ns = pending->monotonic_ns;
+			diagnostic->header.kind = AGENTTAINT_FILE_OPEN;
+			diagnostic->header.flags = AGENTTAINT_PATH_CAPTURE_FAILED;
+			bpf_ringbuf_submit(diagnostic, 0);
+		} else {
+			file_count_drop(AGENTTAINT_DROP_FILE_RING);
+		}
 		if (pending->syscall_kind == AGENTTAINT_FILE_SYSCALL_OPENAT) {
 			if (result >= 0)
 				file_count_drop(AGENTTAINT_DROP_FILE_OPENAT_PATH_SUCCESS);
-			else if (result != -14) /* EFAULT means the kernel performed no file lookup. */
+			else
 				file_count_drop(AGENTTAINT_DROP_FILE_OPENAT_PATH_OTHER_ERROR);
 		} else if (pending->syscall_kind == AGENTTAINT_FILE_SYSCALL_OPENAT2) {
 			if (result >= 0)
 				file_count_drop(AGENTTAINT_DROP_FILE_OPENAT2_PATH_SUCCESS);
-			else if (result != -14)
+			else
 				file_count_drop(AGENTTAINT_DROP_FILE_OPENAT2_PATH_OTHER_ERROR);
 		}
 		bpf_map_delete_elem(&pending_file_opens, &tid);

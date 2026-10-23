@@ -4,7 +4,7 @@
 
 최초 분석 기준: `bocopile/AgentTaint`의 `5cc919dadb0a86ea5ec00c794ed07918ccc42d9a`
 
-상태: **2026-10-21 기준, 37개 상위 작업과 실행 카드를 순서대로 진행 중이다. Phase 0/1, P2-01~P2-04, P3-01~P3-03, P4-01~P4-03은 각 기록 범위에서 완료했다. P4-02 guest enforcement와 P4-03의 16개 mode/scenario 조합은 통과했으며 runner audit completeness는 path-capture loss로 미완료다. CI-02는 승인된 workflow 범위가 없어 미완료다. 다음 제품 카드는 P4-04이며, 최신 증거와 미검증 항목은 P4-03 실행 기록 및 12.10~12.12절을 따른다.**
+상태: **2026-10-21 기준, 37개 상위 작업과 실행 카드를 순서대로 진행 중이다. Phase 0/1, P2-01~P2-04, P3-01~P3-03, P4-01~P4-03은 각 기록 범위에서 완료했다. P4-02 guest enforcement와 P4-03의 16개 mode/scenario 조합은 통과했으며 runner audit completeness는 path-capture loss로 미완료다. CI-02는 승인된 workflow 범위가 없어 미완료다. 현재 제품 작업은 P4-04이며, S25 path-capture 진단과 집계 수정은 구현했지만 새 회귀 검증 및 guest verifier/runtime 증거가 없어 P4-04는 미완료다. 최신 증거와 남은 항목은 12.10~12.12절을 따른다.**
 
 이 문서는 제품 철학 분석, macOS 사용 가능성, `addyosmani/agent-skills` 도입 검토, 아키텍처, 언어, 디렉터리, 작업 목록, 검증 기준과 사용자 결정 사항을 한 곳에 모은다. 다른 AI가 새로운 세션에서 읽고 현재 작업을 식별할 수 있도록 작성했다. 최초 분석 당시에는 제품 코드·Go 모듈이 없었다. **현재 실행 상태는 12.10절 기록이 기준이며, 2절의 환경·저장소 조사는 최초 분석 시점의 snapshot이다.**
 
@@ -148,7 +148,7 @@ Taint는 지정된 민감 자원 접근 이력에 따른 보수적 상태다. By
 
 ### 3.2 초기 보장으로 표현할 수 있는 것
 
-현재 문서 기준 목표는 지정 파일 접근, fork/exec에 따른 라벨 상태 관리, 새 외부 IPv4 연결에서의 정책 평가다. Phase 3은 audit only이고, Phase 4의 block은 지원·검증된 pre-operation 훅에만 해당한다. 현재 Phase 0/1 구현은 진단·일반 실행·데이터 모델에 한정되며 이 보안 목표 중 구현 완료된 기능은 없다.
+현재 문서 기준 목표는 지정 파일 접근, fork/exec에 따른 라벨 상태 관리, 새 외부 IPv4 연결에서의 정책 평가다. P2-01~04 observer와 P3-01~03 taint reference·policy evaluator·audit integration 및 네 가지 Linux runtime 시나리오를 기존 guest에서 검증했다. 저장소 내 재현 스크립트 대신 자동화 테스트가 disposable fixture를 만드는 계약을 Phase 3 prompt에 반영했다. Phase 3/reference 평가는 audit only다. Phase 4 `block` mode는 현재 BPF-LSM guest의 제한된 direct file-open 및 새 IPv4 connect fixture에서 pre-operation 차단을 검증했다. 이는 전체 OS 작업이나 정보 흐름을 차단한다는 보장이 아니며, audit completeness와 P4-04 전체 acceptance는 미완료다.
 
 | 흐름 | 초기 모델의 위치 |
 |---|---|
@@ -276,7 +276,7 @@ Mac에서 개발 AI를 사용하면서 guest에 빌드 명령을 보내는 개�
 
 ### 5.3 Linux guest 점검 절차
 
-다음은 **나중에 ENV-01 실행 권한을 받은 경우의 점검 예시**다. 이번에는 실행하지 않았다. VM을 시작할 때 기존 provisioning이 재실행될 가능성과 자원 사용을 확인한다.
+다음은 ENV-01에서 실제 실행한 guest 점검의 재현 예시다. VM 시작은 provisioning side effect가 가능한 동작이므로 시작 영향 확인과 승인 뒤에 실행하고, 읽기 전용 구간과 능동 BPF 검증을 분리한다.
 
 ```sh
 # Mac에서: 정지된 기존 VM을 사용하기로 결정한 뒤
@@ -342,6 +342,33 @@ ENV-01/02는 도구 설치 여부 목록만 남기지 않고 다음 내용의 **
 - 실제 검증한 hook/program과 scenario, read-only 진단과 능동 load/attach 검증의 구분.
 
 커널·부팅 LSM·VM image·CPU·toolchain·BPF 소스/생성 object·권한 profile·공유 파일시스템 구성이 바뀌면 관련 검증을 다시 수행한다. reboot 이후 예전 attach 성공을 현재 attach 상태로 표시하지 않는다. 정책·제품 코드가 바뀌면 해당 정책·코드에 의존하는 시나리오도 다시 실행한다.
+
+#### ENV-02 toolchain·생성물 결정 — 2026-10-18 UTC
+
+- 고정 조합: guest Ubuntu `26.04 LTS`/aarch64, Go `1.26.8` (`golang-1.26` Ubuntu package `1.26.8-1~ubuntu0.26.04.2`), `cilium/ebpf`와 `bpf2go` `v0.22.0`, clang `21.1.8` (BPF/BPFEL/BPFEB target), `/usr/bin/llvm-strip`, guest kernel BTF `/sys/kernel/btf/vmlinux`, bpftool `7.7.0`, libbpf headers 및 현재 kernel headers.
+- 생성 입력은 해당 guest kernel의 BTF로 만든 `bpf/vmlinux.h`다. CO-RE 제품 object는 kernel/arch와 함께 provenance를 보존한다. host macOS에서 생성하지 않는다.
+- 실제 현재 파일명·위치: `internal/sensor/linux/doc.go`의 `go:generate`는 `process` ident 하나로 `bpf/process.bpf.c`를 빌드하고 `bpfel,bpfeb` 대상의 `process_bpfel.go/.o`, `process_bpfeb.go/.o`를 같은 패키지에 생성한다. `process.bpf.c`는 `file.bpf.c`와 `network.bpf.c`를 include하므로 별도 `file`/`network` ident 산출물은 현재 생성하지 않는다. Phase 4 enforcement는 `internal/enforce/doc.go`의 `enforce` ident로 `bpf/enforce.bpf.c`를 `bpfel`만 생성해 `internal/enforce/enforce_bpfel.go/.o`에 둔다. 생성 대상과 tracked 파일을 대조해 이 실제 경로를 기준으로 하며, `bpf2go@v0.22.0` Go tool dependency를 유지한다. 제품 source·target이 바뀌면 실제 compiler argv와 include 순서를 다시 기록하고 검증한다.
+- E07은 같은 ident/arch의 생성 `.go`와 `.o`를 함께 version control한다. generated Go가 object bytes를 embed하지만 `.o` 보존은 source→object→Go 대응·검토·재생성을 가능하게 한다. `bpf/*.o` ignore는 sensor 패키지 안의 generated `.o`를 무시하지 않는다. 재생성 검사는 정확히 고정한 입력에서 diff를 보고하며 자동 commit하지 않는다.
+- 확인 probe는 저장소 밖 guest `/tmp`에서 합성 `tracepoint/syscalls/sys_enter_execve` 프로그램으로 수행했다. `bpftool btf dump file /sys/kernel/btf/vmlinux format c`, `bpf2go v0.22.0`, clang `-O2 -g -D__TARGET_ARCH_arm64`, `llvm-strip`, `-target bpfel,bpfeb`를 사용했다. `probe_bpfel.go/.o`와 `probe_bpfeb.go/.o` 생성에 성공했고 같은 절차를 두 번 실행한 뒤 `vmlinux.h` 및 네 산출물의 SHA-256이 모두 일치했다. Go build info는 `cilium/ebpf v0.22.0` (`h1:v2ktp0roffpMOj2MMf3idtCQZOsAoC4BJbAJN+ke2bY=`)와 `golang.org/x/sys v0.43.0` (`h1:Rlag2XtaFTxp19wS8MXlJwTvoh8ArU6ezoyFsMyCTNI=`)를 기록했다. 임시 디렉터리는 각 실행 뒤 제거했다.
+- **미검증:** probe는 합성 C의 cross-endian BPF ELF 생성까지만 확인했다. 제품 프로그램, 커널 load/verifier/attach, 실제 CO-RE relocation 적용 시나리오, runtime behavior는 구현 전이므로 `not_tested`다. 생성 C header에서 clang 21 경고 5건이 관측됐고 `-Werror`를 주지 않았으므로 해당 경고를 product build 품질 증거로 간주하지 않는다. 현재 VM은 BPF-LSM이 inactive이므로 enforcement 부적합 판정도 유지한다.
+
+#### ENV-01 실제 guest 관측 — 2026-10-18 15:46–15:48 UTC
+
+아래는 기존 `ebpf-lab`을 시작한 뒤 `limactl shell`에서 읽은 값이다. VM 시작은 provisioning side effect가 가능한 동작이며, 이 기록은 시작을 read-only로 바꾸지 않는다.
+
+| 항목 | 상태·관측값 | 판정과 남은 검증 |
+|---|---|---|
+| VM / OS / CPU / kernel | `ebpf-lab`, VZ, Ubuntu 26.04 LTS, aarch64, `7.0.0-34-generic` | guest에서 직접 관측. 실제 cloud image digest는 **unknown** |
+| BPF / BTF | `CONFIG_BPF=y`, `CONFIG_BPF_SYSCALL=y`, `CONFIG_DEBUG_INFO_BTF=y`; `/sys/kernel/btf/vmlinux` readable | 환경 전제는 확인. 제품 프로그램 load/verifier는 **not_tested** |
+| BPF-LSM | `CONFIG_BPF_LSM=y`지만 `/sys/kernel/security/lsm`은 `lockdown,capability,landlock,yama,apparmor,ima,evm`; `bpf` 없음. `/proc/cmdline`에 `lsm=` 없음 | build support는 확인, **현재 inactive/unsupported for enforcement**. boot option 변경·재부팅은 미실행 |
+| 관측 toolchain | clang `21.1.8`; `clang --print-targets`에 `bpf`, `bpfeb`, `bpfel`; `/usr/bin/llvm-strip`; `/usr/sbin/bpftool` `7.7.0` | 관측 기능 준비의 후보로 확인. 고정된 전체 ENV-02 생성 조합·CO-RE 제품 build는 미검증 |
+| Go | ENV-01 당시 `go version`: command not found; candidate `golang-1.26` `1.26.8-1~ubuntu0.26.04.2` | ENV-01 진단은 **not installed**; 이후 ENV-02에서 guest에 설치·확인 |
+| 권한 | `bhshin`, uid 501, `CapEff=0`; `sudo -n -l`은 `(ALL) NOPASSWD: ALL`; `kernel.unprivileged_bpf_disabled=2` | 현재 shell에 BPF 권한 없음. target을 sudo로 실행하지 않는 설계가 필수. 특권 supervisor/비특권 target 통합은 미검증 |
+| mount / 환경 전달 | `/sys/fs/bpf`와 tracefs mount 확인; host 공유 경로는 보이지 않고 `/mnt/lima-cidata`만 read-only iso9660; proxy/`SSH_AUTH_SOCK` 환경변수 이름은 guest env에서 발견되지 않음 | 관측된 mount 기준. VM 네트워크·포트 forwarding의 전체 격리를 증명하지 않음 |
+| storage / memory | `/` 19 GiB, 4.9 GiB used, 14 GiB available; memory 3.8 GiB total, 3.4 GiB available | 지금 관측한 시점의 capacity이며 workload 여유를 보장하지 않음 |
+| forwarding | Lima startup log에서 SSH vsock local port `53597`, localhost TCP `41799`, UDP mDNS `5353` forwarding 및 NTP forwarding 관측 | 정확한 제품/호스트 격리 경계는 **unknown**; 실제 정책을 더 확인하지 않고 네트워크 격리 완료로 표시하지 않음 |
+
+**재사용 판단:** Phase 2 build/toolchain 준비용 guest로 재사용 가능하다. 이후 ENV-02에서 Go 1.26.8 설치와 pinned bpf2go toolchain probe를 완료했다. Phase 4 block 검증 환경으로는 현재 BPF-LSM inactive여서 부적합하며, 기존 active LSM 순서를 보존하는 별도 boot 설정 변경과 재부팅·재검증이 필요하다. `bpftool feature probe`, BPF load/attach, package install, kernel boot 설정 변경은 ENV-01에서 실행하지 않았다.
 
 기존 Lima를 재사용하는 기본안은 유지한다. `plain` 모드는 공유 기능 축소의 후보일 뿐 격리 완료 증거가 아니다. 공식 문서상 static port forwarding과 provisioning은 남을 수 있으므로 실제 설정·실행 상태를 따로 점검한다. 이번 문서 검토에서 해당 모드를 적용하거나 VM을 변경하지 않았다. [Lima plain mode](https://lima-vm.io/docs/config/plain/)
 
@@ -461,7 +488,7 @@ exec는 같은 프로세스 key를 유지한다는 의미를 문서화하되 cor
 
 키는 canonical lowercase ASCII `[a-z_]` 철자만 허용하고 대소문자·Unicode case-fold alias도 거부한다. Marshal 전에 Go 문자열의 UTF-8을 검사하고 DecodeEvent는 JSON 원문 bytes의 UTF-8 및 Unicode surrogate escape 짝을 검사한다. `\ud800`(백슬래시 하나로 시작하는 JSON escape) 같은 단독 surrogate가 U+FFFD로 치환되어 서로 다른 identity가 합쳐지는 입력을 거부한다. 백슬래시 자체가 escape된 literal 문자열은 허용한다. schema 검사 전 token 순회는 `maxJSONDepth = 32`의 명시적 재귀 깊이 제한을 적용한다(루트 깊이 0). 이는 총 입력 byte 크기·처리시간 상한을 보장한다는 뜻은 아니다. fork의 부모·자식이 같은 scope의 같은 PID면 거부하며, producer가 관측 scope의 의미를 일관되게 공급할 책임은 남는다.
 
-이것은 **raw event 모델**이다. 기존 SECURITY_MODEL의 `policy_violation` 파생 예시는 변경하지 않으며 아직 구현하지 않았다. 공통 `event`, `process.pid/comm`, `session_id`, 주소·포트 의미를 보존하고 label·decision·policy는 Phase 3 이후에 다룬다.
+이것은 **raw event 모델**이다. P3-03은 common metadata를 보존하는 `policy_violation` 파생 이벤트를 추가하며 원본 connect 뒤에 JSONL로 기록한다. 정책 verdict와 syscall `operation_result`를 별도 필드로 보존한다. 파생 이벤트는 audit/deny에만 생성하고 allow는 raw event만 남긴다.
 
 **후속 확장 후보(아래 표 전체가 현재 구현됐다는 뜻은 아님):**
 
@@ -495,7 +522,7 @@ raw kernel layout에는 버전·길이·고정 폭 필드와 endian·padding 규
 
 ### 7.4 정책 계약
 
-기존 YAML의 기본 구조를 유지하는 단일 라벨 예시는 다음과 같다. 현재 실행 가능한 parser가 있다는 뜻은 아니다.
+기존 YAML 구조를 유지하는 단일 라벨 예시는 다음과 같다. 아래 `external`은 명시적 IPv4 CIDR 집합이며 optional `ports`는 포트 allowlist다. P3-02 parser/evaluator 구현과 증거는 12.10절에 기록한다.
 
 ```yaml
 sources:
@@ -506,15 +533,18 @@ rules:
     when:
       process_has: SECRET
     sink:
-      network: external
+      network:
+        external:
+          - 203.0.113.0/24
+        ports: [443]
     action: deny
 ```
 
 P3-02에서 다음을 확정한다.
 
 1. 기본안은 상대 source 경로를 policy 파일이 위치한 디렉터리 기준으로 해석하는 것이다. `~`, 환경변수 치환, command substitution은 초기 parser에서 지원하지 않고 오류로 처리한다. 권한이 높은 loader의 홈과 target의 홈을 혼동하지 않는다. 해석 결과는 내부 검증에 사용하고 일반 로그에는 D08에 따라 resource 별칭을 우선한다. 기존 `~` 예시는 PRE-01에서 절대 경로 또는 policy 기준 상대 경로로 정리한다.
-2. source path와 실제 file identity의 연결: symlink, hardlink, rename, 교체, 삭제, mount 경계의 지원 범위를 명시한다.
-3. `external`은 단순 문자열이 아니라 정해진 주소 분류 또는 명시적 CIDR 집합이다. RFC1918 주소를 무조건 안전하다고 해석하지 않는다. 테스트에서는 통제된 주소를 sink로 지정할 수 있어야 한다.
+2. source path는 상대 경로를 policy 파일 디렉터리 기준으로 lexical resolve하고, 관측 event의 raw resource path와 exact match한다. event path의 dirfd·symlink·hardlink·rename·교체·삭제·mount identity는 resolve하지 않는다. relative event path와 absolute policy path의 동일 파일성도 추정하지 않는다.
+3. `external`은 단순 문자열이 아니라 명시적 IPv4 CIDR 집합이다. RFC1918 주소를 무조건 안전하다고 해석하지 않는다. optional port allowlist는 1~65535 정수 목록이며 생략 시 모든 port가 매치된다.
 4. E06에 따라 여러 rule 매치 시 deny > audit > allow, no-match는 allow를 기본 계약으로 삼는다. 따라서 보호할 source/sink 규칙의 누락은 허용으로 이어짐을 문서·테스트로 명시한다. 모호하거나 미지원인 규칙을 no-match로 무시하지 않고 validation error로 처리한다.
 5. unknown field·label·action·지원되지 않는 sink는 오류로 처리하는 방향을 권고한다. 무시하고 성공시키지 않는다.
 6. access-control rule은 source 접근 시점, egress rule은 sink 시점 평가임을 구분한다. network-only evaluator로 direct file deny를 제공한다고 표시하지 않는다.
@@ -527,24 +557,24 @@ P3-02에서 다음을 확정한다.
 
 ### 7.5 판정과 집행 결과
 
-제안 schema는 다음 개념을 구분해야 한다. 필드 철자·enum은 E02~E06과 함께 확정한다.
+schema v1은 정책 verdict와 실제 관측된 operation 결과를 구분한다.
 
 ```json
 {
-  "schema_version": "draft",
+  "schema_version": 1,
   "event": "policy_violation",
   "run_id": "example-run",
   "decision": "deny",
-  "mode": "monitor",
-  "action": "audit",
-  "enforcement_result": "not_attempted",
-  "operation_result": "unknown",
+  "mode": "audit",
+  "operation_result": "success",
   "policy": "prevent-secret-egress",
-  "labels": ["SECRET"]
+  "labels": ["SECRET"],
+  "source": { "path": "/workspace/.env" },
+  "sink": { "address": "1.2.3.4", "port": 443 }
 }
 ```
 
-`deny`는 정책 결과, `block`은 검증된 사전 거부, `kill`은 종료 조치, `audit`는 기록이다. 외부 수신 측 데이터가 없다는 단일 테스트 결과로 모든 전송이 항상 차단된다고 일반화하지 않는다.
+schema v1의 derived record는 common metadata와 process identity도 포함한다. `deny`는 정책 결과, `block`은 검증된 사전 거부, `kill`은 종료 조치, `audit`는 기록이다. 외부 수신 측 데이터가 없다는 단일 테스트 결과로 모든 전송이 항상 차단된다고 일반화하지 않는다.
 
 ### 7.6 장애·권한·시작 종료 계약
 
@@ -591,7 +621,7 @@ VALIDATING → ATTACHING → READY → RUNNING → DRAINING → CLOSED
 RUNNING 중 이상 → DEGRADED 또는 FAILED (모드·실패 종류별)
 ```
 
-- **READY:** 요청한 기능의 policy·hook·membership 준비를 확인한 뒤에만 target의 보호 대상 동작을 시작하게 한다. 프로세스를 이미 실행시킨 뒤 SIGSTOP을 보내는 방식이 시작 경합을 없앴다고 가정하지 않는다.
+- **READY:** observer 준비는 reader readiness와 run scope/target identity를 확인한 뒤 nonce가 일치하는 일회성 launch permit으로 target을 실행한다. block 준비는 여기에 검증된 policy projection, 전용 cgroup membership, 각 필수 BPF-LSM hook의 load/attach 성공을 더 요구한다. 한 경로의 READY 증거를 다른 경로의 완료로 해석하지 않는다. EOF·잘못된/짧은 permit은 target을 실행하지 않으며, 프로세스를 먼저 실행한 뒤 SIGSTOP을 보내는 방식이 시작 경합을 없앴다고 가정하지 않는다.
 - **RUNNING:** root target 종료와 전체 run 종료를 구분한다. 기본안은 추적한 자손이 남아 있으면 감시·집행을 유지하는 것이다. POSIX 세션이 바뀌거나 부모가 종료됐다는 이유로 scope에서 빼지 않는다.
 - **DRAINING:** 추적 대상 생애가 끝났음을 확인한 뒤 남은 record와 drop/health 상태를 정리한다. 고정 sleep만으로 event drain 완료를 증명하지 않는다. 최종 timeout·잔류 자손 처리 규칙은 시험 가능한 lifecycle 계약으로 남긴다.
 - **CLOSED:** 생성한 자원만 소유권 식별자로 정리한다. 다른 run의 pinned map/link·fixture·파일을 이름 prefix만 보고 지우지 않는다. 초기 기본안은 불필요한 BPF pinning을 사용하지 않는 것이며, pinning이 필요한 설계라면 생성·복구·잔류 위험을 먼저 기록한다.
@@ -603,13 +633,13 @@ Ctrl-C·SIGTERM·timeout에 대한 target 전달, 자손 종료 대기, cleanup�
 
 ### 7.9 권한 profile과 제어 경로
 
-기본 검증 profile은 **관리 권한으로 load하는 supervisor와 별도의 비특권 target**이다. `sudo agenttaint run`이라는 호출 형태만으로 target도 root로 실행해도 된다고 해석하지 않는다. 높은 권한으로 시작했는데 원래 target identity를 신뢰할 수 없으면 임의로 UID를 추정하지 않고 명시 identity를 요구하거나 시작을 거부하는 설계를 택한다. 정확한 옵션은 E09/P2-04에서 정한다.
+기본 검증 profile은 **관리 권한으로 load하는 supervisor와 별도의 비특권 target**이다. `sudo agenttaint run`이라는 호출 형태만으로 target도 root로 실행해도 된다고 해석하지 않는다. Linux observer가 root로 실행되면 `--run-as UID:GID`를 필수로 하고 UID/GID 0은 거부한다. root supervisor가 지정한 target은 supplementary groups를 비우며 helper가 real/effective/saved IDs와 capability를 확인한 뒤 `no_new_privs`를 적용한다. 비root observer는 자신의 effective UID/GID와 기존 supplementary groups를 target에 상속한다. 현재 CLI는 FD 0~2만 전달하고 추가 application FD 전달을 제공하지 않는다. target은 parent의 environment와 working directory를 상속하므로 이를 격리 경계로 설명하지 않는다.
 
 P2-04 및 P4-01/04는 다음을 실제 target 내부 helper로 검사한다.
 
 - real/effective/saved UID·GID, supplementary groups, capabilities, 접근 가능한 관리 socket. 일반 UID라도 sudo·Docker socket 등으로 동등한 관리 권한을 얻을 수 있는 경로를 별도 확인한다.
 - target의 exec 이후 setuid/file-capability 재상승 제한. 기본 검토안은 지원 Linux 경로에 `no_new_privs`를 적용하는 것이지만, LSM 전이와 사용자 workload 영향을 검증하고 관련 규범에 반영한 뒤 적용한다.
-- loader map/link/control FD가 exec 경계에서 target에 상속되지 않는지 확인한다. target에 허용할 stdin/out/err와 명시된 application FD는 loader 내부 FD와 구분한다.
+- loader map/link/control FD가 exec 경계에서 target에 상속되지 않는지 확인한다. 현재 observer는 FD 0~2만 허용하고 FD 3 이상을 close-on-exec 처리한다.
 - target이 supervisor·policy·audit 파일·BPF 제어 경로를 변경하거나 supervisor에 signal/ptrace를 보낼 수 있는지 확인한다. 파일 mode만 확인하고 같은 UID의 전체 권한 문제가 해결됐다고 판단하지 않는다.
 - source 작업 디렉터리에서 탐색한 실행 파일이나 환경 설정을 높은 권한으로 실행하지 않는다. 명시 target 실행 권한과 loader의 tool 실행 권한을 분리한다.
 
@@ -739,50 +769,82 @@ D06의 기본안은 2번이다. 초기 세 스킬과 실제 참조하는 파일�
 
 ### 9.1 프로젝트 스킬
 
-외부 팩만으로 eBPF·taint 보안 검증을 충족하지 못한다. 다음은 **새로 작성할 후보**이며 아직 설치된 스킬 이름이 아니다. 실제 스킬을 작성할 때는 해당 host의 skill-creator 지침을 확인한다.
+외부 팩만으로 eBPF·taint 보안 검증을 충족하지 못한다. 첫 배포 묶음은 아래 세 개의 프로젝트 스킬로 제한한다. 추가 Phase 전용 스킬은 해당 Phase에서 실제 검증 절차와 입력이 확정된 뒤 작성한다. Codex skill은 자동 권한 경계가 아니라 재사용 가능한 절차 안내다.
 
 | 이름 제안 | 입력 | 수행·출력 | 구현 시점 |
 |---|---|---|---|
-| `agenttaint-phase-preflight` | Phase ID·작업 ID·기준 commit | 규범·선행 완료·변경 허용 경로·검증 환경 목록 | PRE/TOOL |
-| `agenttaint-docs-contract-check` | docs/prompts diff | Phase·버전·예시·규범 참조 충돌과 위치 | PRE/TOOL |
-| `agenttaint-security-semantics-review` | diff·주장하는 보장·test evidence | 주장→훅→상태→테스트 대응표 | TOOL 및 매 보안 변경 |
+| `agenttaint-phase-preflight` | Phase ID·작업 ID·기준 commit | 규범·선행 완료·변경 허용 경로·검증 환경 목록 | 최초 배포 묶음 |
+| `agenttaint-docs-contract-check` | docs/prompts diff | Phase·버전·예시·규범 참조 충돌과 위치 | 최초 배포 묶음 |
+| `agenttaint-security-semantics-review` | diff·주장하는 보장·test evidence | 주장→훅→상태→테스트 대응표 | 최초 배포 묶음 및 보안 변경 |
 | `agenttaint-ebpf-linux-verify` | commit·guest profile·scenario IDs | build/verifier/attach/행동 결과·환경·artifact | Phase 2부터 |
 | `agenttaint-taint-policy-replay` | event vector·policy | reference state transition·Decision 비교 | Phase 3부터 |
 | `agenttaint-adversarial-flow-test` | capability·지원 범위 | 합성 fixture 기반 경계·손실·우회 테스트 | Phase 2~4 |
 | `agenttaint-phase-closeout` | 변경·검증 결과 | Required Final Report·미검증·다음 단계 | Phase 완료 때 |
 
-각 스킬은 trigger, 입력, 읽을 규범, 허용 도구·경로, 수행 순서, 출력 schema, 중단 조건을 갖는다. 기계적으로 검증 가능한 작업은 script/test에 두고 스킬은 그것을 호출·해석한다. 기존 테스트와 같은 로직을 복제해 무조건 통과하는 스킬을 만들지 않는다.
+각 스킬은 trigger, 입력, 읽을 규범, 허용 도구·경로, 수행 순서, 출력 schema, 중단 조건을 갖는다. 초기 승인 경로는 `.agents/skills/<skill>/SKILL.md`와 정적 `references/`뿐이다. 실행 스크립트는 현재 허용하지 않는다. Codex CLI 부재 또는 skill discovery 미검증 시 작성 완료와 실행 검증을 구분한다.
 
 ### 9.2 서브에이전트 역할
 
-기본 작업 인원은 구현 담당·보안 의미 리뷰어·검증 담당의 세 역할이다. 작업 크기가 작으면 하나의 에이전트가 순서대로 수행해도 된다. 많은 에이전트의 합의가 실제 증거를 대신하지 않는다.
+기본 작업 인원은 구현 담당·보안 의미 리뷰어·검증 담당이다. orchestrator·설계자·문서 작성자·패키징 담당은 해당 산출물이 필요할 때 추가한다. 작업 크기가 작으면 하나의 에이전트가 순서대로 수행해도 된다. 많은 에이전트의 합의가 실제 증거를 대신하지 않는다.
 
 | 역할 | 책임과 산출물 | 경계 |
 |---|---|---|
-| phase implementer | 한 Phase의 승인된 코드·단위 테스트 | 지정 경로만 수정; 규범 변경 임의 적용 금지 |
-| security semantics reviewer | 모델·범위·판정·실제 조치의 모순 찾기 | 기본 읽기 전용; 작성자의 결론보다 원문 계약·diff 확인 |
-| Linux verifier | guest에서 실제 load/attach·시나리오 검증 | 지정 guest·합성 데이터·검증 명령만 |
-| eBPF reviewer | 필요한 경우 hook·state·경합·verifier 검토 | 확인 안 된 helper/signature 추정 금지 |
-| adversarial test designer | 필요한 경우 경계·failure 시나리오 설계 | 실제 자격증명·외부 유출 서버 금지 |
-| docs reviewer | Phase·경로·버전·schema·용어 정합성 | 의미 변경과 오기를 구분 |
+| `orchestrator` | 한 작업의 범위·의존성·위임·증거 종합 | 서로 겹치는 파일을 병렬 수정하지 않음; 사람 권한을 대신하지 않음 |
+| `architect` | 규범·경계·선행 작업·최소 설계안 | normative 충돌은 제안 후 중단 |
+| `implementer` | 한 Phase의 승인된 코드·단위 테스트 | 지정 경로만 수정; 규범 변경 임의 적용 금지 |
+| `test-engineer` | 수용 기준에 맞춘 테스트 설계·실행 결과 | portable/kernel 결과 분리; 미지원·skip은 pass 아님 |
+| `security-reviewer` | 모델·범위·판정·실제 조치의 모순 찾기 | 부모 세션이 실제 read-only 권한을 강제 |
+| `docs-writer` | 승인된 사실·증거를 문서에 반영 | 의미 변경과 오기를 구분; 근거 없는 완료 주장 금지 |
+| `packager` | 재현 가능한 개발환경·제품 패키징 계획 | VM·설치·권한 변경은 별도 승인된 실행만 |
+| `linux-verifier` | guest에서 실제 build/load/attach·시나리오 검증 | 지정 guest·합성 데이터·검증 명령만; Phase 2부터 사용 |
+
+eBPF reviewer와 adversarial test designer는 필요할 때만 architect·test-engineer의 별도 작업으로 분리한다. 기본 팀에서 역할 수를 늘려 합의 투표를 만들지 않는다.
 
 upstream `agent-skills`에는 code reviewer, test engineer, security auditor, web performance auditor persona가 있다. 일반 리뷰용 참고이며 AgentTaint 역할 정의를 대체하지 않는다. Claude persona가 Codex native agent로 자동 변환된다고 가정하지 않는다. [upstream agents 안내](https://github.com/addyosmani/agent-skills/blob/9d0c60d406b454a78ccc0a175b19932047aa4dac/docs/agents.md)
 
-공통 위임 계약:
+공통 위임·인계 계약. 위임할 때는 먼저 task/권한 항목을 채우고, 작업을 넘기거나 세션을 닫을 때는 전체 인계 항목을 채운다. 증거는 주장별로 상태를 붙이며, 실행하지 않은 검사는 통과로 간주하지 않는다.
 
 ```text
-Task ID / Phase / baseline commit:
-User authorization and scope:
-Required documents:
-Allowed write paths:
-Read-only or mutation authority:
-Expected evidence and acceptance criteria:
-Known pending decisions:
-Report: sources, exact findings, files changed, commands actually run,
-        pass/fail/skipped/not-run, security semantics, unresolved questions.
+Task ID / Phase / baseline: branch, HEAD, pre-existing dirty paths
+User authorization / requested scope / explicit exclusions:
+Dependencies and required normative documents:
+Allowed write paths / assigned file owner / authority (read-only or mutation):
+Acceptance criteria: one row per required claim or behavior
+Evidence per criterion:
+  status = pass | fail | not_tested | inconclusive
+  exact command and arguments, relevant environment, host/guest/kernel/architecture
+  exit status, assertion/result, artifact path or source location
+Known decisions or prerequisites still pending:
+Files changed by this task (separate from pre-existing changes):
+Live resources at handoff: process/session IDs, VM state, links, mounts, temp artifacts
+Security semantics, if applicable: detected / blocked / not guaranteed
+Next action: one authorized dependency-safe step
 ```
 
+`pass`는 그 기준의 명시된 수용 조건을 증거가 충족할 때만 쓴다. `fail`은 실행된 조건이 실패했음을, `not_tested`는 실행하지 않았거나 필수 환경·권한이 없어 건너뛴 것을, `inconclusive`는 실행했지만 결과가 기준을 판정하기에 부족하거나 모순됨을 뜻한다. 이전 turn의 요약만으로 status를 승격하지 말고, 재개 시 현재 source·artifact·live resource를 확인한다.
+
 동일 파일을 여러 구현자가 동시에 수정하지 않는다. 독립적인 문서·공식 API 조사나 읽기 전용 리뷰는 병렬 가능하다. 필요한 규범을 읽지 않은 서브에이전트의 결론으로 설계를 바꾸지 않는다. CI·Linux 검증 증거를 갖춘 통합 담당자가 최종 상태를 판단한다.
+
+### 9.3 Codex agent 설정과 reasoning 단계
+
+프로젝트 범위의 standalone agent 정의는 `.codex/agents/<name>.toml`에 둔다. 역할별 reasoning effort만 지정하고 모델 ID는 계정/클라이언트별 사용 가능성이 확인되지 않았으므로 고정하지 않는다. Codex CLI에서 custom agent를 발견하는 동작은 실제 CLI를 사용할 수 있는 환경에서 확인한다.
+
+| 역할 | Reasoning | 주 책임 |
+|---|---|---|
+| `orchestrator` | `high` | 작업 계약, 의존성 순서, 독립 작업 위임, 증거 종합 |
+| `architect` | `high` | 규범·코드 경계·작업 선행조건 및 최소 설계안 |
+| `implementer` | `medium` | 한 Phase의 승인된 최소 구현 |
+| `test-engineer` | `medium` | acceptance 기준에 맞춘 테스트 작성·결과 분류 |
+| `security-reviewer` | `high` | 보안 의미·범위·효과 주장 독립 검토 |
+| `docs-writer` | `medium` | 승인된 사실과 증거를 문서화 |
+| `packager` | `medium` | 개발 환경·제품 배포 구분, 재현·설치·복구 계획 |
+| `linux-verifier` | `high` | 승인된 Linux guest/runner에서 eBPF 증거 수집; Phase 2부터 활성 사용 |
+
+`medium`은 일반 구현·테스트·문서 작업의 기본 단계다. `high`는 아키텍처 조정, 복합 디버깅, eBPF 검증과 보안 리뷰처럼 오류 비용이 큰 작업에 쓴다. 이는 추론 노력 설정이며 사람 승인이나 OS 권한을 대신하지 않는다. Codex subagent는 부모의 sandbox·approval·MCP를 상속한다. reviewer를 실제로 읽기 전용으로 실행할 때는 부모 세션 자체에 적절한 read-only sandbox를 적용한다. Agent instruction만으로 파일 쓰기를 막는다고 간주하지 않는다.
+
+공통 위임·인계 카드는 9.2절 schema를 사용한다. 같은 파일을 둘 이상의 agent가 동시에 수정하지 않는다. 독립 조사·문서 영역은 병렬화할 수 있지만, 규범 충돌 해결·같은 파일 구현·검증 수정 반영은 순차 진행한다.
+
+2026-10-18 실행에서 `codex` CLI는 PATH에서 확인되지 않았다. 기본 sandbox의 쓰기 검사는 `.codex/agents`와 `.agents/skills`에서 거부됐지만, 사용자의 후속 승인 후 권한 검사로 두 경로에 대한 쓰기 권한을 확인하고 설정 파일을 작성했다. 공식 문서는 프로젝트 agent/skill 경로를 설명하지만 실제 앱/CLI의 discovery는 별도 검증 대상이다. 현재 runtime 발견과 행동 평가는 미검증이다.
 
 ## 10 MCP와 개발 도구 경계
 
@@ -790,7 +852,7 @@ Report: sources, exact findings, files changed, commands actually run,
 
 | 기능 | 현재·권고 | 추가 설치 판단 |
 |---|---|---|
-| codebase-memory-mcp | Phase 0/1 코드 인덱싱·그래프 탐색 사용. 프로젝트 `Users-bhshin-IdeaProjects-AgentTaint` | 유지; 코드 변경 시 freshness·누락 확인 |
+| codebase-memory-mcp | 현재 프로젝트 alias `AgentTaint`; 같은 저장소를 가리키는 긴 경로 alias `Users-bhshin-IdeaProjects-document-ebpf-cncf-agentsight-actplane-agenttaint`도 존재하며 stale snapshot | `AgentTaint` alias 사용; code 변경 후 index freshness를 별도 확인하고 dirty-worktree freshness는 API가 제공하지 않음을 고려 |
 | GitHub 조회 | 원격 파일·commit 비교에 이미 사용 가능 | 중복 MCP 불필요 |
 | 공식 문서 조회 | kernel/cilium/Go/host API 확인 | 현재 web/연결 도구로 가능하면 새 서버 불필요 |
 | Linux 검증 | 재현 script·CI가 먼저 | 반복 필요가 확인되면 제한적 MCP wrapper 검토 |
@@ -801,6 +863,8 @@ Report: sources, exact findings, files changed, commands actually run,
 codebase graph는 소스의 정적 관계이고 runtime taint provenance와 다르다. index 결과에 commit·시간·누락 여부를 확인한다. 존재하지 않는 심볼을 그래프에 있다고 가정하지 않고 부족한 결과만 파일 검색으로 보완한다.
 
 Phase 0 탐색에서 `internal/env`가 인덱서의 자동 제외 대상이어서 그래프 결과에 없음을 확인했다. 해당 패키지는 직접 파일 읽기로 보완했다. 그래프의 심볼 부재를 소스 부재로 해석하지 않는다.
+
+codebase-memory가 unavailable이면 먼저 그래프 결과를 `unavailable`로 기록하고, 체크아웃된 worktree의 직접 source inspection으로 해당 질문만 확인한다. 이때 그래프 freshness와 outage fallback 동작은 검증되지 않았다고 남기고, 검색 결과 부재를 심볼/기능 부재나 보안 검증 통과로 해석하지 않는다. 서비스가 복구되면 graph index 상태와 저장소 경로·branch·HEAD를 다시 대조한 뒤 그래프 탐색을 이어간다. API가 dirty-worktree fingerprint를 제공하지 않으면 그 freshness 한계도 기록한다. 이 절차는 문서상 제안이며 실제 MCP outage에서 검증되지 않았다.
 
 ### 10.2 도구 접근 계약
 
@@ -887,24 +951,24 @@ AgentTaint/
 
 | 완료 | ID | 작업 | 선행 조건 | 주 산출물 |
 |---|---|---|---|---|
-| [x] | PRE-01 | 문서·Phase·예시 불일치 정리안 적용 | 문서 수정 요청 | 일관된 기존 문서; 검토된 불일치는 수정하고 후속 Phase 전 항목은 명시적으로 이연 |
-| [x] | PRE-02 | 채택 기본안·허용 경로를 구체화해 규범에 반영 | 4절 기본안, 관련 E 설계 | 보장 표·정합적인 구조·현재 작업 범위; G1/G2/G4 및 D05 문서 계약 반영, 구현 증거는 별도 카드 |
+| [ ] | PRE-01 | 문서·Phase·예시 불일치 정리안 적용 | 문서 수정 요청 | 일관된 기존 문서; 검토된 불일치는 수정하고 후속 Phase 전 항목은 명시적으로 이연 |
+| [ ] | PRE-02 | 채택 기본안·허용 경로를 구체화해 규범에 반영 | 4절 기본안, 관련 E 설계 | 보장 표·정합적인 구조·현재 작업 범위; G1/G2/G4 및 D05 문서 계약 반영, 구현 증거는 별도 카드 |
 | [ ] | TOOL-01 | 선택한 외부 스킬 세 개와 reference 도입 | D06 기본안, E01 | source SHA·reference 검증·discovery 증거 |
 | [ ] | TOOL-02 | 전용 preflight·docs·semantics 스킬 | E01 | 세 개의 좁은 검증 절차 |
 | [ ] | TOOL-03 | 서브에이전트 역할·인계·후속 검증 절차 | TOOL-02, 해당 Phase 진입 | 역할별 변경 경계·검증 증거·세션 인계 |
-| [ ] | MCP-01 | 기존 MCP·도구 접근과 장애 경계 점검 | 10절, 실제 사용 환경 | 그래프 freshness·최소 권한·장애 대체 절차 |
-| [ ] | ENV-01 | 기존 ebpf-lab guest readiness 진단 | VM 사용 작업 승인 | 기능 표·부족 도구·재사용 판단 |
-| [ ] | ENV-02 | 재현 BPF toolchain·생성물 정책 | ENV-01, E07 | 고정 생성 경로·빌드 재현 |
+| [ ] | MCP-01 | 기존 MCP·도구 접근과 장애 경계 점검 | 10절, 실제 사용 환경 | 그래프 freshness·최소 권한·장애 대체 절차; index metadata 불일치와 service outage fallback 검토 미완료 |
+| [x] | ENV-01 | 기존 ebpf-lab guest readiness 진단 | VM 사용 작업 승인 | guest manifest·기능 표·미검증 항목·재사용 판단 (2026-10-19) |
+| [x] | ENV-02 | 재현 BPF toolchain·생성물 정책 | ENV-01, E07 | 고정 generator·경로·반복 probe hash 일치 (2026-10-19) |
 | [x] | P0-01 | Go 모듈·패키지 골격·CLI routing | Phase 0 착수 | 빌드 가능한 최소 구조 |
 | [x] | P0-02 | doctor와 단일 커맨드 runner | P0-01 | 읽기 전용 진단·명시 실행 |
 | [x] | P0-03 | portable CI 작성·검토 및 Phase 0 로컬 검증 | P0-02, CI 경로 승인 | 로컬 build/vet/test·runner 증거; 원격 CI not_run |
 | [x] | P1-01 | identity·resource·event 모델 | Phase 0 완료, E02 | 플랫폼 독립 core; OS identity 수집은 별도 |
 | [x] | P1-02 | event 의미·JSON codec·계약 테스트 | P1-01, E03 | 안정된 직렬화·오류 처리; 라벨 부여 기준 미구현 |
 | [ ] | CI-01 | 기존 portable CI의 원격 실행 검증 | P0-03/P1-02, 별도 GitHub 쓰기 승인 | 정확한 commit의 Linux/macOS 실행 증거 |
-| [ ] | P2-01 | process observer·decoder | Phase 1 완료, ENV-02 | fork/exec/exit 관찰 |
-| [ ] | P2-02 | file·IPv4 connect observer | P2-01, E03 | source/sink 원시 관찰 |
-| [ ] | P2-03 | run scope·출력·손실 상태 | P2-02, E08 | 계보 필터·별도 audit 스트림 |
-| [ ] | P2-04 | start/stop·권한·Linux 실제 검증 | P2-03, E09 | 시작 경합·cleanup·실제 verifier 증거 |
+| [x] | P2-01 | process observer·decoder | Phase 1 완료, ENV-02 | guest verifier/load/attach, lifecycle·decoder 통합 검증 (2026-10-19; 남은 한계는 12.10절) |
+| [x] | P2-02 | file·IPv4 connect observer | P2-01, E03 | guest openat/openat2/connect success/failure 및 raw normalization 검증 (2026-10-19; 남은 한계는 12.10절) |
+| [x] | P2-03 | run scope·출력·손실 상태 | P2-02, E08 | guest 계보 필터·별도 audit·손실 상태 검증 (2026-10-19; 남은 lifecycle 한계는 P2-04) |
+| [x] | P2-04 | start/stop·권한·Linux 실제 검증 | P2-03, E09 | nonce launch gate·권한 강등·신호·잔류 자손 guest 검증 (2026-10-19; setuid 재상승은 nosuid로 미검증) |
 | [ ] | CI-02 | 격리된 Linux BPF 검증 job | ENV-02, P2-04, 13.7절 | verifier·필수 scenario·잔류 자원 정리 증거 |
 | [x] | P3-01 | SECRET 상태 전이·replay | Phase 2 완료 | `ProcessKey` reference engine, ordered replay, external incomplete signal, unit vectors (2026-10-19; P3-02 연결 전) |
 | [x] | P3-02 | YAML policy·평가·명시적 external | P3-01, E05/E06, D04 | pinned YAML v3 strict snapshot, IPv4 CIDR/port evaluator, precedence/error tests (2026-10-19; runner integration P3-03) |
@@ -941,17 +1005,18 @@ AgentTaint/
 | `prompts/03-taint-engine.md`, `04-linux-enforcement.md` | 다중 라벨·Kubernetes 등 Phase 참조 오류 | ROADMAP의 Phase 6/7과 일치 | 2026-10-19 수정; diff 및 ROADMAP 대조 완료 |
 | `SECURITY_MODEL.md` 정책 예시 | PRIVATE_KEY와 단일 SECRET Phase 충돌 | v0.1 예시와 미래 예시 구분 | 2026-10-19 수정; v0.1 단일 SECRET과 미래 Phase 6 예시 분리 |
 | `prompts/README.md` | 규범 문서 집합 | 규범 파일을 명시적으로 나열 | Phase 0에서 완료 |
-| `ARCHITECTURE.md` 트리 제한 | Phase 2 생성물 범위 허용; 정확한 generator basename/suffix는 ENV-02에서 생성 전 기록 필요 | 기존 sensor 패키지의 생성 Go/object 및 해당 fixture·portable 검사만 허용 | G2 문서 반영 완료; 스킬·privileged CI는 별도 |
+| `ARCHITECTURE.md` 트리 제한 | Phase 2 생성물 범위 허용; 실제 generator basename/suffix 및 출력 경로를 현재 source와 tracked object에 대조 | 기존 sensor/enforce 패키지의 생성 Go/object 및 해당 fixture·portable 검사만 허용 | G2 문서 반영 및 현재 경로 대조 완료; 새 object 검증·스킬·privileged CI는 별도 |
 | `SUBORCHESTRATOR.md` | 오래된 .gitignore·untracked 서술, broad permission 권고 | 현재 상태 확인 절차와 최소 권한 안내로 교체 | 2026-10-19 완료; commit `2821c64`, 현재 host/VM 증거 및 제한된 권한 안내 |
 | `ARCHITECTURE.md` 및 `05-macos-observer.md` | ARCH의 Swift 필수 표현은 수정됐으나 Phase 5 프롬프트는 남음 | C API·언어 선택·VM 우선·native 별도 결정 구분 | 2026-10-19 수정; C API와 비필수 Swift 표현 대조 완료 |
 | `SECURITY_MODEL.md` access control 비교 | 조건부 접근 제어 자체가 불가능하다는 일반화 | 차별점을 동적 접근 이력·라벨 전파로 표현 | 2026-10-19 수정; 조건부 규칙 불가 주장을 제거하고 모델 차이로 한정 |
 | `03-taint-engine.md` TEST 4 | 단일 정상 사례를 오탐 없음 검증으로 표현 | 특정 정상 흐름 회귀 검증으로 명명 | 2026-10-19 수정; 단일 사례를 일반 오탐 부재 증거로 확대하지 않도록 명시 |
 | `00-bootstrap.md` 수용 기준 | 개인 머신 PATH 상태 고정 | fixture로 PATH 안/밖 통제 | Phase 0에서 완료 |
 | `00-bootstrap.md` doctor 검증 | 부모 PATH 불변만으로 읽기 전용 입증 | subprocess 환경·쓰기·임의 실행 여부 별도 검증 | Phase 0에서 완료 |
-| `02-linux-observer.md` 출력 | audit JSON stdout과 target stdout 보존 충돌 | 별도 필수 감사 파일·안전한 생성·실패 경계 | G1 문서 반영 완료; 옵션 미구현 |
+| `02-linux-observer.md` 출력 | audit JSON stdout과 target stdout 보존 충돌 | 별도 필수 감사 파일·안전한 생성·실패 경계 | G1 문서 반영 및 `run --observe --audit-file` 구현 완료; disk failure·64 MiB 경계 failure-injection은 `not_tested` |
 | AGENTS clang 검사 / ARCH doctor 계약 | Phase 2 toolchain 버전 검사와 외부 명령 비실행 계약의 접점 | 기본 비실행 유지, 신뢰된 절대 경로의 명시 probe만 제한 실행 | G4 문서 반영 완료; probe 미구현 |
-| `03-taint-engine.md` 상태·exec | PID-only map 예시, exec를 부모→자식 전파처럼 표현 | ProcessKey 기반 상태와 동일 생애 exec 유지로 구체화 | P3 착수 전 |
+| `03-taint-engine.md` 상태·exec | PID-only map 예시, exec를 부모→자식 전파처럼 표현 | ProcessKey 기반 상태와 동일 생애 exec 유지로 구체화 | 2026-10-19 P3 구현 전 수정; P3-01/P3-03의 reference 실행 기록에서 동일 계약 확인 |
 | `04-linux-enforcement.md`, `THREAT_MODEL.md`, `ROADMAP.md` fallback | 자동 kill과 D05의 block 미지원 시 시작 전 실패 충돌 | 명시 mode와 capability 계약 정리 | 2026-10-19 정합화; block 미지원은 시작 전 실패, kill은 명시 mode만 허용 |
+| `docs/ARCHITECTURE.md` BPF tree, `prompts/04-linux-enforcement.md` scope/files | 문서는 `file.bpf.c`/`network.bpf.c`를 LSM enforcement 경로로 적지만 현재 active LSM hooks는 `enforce.bpf.c`에 있고, syscall observer는 `process.bpf.c`에서 file/network source를 include | observer assembly/source includes와 enforcement hooks를 구분해 문서 및 Phase 4 파일 범위를 현재 구조에 맞춤 | **미해결 규범 정합성 항목**; 현재 코드는 변경하지 않음. Phase 4 후속 작업 전 사용자 검토 필요 |
 
 참조: 기존 `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY_MODEL.md`, `docs/ROADMAP.md`, `prompts/00~04`.
 
@@ -966,6 +1031,8 @@ AgentTaint/
 **TOOL-01:** D06에 따라 8절의 세 스킬과 필요한 reference를 프로젝트 범위에 도입한다. 설치 환경의 쓰기 권한을 확인하고, scope·reference·자동 트리거·원본 SHA를 기록한다. 이미 선택한 설치 범위를 다시 질문하지 않는다. global 설정 변경은 project 도입과 묶어서 수행하지 않는다.
 
 **TOOL-02:** 전용 세 스킬의 입력·출력·범위 제한을 작성한다. 테스트 프롬프트에 Phase 0에서 eBPF 구현을 요청하는 사례, audit를 block으로 부르는 사례, 미검증 Linux 상태를 완료로 부르는 사례를 넣어 올바른 대응을 확인한다. 스킬은 kernel correctness를 증명하지 않으며 그 증거를 요구하는 절차다.
+
+**TOOL-03:** 9.2/9.3의 역할·인계 계약과 `.codex/agents/*.toml`을 대조한다. acceptance는 (1) role/path ownership 및 단일 writer 범위의 정적 대조, (2) host runtime에서 지정된 agent/skill 발견 확인, (3) disposable workspace에서 위임·증거 보고·미완료 작업 재개와 범위 준수 행동 확인, (4) 각 확인의 정확한 호출·결과·artifact와 `pass / fail / not_tested / inconclusive` 판정 기록으로 구성한다. (3)에서는 9.2 schema의 적용 가능한 모든 필드가 인계 결과에 포함되는지, 각 증거 행이 네 가지 상태 중 정확히 하나를 사용하는지 확인한다. runtime discovery와 행동 확인 전에는 TOOL-03을 완료로 표시하지 않는다. 이 평가는 제품 kernel correctness를 대신하지 않는다.
 
 허용 API·참고: Lima의 `limactl list/start/shell`, Linux BTF/LSM 파일, cilium/ebpf의 고정 버전 bpf2go, 선택한 host의 공식 plugin/skill 명령. 존재하지 않는 MCP 도구명이나 plugin 옵션을 추정해 실행하지 않는다.
 
@@ -1066,6 +1133,28 @@ P3-02에는 정책 snapshot·경로 기준·parser 상한·중복 key 거부를 
 - unsupported hook, map 포화, telemetry 손실, supervisor 장애의 동작 표.
 - 기존 패키지 경계와 달라지는 지점, 최소 변경안, 승인 기록.
 
+#### P4-01 feasibility 결과 — 2026-10-19 (당시 미승인; 2026-10-20 승인 기록)
+
+**코드 근거:** `internal/taint.Engine.Apply`는 `StageCompleted`이고 `OperationResult == success`인 `FileOpenEvent`에만 label을 추가한다. fork는 관찰된 parent의 현재 상태를 child에 복사하고, exit는 정확한 `ProcessKey` 상태를 제거한다. `internal/runner.policyAuditProcessor.Process`는 ring-buffer에서 전달된 이벤트를 받은 뒤 이 Go 모델을 갱신한다. 이 비동기 경로만으로는 이후 `socket_connect`의 pre-op 판정에 대한 happens-before를 보장하지 않는다. 같은 프로세스의 다른 thread가 별도 CPU에서 connect할 수 있으므로 event consumer의 map update를 기다리는 방식은 경합을 없애지 않는다.
+
+**커널 근거:** Linux v7.0 `fs/open.c`의 `do_dentry_open`은 `security_file_open(f)` 뒤에도 fsnotify permission, lease 처리, filesystem `->open()` 및 `FMODE_OPENED` 설정을 수행하고 실패할 수 있다. 일반 경로는 `security_file_post_open()`을 호출하지 않는다. v7.0 hook 정의에는 `file_open`, `file_post_open`, `socket_connect`가 있지만, hook 정의의 존재만으로 일반 open 완료 후 실행이나 BPF attach 가능성을 증명하지 않는다. `socket_connect`는 pre-op hook이다. 따라서 BPF `file_open`에서 source를 동기 표시하는 최소안은 “성공한 open”이 아니라 “source open 시도”를 label 근거로 삼아야 한다. 이는 보수적으로 과잉 차단할 수 있으나 현재 `SECURITY_MODEL.md`의 성공 완료 의미와 다르다.
+
+**guest 증거:** `ebpf-lab` Linux `7.0.0-34-generic` aarch64에서 `CONFIG_BPF_SYSCALL=y`, `CONFIG_BPF_LSM=y`, `CONFIG_DEBUG_INFO_BTF=y`, readable `/sys/kernel/btf/vmlinux`, `/usr/sbin/bpftool`, `bpftool feature probe kernel`의 LSM program type availability를 확인했다. 하지만 `/sys/kernel/security/lsm`은 `lockdown,capability,landlock,yama,apparmor,ima,evm`이며 `bpf`가 없다. 그러므로 이 guest의 BPF-LSM 활성·attach·hook 반환 동작은 **미검증**이고 현재 실집행 fixture 환경으로 사용할 수 없다. capability/type 지원은 실제 attach 성공의 증거가 아니다.
+
+**최소 계약 제안 (2026-10-20 사용자 승인):**
+
+1. `internal/taint`는 관찰·audit를 위한 규범적 reference model로 유지한다. 비동기 Go 이벤트 consumer는 kernel 집행의 source of truth가 되지 않는다.
+2. Phase 4는 정책 snapshot을 Go에서 검증·컴파일한 후, target 시작 barrier 전에 고정된 run scope와 지원 rule subset을 kernel map에 완전히 적재한다. 초기 block profile은 전용 cgroup v2 scope를 요구하며 target과 descendants를 해당 cgroup에 둔다. target은 cgroup 준비·격리, map 초기화, 모든 필수 LSM link attach가 성공한 뒤에만 시작한다. attach, 초기화, map 용량, scope 식별 또는 지원 subset 검증 실패는 block 요청의 시작 전 오류다.
+3. 별도 kernel map은 일반 정책 엔진이 아니라 제한된 집행 projection만 보유한다: run/scope 식별, process birth identity, 단일 `SECRET` 상태, 허용된 source matcher, 지원되는 IPv4 CIDR/port 규칙. BPF `file_open`은 해당 run의 source match에서 `SECRET`을 보수적으로 동기 표시하고, 관측된 fork에서 child 상태를 동기 복사하며, exit에서 정확한 task/process lifecycle 키를 정리한다. `socket_connect`는 이 상태와 이미 컴파일된 snapshot으로 pre-op 판단한다. rule 표현이 map 한계나 hook 의미를 벗어나면 거부한다.
+4. 이 projection은 AGENTS의 “taint propagation은 `internal/taint` 한 패키지에만 존재” 규칙과 충돌한다. 최소 규범 변경안은 해당 규칙에 **실제 pre-op 집행을 위해 Go reference 의미를 그대로 제한 투영하는 kernel enforcement state machine만 예외**로 명시하고, 새 label/propagation 의미·정책 우선순위·일반 policy evaluator를 C에 두지 않는 것이다. 여기에 “successful completed source open” 대신 “허용된 source `file_open` hook에 도달한 시도도 enforcement state를 보수적으로 taint할 수 있다”는 집행 전용 한계를 명시해야 한다. 관찰/audit model의 성공 완료 조건은 바꾸지 않는다.
+5. target의 BPF map/link handle과 권한은 supervisor에 남기고 target으로 상속하지 않는다. cgroup v2 control files는 target에서 쓸 수 없게 한다. 각 taint map key는 PID 단독이 아니라 run/scope + process birth 식별을 사용한다. source state 갱신, fork 복사, sink 조회는 각 LSM invocation 안에서 동기 수행하고 ring-buffer는 audit에만 사용한다. pre-op LSM의 기존 비영(非零) 거부는 그대로 반환한다.
+6. 각 run의 preallocated sticky fault word는 map 갱신 실패 또는 식별 불확실성에서 설정한다. 이후 해당 scope sink는 label lookup 결과와 무관하게 거부한다. fault word를 확인하지 못하면 해당 scope sink를 거부한다. target cgroup 소속 task만 해당 run policy를 평가한다. Ring-buffer/audit 손실은 별도 telemetry이며 집행 상태를 바꾸지 않는다. 필수 기능 미준비 시 target 시작 전에 실패하고 monitor/notify/kill로 자동 전환하지 않는다.
+7. 정상 종료는 target/descendant 종료 뒤 link detach와 cgroup 정리를 수행한다. 현재 설계는 supervisor의 비정상 종료 뒤에도 남은 descendants를 보호한다고 보장하지 않으며, 그 경로는 enforcement claim에서 제외한다. link pinning·외부 watchdog을 추가하지 않는다.
+
+**결정 및 검증 상태:** 사용자는 2026-10-20에 Go reference를 유지하고 제한 projection을 허용했다. 그 승인에 따라 AGENTS/ARCHITECTURE/SECURITY_MODEL/THREAT_MODEL/Phase 4 prompt와 본 failure matrix에 최소 예외·제한을 반영했다. P4-01 설계 산출물은 승인된 책임 계약, 전용 cgroup v2 run scope, sticky fault 처리 요구, startup barrier, normal shutdown, supervisor crash 한계, failure matrix로 완료한다. Linux v7.0 원자료는 일반 `kernel_clone()` tracepoint-before-wakeup 순서를 확인하지만 actual guest에서 BPF-LSM은 비활성이다. 따라서 BPF-LSM load/verifier/attach, `file_open` 뒤 kernel state, sticky fault·map update, concurrent source-open/connect, fork/exit/PID reuse, cgroup isolation/권한, map saturation, 앞선 LSM deny 보존은 **미검증**이며 P4-02/04의 acceptance 항목이다.
+
+**1차 증거 출처:** [Linux v7.0 `fs/open.c`](https://github.com/torvalds/linux/blob/v7.0/fs/open.c), [Linux v7.0 `kernel/fork.c`](https://github.com/torvalds/linux/blob/v7.0/kernel/fork.c), [Linux v7.0 BPF helper implementation](https://github.com/torvalds/linux/blob/v7.0/kernel/bpf/helpers.c), [Linux v7.0 BPF-LSM source](https://github.com/torvalds/linux/blob/v7.0/kernel/bpf/bpf_lsm.c), [Linux v7.0 LSM hook definitions](https://github.com/torvalds/linux/blob/v7.0/include/linux/lsm_hook_defs.h), [BPF LSM documentation](https://docs.kernel.org/bpf/prog_lsm.html), [LSM usage documentation](https://docs.kernel.org/admin-guide/LSM/index.html).
+
 **구현 파일:** 승인된 `bpf/*.bpf.c`, maps, `internal/enforce`, policy 준비 경로, runner·env integration, Linux integration tests.
 
 **작업:**
@@ -1093,6 +1182,14 @@ F5~F10은 현재 구현하지 않는다. F5는 D01에 따라 VM 실행 경험을
 
 ### 12.10 작업 상태와 세션 인계
 
+**Codex 팀 설정 기록 — 2026-10-18 초기 세션**
+
+- 사용자가 승인한 범위로 `docs/ARCHITECTURE.md`에 `.codex/agents/*.toml`, `.agents/skills/<skill>/SKILL.md`, skill별 정적 `references/`만 허용하는 규칙을 추가했다. hooks·MCP·스크립트·외부 skills는 이 승인에 포함하지 않았다.
+- Codex 공식 custom-agent 스키마를 확인하고 9.3절에 8개 역할과 `medium`/`high` reasoning 배정을 기록했다. 최초 skills 묶음은 9.1절의 preflight/docs-contract/security-semantics 세 개로 정했다.
+- 초기 세션에서는 저장소 `.codex`와 `.agents` 경로의 쓰기 검사가 거부되어 그 시점에는 파일을 만들지 않았다. 이후 권한 게이트 통과와 AI-07 파일 작성은 아래 12.13절의 후속 실행 기록에 남겼다. Codex CLI는 계속 PATH에서 확인되지 않아 실제 runtime 발견·동작 평가는 미검증이다.
+- 최초 조사 당시의 사용량 조회 한계와 잔여 100% 결과는 과거 기록이다. 현재 실행의 점검 주기·40% 중단 기준·커밋/push 규칙은 12.13절을 따른다.
+- 초기 세션 종료 시점의 진척은 기준선 조사, 규범 경로 반영, 역할·skill 설계의 3/6 마일스톤이었다. 후속 실행에서는 AI-06/07/08/11/12를 진행했으며, 현재 미검증인 AI-09/10과 전체 카드 상태는 아래 12.13절을 기준으로 한다.
+
 **현재 실행 기록 — 2026-10-03, 전체 목록 정의 및 순차 실행 준비**
 
 - 사용자 요청: 전체 작업 목록 정의 후 순차 진행. 계획 작성은 완료했지만 아래 작업 전체의 구현 완료를 뜻하지 않는다.
@@ -1101,7 +1198,7 @@ F5~F10은 현재 구현하지 않는다. F5는 D01에 따라 VM 실행 경험을
 - 수행: 기존 docs/prompts·실제 core/CLI API 조사, 작업 카드/의존성/완료 조건 정리, 읽기 전용 Lima host preflight, 현재 `make check` 재검증.
 - ENV-01 host preflight: Lima 2.1.4, `ebpf-lab` Stopped, VZ/aarch64, 4 CPU/4 GiB/20 GiB. 저장 설정의 `mounts: []` 및 유효 설정의 SSH agent/X11 forwarding 비활성 확인. 이는 runtime 격리 검증이 아니다.
 - ENV-01 guest 진단: `not_tested`. `/Users/bhshin/.lima/ebpf-lab`가 현재 허용 쓰기 경로 밖이고 권한 상향도 불가하다. VM 시작은 시도하지 않았으므로 실행 실패·자동 승인 거부가 발생했다고 기록하지 않는다.
-- PRE-02: G1/G2/G4 문서 계약은 반영했다. 감사 파일 크기/실행 중 실패 처리, probe 인자·시간/출력 제한·신뢰 기준, generator의 정확한 생성 이름은 각 구현 전에 기록·검증해야 한다. 다른 Phase의 규범 정합성 작업이 남아 PRE-01/02 전체는 계속 일부 진행이다.
+- PRE-02 당시 이력: G1/G2/G4 문서 계약과 D05의 block/kill mode 정합성을 반영했다. 이후 감사 파일 lifecycle과 generator 이름/경로는 ARCHITECTURE 및 ENV-02 기록에서 정리했다. G4 probe 실행 경계와 전체 문서 계약 검토는 여전히 미완료다.
 - 제품 코드·설정·스킬 설치·VM·커밋·push 변경 없음. Phase 0/1 검증 이력과 소스 식별자는 아래에 보존한다.
 - 다음 실행은 12.12절 G3의 허용된 Linux 검증 환경 확보부터다. G1/G2/G4를 다시 포괄 질문하지 않으며 새 충돌만 확인한다. 선행 미완료를 피해 Phase 3/4 코드를 먼저 작성하지 않는다.
 
@@ -1240,13 +1337,35 @@ go test -race -count=1 ./...
 
 세션 중단·담당 교체 때에는 변경 파일, 마지막 성공·실패 명령, 아직 실행하지 않은 검사와 남은 자원(실행 프로세스·VM 상태·attach 등)을 기록한다. 다른 AI의 “완료” 요약만으로 체크하지 않고 현재 worktree와 artifact를 확인한다. 새 commit이나 관련 diff가 생기면 영향받는 증거를 다시 만든다. 사용자 변경을 되돌리거나 남은 프로세스를 무단 종료하는 지시로 해석하지 않는다.
 
+#### 현재 실행 기록 — 2026-10-21, P4-04 진단·PRE-01 사실 정합성 재개
+
+- 이번 재개 직전 기준: branch `runner-signal-exit-code`; 기존 dirty worktree를 보존했다. 이 기준 시점에는 production observer 코드를 추가 수정하지 않았고, 기존 P4-04 변경은 독립 정적 리뷰를 받았다.
+- 이번 재개에서 독립 보안 리뷰는 `consumeRunEvents`가 정상 `Read` 경로에서 완료된 network sink를 처리하기 전에 drop counter를 새로 읽지 않아, timeout 없는 연속 이벤트 스트림에서 audit completeness snapshot이 오래될 수 있음을 찾았다. 기존 코드 흐름의 누락이며 이번 diff가 만든 회귀는 아니다. 완료된 sink 평가 전에 counter delta를 poll하고 `quality.report()`/`MarkIncomplete()`에 반영하도록 `internal/runner/observe_linux.go`에 `processPolicyAuditEvent` 경로를 추가했다. `TestKernelRingBufferDropSuppressesSubsequentPolicyVerdict`는 이 production helper를 통해 제어된 Linux ring loss 후 completed connect를 처리하고, `TestPollDropsBeforeCompletedSinkSkipsOtherEvents`는 비 sink/attempt event 필터를 확인한다. 두 검사는 아직 실행하지 않았고 Linux fixture는 `consumeRunEvents` 전체 루프를 통과하지 않는다. counter 조회 오류 전용 verdict 억제 검사도 추가 검토가 필요하다. Per-CPU counter의 순차 snapshot은 동시 손실과 엄격히 선형화되지 않으므로 이 수정은 stale 상태 위험을 줄이는 완화이며 완전한 ordering 보장이 아니다.
+- P4-04 정적 리뷰는 path helper·syscall identity/result 진단과 counter delta 처리에서 고칠 코드 결함을 찾지 못했다. reviewer는 진단이 `FileOpen`/taint/policy로 승격되지 않는 점도 확인했다. 이는 verifier/runtime/acceptance 증거가 아니다.
+- 추가 정적 fixture 리뷰는 required mode에서 mmap child test만 직접 선택했을 때의 skip 우회와 diagnostic의 호출별 correlation 부재를 지적했다. child는 required mode에 target path가 없으면 실패하도록 보강했고, 진단은 process-scoped evidence로 한정해 기록했다. 다른 static reviewer 제안에 따라 malformed diagnostic에서 helper result 0도 거부하도록 decoder 경계를 강화했다. 관련 변경은 아직 실행 검증하지 않았다.
+- Linux/arm64 mmap 진단 fixture는 지원 환경에서 target `openat`이 성공했는데 `-EFAULT`/success 진단이 없으면 이전처럼 skip하지 않고 실패하도록 바꿨다. acceptance runner에서는 `AGENTTAINT_REQUIRE_S25_BPF=1`로 arch/root/BPF/MADV 전제조건 실패도 실패 처리한다. 독립 재검토에서 inherited `AGENTTAINT_S25_MMAP_PATH`가 BPF 진단을 우회할 수 있음을 찾아 target subprocess를 별도 `TestS25MmapPathTarget`로 분리했다. 추가 TOOL-03.d 정적 검토에서 S25 동시-run 테스트의 incomplete-evidence `SKIP`도 acceptance를 숨길 수 있음을 확인해 같은 required mode에서 실패하도록 보강했다. 독립 재검토는 두 fixture 모두 required mode에서 전제조건, diagnostic, fixture event, audit completeness를 엄격히 확인하며 outer bypass나 성공하지 않은 open을 acceptance 처리하지 않는 것을 확인했다. 두 fixture 모두 아직 실행하지 않았다.
+- Linux v5.13 helper와 sleepable syscall tracepoint 지원 근거를 대조했다. 현 no-fault helper를 다른 sleepable helper로 단순 교체해 선언된 5.13+ 범위에서 pathname completeness를 보장하는 안전한 변경은 확인되지 않았다. 현재 진단을 보존하고, 통합 테스트 단계에서 mmap 재현·decoder·counter 회귀를 실행한 뒤 S25 진단에 적용한다. 기존 S25 누락의 개별 원인과 complete audit isolation은 계속 `not_tested`다.
+- 후속 upstream source 대조에서 계획서의 ‘Linux 5.13에 `bpf_copy_from_user`가 없다’는 문장을 정정했다. helper는 존재하지만 v5.13 tracing helper dispatch는 `prog->aux->sleepable`일 때만 이를 제공한다. 현재 `tp_btf/sys_enter`의 `BPF_TRACE_RAW_TP` attach는 v5.13 verifier에서 sleepable 대상으로 허용되지 않는다. 근거: [v5.13 helper](https://github.com/torvalds/linux/blob/v5.13/kernel/bpf/helpers.c#L586-L605), [sleepable gate](https://github.com/torvalds/linux/blob/v5.13/kernel/trace/bpf_trace.c#L980-L982), [raw tracing helper dispatch](https://github.com/torvalds/linux/blob/v5.13/kernel/trace/bpf_trace.c#L1325-L1337), [verifier sleepable attach restrictions](https://github.com/torvalds/linux/blob/v5.13/kernel/bpf/verifier.c#L12475-L12499), [RAW_TP sleepability restriction](https://github.com/torvalds/linux/blob/v5.13/kernel/bpf/verifier.c#L12539-L12574). 이 사실 정정은 구현 승인이나 completeness 증거가 아니다.
+- 호스트 컴파일러 선택을 읽기 전용으로 확인했다. 현재 `command -v clang`은 Apple clang 17이 설치된 `/usr/bin/clang`을 가리키며, 이 바이너리의 `--print-targets`에는 BPF가 없다. `/opt/homebrew/opt/llvm/bin/clang` LLVM 22.1.8은 BPF/BPFEL/BPFEB 타깃을 제공한다. `go:generate`는 `-cc clang`을 사용하므로 현재 PATH에서 기본 명령은 BPF 미지원 컴파일러로 해석된다. 이는 환경 선택 실패 가능성을 증명하지만, 과거 Homebrew clang 재시도의 실제 stderr가 없어 당시 실패가 코드 오류였는지는 확정하지 않는다. 이번 재개에서는 compile/generate를 실행하지 않았다.
+- PRE-01 factual review에서 Markdown 상대 링크/anchor 오류와 추가 version·Phase 상태 불일치는 발견되지 않았다. `SUBORCHESTRATOR.md`의 10/19 Apple clang 기록과 10/21 재확인 값의 차이는 도구 변경 여부가 확인되지 않아 둘 다 날짜와 함께 보존했다. §16의 10/03 조사 당시 상태 문구는 조사 시점으로 한정했다.
+- MCP-01 재확인에서 현재 `AgentTaint` graph는 134,515 nodes/139,570 edges, 긴 경로 alias는 134,836 nodes/139,557 edges이며 긴 alias에는 `recordBPFDropDeltas`가 없다. 두 인덱스는 같은 root/branch/HEAD를 가리키지만 API는 dirty-worktree fingerprint나 index timestamp를 제공하지 않는다. Graph/GitHub write-capable tools가 노출되지만 이번 작업에서는 read-only로 사용했다. Service-outage fallback과 현재 GitHub 권한 범위는 검증하지 않았다.
+- PRE-01 사실 정정으로 `SECURITY_MODEL.md`의 지원되지 않는 `~` 경로 예시를 절대 경로로 바꾸고, Phase 4 prompt 및 이 표의 `internal/enforce/enforce.go` 오기 참조를 실제 `internal/enforce/enforce_linux.go`/generated BPFEL 경로로 맞췄다. `ARCHITECTURE.md`의 CLI·sensor·policy·enforcement 파일 트리도 현재 코드에 대조했다. Phase 3 prompt의 `reads secret.txt` 예시도 성공한 `FileOpen`만 label 근거라는 계약에 맞췄다. README에는 현재 S25/P4-04·V-01/DOC-01 미완료 상태를 표시했고, `SUBORCHESTRATOR.md`는 agent의 read-only 지침과 실제 권한 격리를 구분하고 현재 host guest 접근 상태를 기록했다. Phase 2 acceptance 예시에 필수 `--policy POLICY_PATH`가 누락된 것을 찾아 현재 CLI/Architecture 계약에 맞춰 수정했다. 이 정정만으로 PRE-01 전체 문서 전수 검토가 완료된 것은 아니다.
+- PRE-01/PRE-02 독립 문서 감사에서 Phase 2 prompt/architecture는 `doctor --probe-toolchain`을 P2 수용 기준으로 요구하지만, master plan은 미구현 제안으로 기록하고 ROADMAP은 P2 완료로 표시하는 범위 충돌을 발견했다. AGENTS의 문서 충돌 stop condition에 따라 prompt 범위·ROADMAP 완료 상태를 조용히 바꾸거나 probe를 임의 구현하지 않았다. P2를 재개해 probe를 구현할지, probe를 별도 미래 작업으로 이관할지 사용자 결정을 기다린다.
+- PRE-01 정합성 상태 재확인: `THREAT_MODEL.md`는 현재 “접근한” 표현을 쓰고 성공한 open 및 byte read의 증거가 아님을 명시하며, `SECURITY_MODEL.md`와 의미가 맞는다. 따라서 이전 감사 기록의 byte-read 충돌은 이미 정리된 항목이며 사용자 결정 게이트가 아니다. 남은 규범 정합성 충돌은 `ARCHITECTURE.md` BPF tree가 현재 구조를 설명하면서 `file.bpf.c`/`network.bpf.c`를 LSM 경로로 귀속하는 점이다. 현재 observer는 `process.bpf.c`에서 두 source를 포함하고, active enforcement hooks는 `bpf/enforce.bpf.c`에 있다. Phase 4 prompt는 `file.bpf.c`/`network.bpf.c`를 향후 enforcement conversion targets로 지정하므로 현재 구조 설명과 목표 scope 사이의 경로·책임 정합화가 필요하다; prompt가 이 hooks가 이미 active라고 말하는 것은 아니다. `AGENTS.md`의 문서 충돌 절차에 따라 코드나 규범 문서를 임의로 바꾸지 않고, 경로/책임을 어느 쪽에 정합화할지 사용자 결정을 기다린다.
+- 추가 read-only kernel-source 조사는 Linux 5.13 `bpf_d_path` + sleepable BPF-LSM `file_open`을 resolved-path 수집 후보로 찾았다. 이는 syscall-entry nofault pathname read를 피할 수 있지만 hook 시점은 open completion 전이고, 현재 raw pathname 기반 event/policy contract를 변경하므로 구현하지 않았다. 정확한 조건·한계와 upstream 근거를 아래 P4-04 path-capture 조사 항목에 기록했다. VM verifier/load/attach/runtime는 `not_tested`다.
+- TOOL-03 인계 계약을 9.2절에서 위임용·세션 종료용 공통 schema로 통합했다. baseline/사전 dirty paths, 권한·소유 파일, acceptance별 evidence와 `pass`/`fail`/`not_tested`/`inconclusive` 의미, 정확한 명령·환경·artifact, 변경 파일·live resource·다음 종속 작업을 요구한다. 9.3절은 같은 schema를 참조한다. 이는 문서 계약 완성만이며 agent discovery와 role/skill behavior는 통합 검증에서 확인해야 해 TOOL-03은 미완료다.
+- 2026-10-21 22:48 KST에 `limactl list --json`을 다시 확인했다. `ebpf-lab`은 `Broken`; `ha.sock` connect는 `operation not permitted`이며 Rosetta sysctl probe도 sandbox에서 거부됐다. 기존 `stat`/`lsof` 기록은 socket 소유자와 host `limactl` PID 67705의 socket 보유를 보여주지만 hostagent protocol 응답이나 guest liveness를 보장하지 않는다. 이 재확인은 guest 명령을 실행하지 않았다. 현재 증거는 guest 손상이나 VM 재생성을 뒷받침하지 않으며, guest health와 BPF verifier/load/attach 및 mmap/S25는 `not_tested`다. Docker daemon도 이 세션에서 사용할 수 없다.
+- TOOL-03.d 정적 테스트·반례 매트릭스를 추가하고 DOC-01의 kernel/architecture 상태와 troubleshooting 안내를 README에 정확한 증거 범위로 보강한다. S25 필수 실행 변경은 독립 정적 리뷰를 통과했으나 fixture는 아직 실행하지 않았다. P2 probe 및 관찰/집행 규범 충돌은 사용자 결정 전까지 종속 변경을 보류한다. VM 삭제·재생성은 실행하지 않았다. 이번 재개에서 실행한 검증은 `git diff --check`뿐이며 통합 테스트·빌드·BPF load/attach는 보류 중이다.
+- TOOL-03 로컬 availability 재확인(2026-10-21): `command -v`에서 `go`는 `/opt/homebrew/bin/go`, `clang`은 `/usr/bin/clang`으로 확인됐다. `staticcheck`, `govulncheck`, `go-arch-lint`, `llvm-strip`, `bpftool`, standalone `bpf2go`, `veristat`은 현재 `PATH`에서 찾지 못했다. 이는 해당 명령의 PATH 검색 결과일 뿐 다른 위치 설치 여부나 도구 동작을 검증하지 않는다. 도구를 설치·실행하지 않았으며 빌드·테스트도 수행하지 않았다. TOOL-03의 runtime discovery/행동 평가, 후보 도구 평가, eBPF verifier/load/attach는 계속 미완료 또는 `not_tested`다.
+- 과거 BPF compile-target 오류의 원인을 읽기 전용으로 재검토했다. `go:generate`는 `go tool bpf2go -target bpfel,bpfeb -cc clang`을 사용하며 `process.bpf.c`가 file/network source를 포함한다. 기록상 기본 `/usr/bin/clang`은 BPF target이 없는 Apple clang 17이고, Homebrew LLVM 22.1.8은 BPF/BPFEL/BPFEB target을 제공하지만 재시도 당시 실제 argv·exit code·stderr 전문이 없다. 현재 dirty `bpf/file.bpf.c`/`bpf/events.h`의 정적 검토에서 명백한 C syntax/type 오류는 발견되지 않았으나 이는 컴파일 증거가 아니다. 따라서 과거 실패를 코드 오류 또는 환경 오류로 단정하지 않는다. `unknown target`·header lookup 실패와 파일/행/열을 가리키는 C diagnostic은 원인 구분의 단서다. 실제 clang 경로, 전체 argv, exit code, stderr 전문, cwd가 확보되기 전까지 원인 판정은 미결정이며 compile/test는 실행하지 않았다.
+
 ### 12.11 전체 작업 카드와 순차 실행 순서
 
 이 절은 12.1절의 **37개 상위 작업을 실행 가능한 범위로 풀어 쓴 목록**이다. 같은 ID는 같은 작업이며 이중 집계하지 않는다. 제품 기능뿐 아니라 문서·환경·AI 도구·테스트·운영·배포까지 포함한다. 미래 작업의 목록화는 지금 구현하거나 새로운 파일 경로를 자동 허용한다는 뜻이 아니다.
 
 **이번 계획의 준비 조사(제품 Phase 0과 별개):** AGENTS, ARCHITECTURE, SECURITY_MODEL, THREAT_MODEL, ROADMAP, 기존 Phase 프롬프트, 이 문서 5/7~10/13절을 기준으로 삼았다. 코드 그래프로 실제 core/runner/CLI 심볼을 확인했고, 환경 담당자는 설치된 Lima의 help/list와 해당 VM 설정을 확인했다. 설계·목록 작성과 구현·독립 검증 역할을 분리했다.
 
-현재 재사용할 수 있는 계약은 `core.Event.Kind() EventKind`, `core.DecodeEvent([]byte) (Event, error)`, concrete event의 `encoding/json.Marshal`, CLI의 `doctor`/`run`, `make check`/`make race`다. `internal/runner/runner.go`의 `Run`은 무보호 커맨드 실행이지 observer supervisor가 아니다. `--observe`, `--audit-file`, `doctor --probe-toolchain`, `make generate-bpf`, policy evaluator, enforcement API는 아직 존재하지 않는다. 아래의 그런 이름은 **구현 제안**이며 실행 가능한 명령으로 복사하지 않는다. Linux 수집 helper·hook signature는 ENV-02/P2에서 실제 고정 버전 소스와 guest BTF로 확인한다.
+현재 재사용할 수 있는 계약은 `core.Event.Kind() EventKind`, `core.DecodeEvent([]byte) (Event, error)`, concrete event의 `encoding/json.Marshal`, CLI의 `doctor`/`run`, `make check`/`make race`다. `internal/runner/runner.go`의 `Run`은 무보호 커맨드 실행이지 observer supervisor가 아니다. Linux의 `run --observe --policy PATH --audit-file PATH` 실행 경로와 policy evaluator 및 Phase 4 enforcement API는 구현되어 있으며, 적용 범위와 미검증 경계는 관련 Phase 기록을 따른다. `doctor --probe-toolchain`과 `make generate-bpf`는 아직 구현되지 않은 제안 인터페이스이며, 실행 가능한 명령으로 복사하지 않는다. Linux 수집 helper·hook signature는 ENV-02/P2에서 실제 고정 버전 소스와 guest BTF로 확인한다.
 
 각 카드를 실행할 때는 **① 참조 원문 읽기 → ② 범위·허용 파일 확인 → ③ 구현 → ④ 독립 리뷰·검증 → ⑤ 12.1 체크 및 12.10 증거 갱신**을 따른다. 미래 API를 추측하거나 문서만 작성하고 기능 완료로 체크하지 않는다. Phase 완료 보고는 매번 남기고, 다음 Phase는 이전 수용 기준과 그 Phase의 범위·권한이 확인된 경우에만 시작한다. 12.12절처럼 실제 게이트가 있으면 순차 진행 요청만으로 이를 생략하지 않는다.
 
@@ -1254,14 +1373,14 @@ go test -race -count=1 ./...
 
 | ID / 현재 상태 | 실행할 일·주요 파일 또는 대상 | 선행·완료 기준·금지 |
 |---|---|---|
-| PRE-01 / 일부 진행 | `docs/`, `prompts/`의 Phase 번호·예시·현황 오류를 12.2 표와 대조. 단일 SECRET과 PRIVATE_KEY 미래 예시 분리, SUBORCHESTRATOR의 오래된 현황·과도한 권한 안내 수정 | 기존 Phase 0 수정은 보존. 의미 변경은 PRE-02로 분리. 링크·버전·Phase 참조 검증 후 완료; 경쟁 제품에 대한 단정으로 보안을 증명하지 않음 |
-| PRE-02 / 일부 진행 | E01/E08/E09와 D05에 따른 문서 충돌별 최소 변경안 작성. 첫 범위는 감사 출력 분리·생성 파일 정확한 위치·Linux 실행 권한 계약 | 관련 사용자 확인 뒤 ARCHITECTURE/현재 prompt부터 갱신. 변경 전 충돌 위치·이유 기록. 후속 모든 Phase를 한 번에 포괄 승인한 것으로 취급하지 않음 |
+| PRE-01 / 일부 진행 | `docs/`, `prompts/`의 Phase 번호·예시·현황 오류를 12.2 표와 대조. 단일 SECRET과 PRIVATE_KEY 미래 예시 분리, SUBORCHESTRATOR의 오래된 현황·과도한 권한 안내 수정 | 기존 Phase 0 수정은 보존. 의미 변경은 PRE-02로 분리. 남은 전수 확인은 모든 링크·버전·Phase/status·예시 및 SUBORCHESTRATOR의 현재 상태·권한 주장을 포함한다. 링크·버전·Phase 참조 검증 후 완료; 경쟁 제품에 대한 단정으로 보안을 증명하지 않음 |
+| PRE-02 / 일부 진행 | E01/E08/E09와 D05에 따른 문서 충돌별 최소 변경안 작성. 첫 범위는 감사 출력 분리·생성 파일 정확한 위치·Linux 실행 권한 계약 | 감사 파일의 64 MiB 상한·sticky write failure 처리 및 현재 bpf2go 생성 ident/경로를 ARCHITECTURE와 ENV-02 기록에 반영했다. observer READY/EOF/permit 계약도 P2-04 증거 범위와 구분했다. 남은 일은 전체 문서 계약 전수 검토와 미검증 failure-injection 항목 표시다. G4 probe의 executable/arguments/timeout/output cap/trust 기준은 probe 작업 전 미해결로 둔다. 문서 보장 충돌은 AGENTS 절차를 따르고, 후속 모든 Phase를 한 번에 포괄 승인한 것으로 취급하지 않음 |
 | TOOL-01 / 미착수·선택 | 8절의 고정 upstream 세 스킬과 필요한 references를 프로젝트 범위에 도입. provenance·원본 SHA·변경점·host discovery·제거 대상 기록 | E01/설치 경로 쓰기 권한 필요. 스킬 설치 실패는 제품 개발을 차단하지 않음. 전역 설정·전체 팩·hook을 함께 설치하지 않음 |
-| TOOL-02 / 미착수·선택 | 9.1절의 preflight/docs-contract/security-semantics 세 절차부터 skill-creator로 작성. phase-closeout, Linux verifier, replay, adversarial 절차는 해당 Phase에 도달할 때 추가 | 승인된 경로만 사용. 정상/범위 위반/증거 없음 프롬프트로 동작 검증. 스킬의 답변을 실제 kernel 시험으로 대체하지 않음 |
-| TOOL-03 / 미착수·운영 보조 | 9.2절의 implementer/reviewer/verifier 역할, 파일 소유권, 인계 필드, 중단·재개 절차 정리. 필요할 때만 eBPF/adversarial 담당 추가 | 서로 다른 에이전트가 같은 파일을 동시 수정하지 않음. 호스트별 agent 설정 API는 확인 후 사용. 별도 orchestration 서버가 필수는 아님 |
-| MCP-01 / 미완료·기존 도구 사용 중 | 10절의 그래프 freshness/제외 경로, GitHub 읽기 대 쓰기, tool output의 신뢰 경계, 메모리 장애 fallback 점검 | 실제 도구 목록과 권한·실패 사례를 기록. graph는 runtime taint가 아님. 새 MCP 서버·DB·원격 업로드를 기본 의존성으로 추가하지 않음 |
-| ENV-01 / 일부 진행·guest 대기 | 기존 `ebpf-lab`의 host 설정 점검 다음 guest kernel/config/BTF/LSM/도구/권한/공유/forwarding 확인. 결과는 5.7 manifest에 기록 | 현재 막힘은 12.12 참조. `supported/unsupported/unknown/permission_denied/not_tested` 구분. 설정 파일만으로 실제 guest 상태를 합격 처리하지 않음 |
-| ENV-02 / 미착수 | Linux guest에서 pinned Go/cilium/clang/LLVM/bpftool 경로 확인·준비. BTF 기반 `vmlinux.h`, bpf2go 생성 `.go`/`.o`, endian/architecture·생성 명령·입력 해시 결정 | ENV-01 및 정확한 생성 경로 승인 필요. 도구 설치·커널/부팅 설정 변경 전 범위 확인. 작은 빌드 probe와 실제 제품 sensor 검증을 구분 |
+| TOOL-02 / 작성 완료·행동 검증 미완료 | 9.1절의 preflight/docs-contract/security-semantics 세 절차부터 skill-creator로 작성. phase-closeout, Linux verifier, replay, adversarial 절차는 해당 Phase에 도달할 때 추가 | 세 skill 파일은 `.agents/skills/`에 있다. 정상/범위 위반/증거 없음 프롬프트 평가와 discovery 확인이 남아 있다. 승인된 경로만 사용하고, 스킬의 답변을 실제 kernel 시험으로 대체하지 않음 |
+| TOOL-03 / 일부 구현·평가 | 9.2절의 implementer/reviewer/verifier 역할, 파일 소유권, 인계 필드, 중단·재개 절차 정리. 필요할 때만 eBPF/adversarial 담당 추가 | 8개 role 정의가 `.codex/agents/`에 있고 TOOL-03.a~e 인벤토리를 시작했다. 별도 파일 소유권을 나눈 병렬 조사·리뷰에 사용했다. 자동 발견, 완전한 handoff 절차와 역할별 동작 검증은 남아 있다. 서로 다른 에이전트가 같은 파일을 동시 수정하지 않고, 별도 orchestration 서버는 추가하지 않음 |
+| MCP-01 / 일부 진행 | codebase-memory freshness·제외 경로와 connector surface·실패 경계 점검 | 같은 저장소 경로·branch·HEAD를 가리키는 `AgentTaint`와 긴 경로 alias 두 인덱스가 있으며, 후자는 현재 `recordBPFDropDeltas` 및 회귀 테스트를 포함하지 않는 stale snapshot이다. `AgentTaint` 인덱스에는 해당 변경이 있다. API는 dirty-worktree fingerprint나 index timestamp를 제공하지 않아 commit HEAD만으로 freshness를 증명하지 못한다. `.git`, `.idea`, `docs`, `internal/env` 제외를 확인하고 제외 source는 직접 읽음. GitHub connector는 read/write API를 노출하며 실제 업무는 읽기 전용으로 유지. service outage 시 graph fallback은 재현·검증하지 않아 `not_tested`. Lima guest host-agent socket은 sandbox에서 `operation not permitted`, Docker daemon socket은 없음; 이는 guest 고장 증거가 아님. graph는 runtime taint가 아님; 중복 인덱스 정리·재색인이나 새 MCP 서버·DB·원격 업로드는 수행하지 않음 |
+| ENV-01 / 완료·한계 기록 | 기존 `ebpf-lab` guest kernel/config/BTF/LSM/toolchain/권한/mount/forwarding을 5.7 manifest에 기록 | enforcement 부적합, target 행동·실제 product load/attach·전체 network boundary는 `not_tested` |
+| ENV-02 / 완료 | pinned Go/cilium/clang/LLVM/bpftool, BTF source, endian 생성명·경로·E07 정책 확정 | 임시 합성 CO-RE probe 두 번의 SHA-256 일치. 제품 P2-01 검증은 2026-10-19 실행 기록에 분리 |
 
 #### B. 완료된 기반 작업과 portable CI
 
@@ -1276,14 +1395,14 @@ go test -race -count=1 ./...
 
 #### C. Phase 2 — Linux 관찰, 아직 차단 없음
 
-필수 참조: `prompts/02-linux-observer.md`, ARCHITECTURE Event Pipeline, 7.1/7.2/7.7~7.9, 12.6. raw layout·BPF 생성 코드·integration fixture를 추가할 **정확한 경로는 PRE-02/ENV-02에서 먼저 확정**한다.
+필수 참조: `prompts/02-linux-observer.md`, ARCHITECTURE Event Pipeline, 7.1/7.2/7.7~7.9, 12.6. 현재 raw layout·BPF 생성 ident/경로·integration fixture 범위는 PRE-02/ENV-02 기록에 반영되어 있다. 새 산출 경로나 generator 입력을 바꾸기 전에는 실제 생성 명령과 tracked 파일을 대조해 해당 기록을 갱신한다.
 
 | ID | 세부 구현·담당 경로 | 수용 기준·선행 |
 |---|---|---|
-| P2-01 | `bpf/process.bpf.c`, `maps.h`, `events.h`, `internal/sensor/linux/sensor.go`: fork/exec/exit, stable ProcessKey 정규화, 버전·길이·padding/endian raw decoder, bpf2go load/attach/close | ENV-02 후. guest verifier·load·attach·빠른 fork/exec·PID 재사용·thread exit 구분 증거. process가 시작되기 전에 관측 준비가 됐는지 P2-04에서 최종 통합 |
+| P2-01 / 완료·한계 기록 | `bpf/process.bpf.c`, `maps.h`, `events.h`, `internal/sensor/linux/sensor.go`: fork/exec/exit, stable ProcessKey 정규화, 버전·길이·padding/endian raw decoder, bpf2go load/attach/close | ENV-02 후 guest verifier·load·attach·빠른 fork/exec·thread exit 및 identity 구분 확인. 실제 PID 재사용·namespace와 attach-before-exec 최종 통합은 미검증·P2-04 |
 | P2-02 | `bpf/file.bpf.c`, `network.bpf.c`: 파일 open과 IPv4 connect, 관측 단계·결과·접근 모드·경로 품질 정규화 | P2-01 후. 정상/실패 operation 및 truncation·비UTF-8 처리 테스트. 실제 read 성공을 open 시도로부터 추정하지 않음. FileRead/Write 타입 존재를 센서 지원으로 확대하지 않음 |
-| P2-03 | runner/sensor/CLI: 명시 run과 자손 scope, run 간 격리, 감사 스트림 분리, queue·drop·decode 오류·불완전 이력 | P2-02 및 출력 계약 승인 후. 대상 JSON/binary stdout 보존, scope 밖 noise 제외, S25/S27/S32/S37. 데이터 손실 뒤 clean 상태로 자동 표시 금지 |
-| P2-04 | runner/env/CLI/Linux integration: attach-before-exec, target 비특권 실행, 내부 FD 비상속, 취소·root 종료·잔류 child·drain·cleanup | P2-03 후. S10/S11/S13/S29/S31/S33/S34/S38 및 실제 guest 수용 시험. kernel test skip을 완료로 세지 않음. taint/policy/kill/deny 미구현 유지 |
+| P2-03 / 완료·한계 기록 | runner/sensor/CLI: 명시 run과 자손 scope, run 간 격리, 감사 스트림 분리, queue·drop·decode 오류·불완전 이력 | P2-02 및 출력 계약 승인 후. 대상 stdout/stderr 보존, 동시 run 격리, core schema JSONL, bounded queue·drop 상태를 검증. 실행 취소·권한 강등·잔류 descendant 수명은 P2-04 |
+| P2-04 / 완료·한계 기록 | runner/CLI/Linux integration: attach-before-exec, target 비특권 실행, 내부 FD 비상속, 취소·root 종료·잔류 child·drain·cleanup | P2-03 후. nonce launch gate·UID/GID/capability/NNP/FD 검사, 취소·setsid 자손 drain 및 guest observer 검증. setuid 재상승은 nosuid rootfs로 미검증. taint/policy/kill/deny 미구현 유지 |
 | CI-02 | 격리·일회성 Linux 검증 job과 environment/artifact manifest. BPF 재생성·verifier·observer scenario·정리 검증 | P2-04 후 검증 자동화. 13.7 최소 권한·cache 격리·필수 scenario 수 확인. 외부 PR을 개발자 VM이나 재사용 root runner에서 자동 실행하지 않음. P4 도달 후 enforcement job 추가 |
 
 #### D. Phase 3 — Taint·정책·감사
@@ -1303,7 +1422,7 @@ go test -race -count=1 ./...
 | ID | 세부 구현·담당 경로 | 수용 기준 |
 |---|---|---|
 | P4-01 | 동기 커널 상태와 Go reference model의 소유·갱신·수명·policy snapshot·race 계약. hook capability와 장애 행동표·권한 profile 설계 | Phase 3 완료 후 실제 kernel 가능성 검증 및 규범 충돌 제안/사용자 확인. 비동기 Go 이벤트 처리를 pre-op 동기 판정처럼 설명하지 않음 |
-| P4-02 | 승인된 `bpf/*.bpf.c`, maps, `internal/enforce/enforce.go`: 지원 source file-open·새 IPv4 connect의 pre-op 거부, 앞선 LSM 거부 존중 | direct file deny와 read-allow→taint→network-deny를 별개 fixture로 검증. syscall errno·상태·수신 측·allow 대조군이 함께 증명돼야 PASS |
+| P4-02 | 승인된 `bpf/*.bpf.c`, maps, `internal/policy/kernel.go`, `internal/enforce/enforce_linux.go` 및 생성 `enforce_bpfel.go/.o`: 지원 source file-open·새 IPv4 connect의 pre-op 거부, 앞선 LSM 거부 존중 | direct file deny와 read-allow→taint→network-deny를 별개 fixture로 검증. syscall errno·상태·수신 측·allow 대조군이 함께 증명돼야 PASS |
 | P4-03 | CLI/enforce/env: monitor/notify/block/명시 kill, 요청/활성 mode·실제 action/result, unsupported 처리·health·감사 로그·종료 의미 | D05 수정안 확인 후 block 미지원이면 target 시작 전 실패. kill은 사용자가 명시한 경우만. 로그 손실과 커널 집행 상태 손실을 구분 |
 | P4-04 | Linux integration/adversarial: source→connect race, 여러 CPU/thread, map 포화, attach/loader 장애, supervisor 방해·FD·권한 재상승, timeout cleanup | S17~S38의 해당 사례와 arm64/amd64 실제 검증. bounded synchronization 사용, race 숨기는 sleep 금지. 기존 소켓/IPv6/pipe 미지원은 따로 표시 |
 | V-01 | 현재 source/object/policy/environment를 묶은 claim→test 감사, 지원표·성능 측정 조건·README/doctor/log 일치 | P4-04 후. 실제 Linux 부작용까지 확인한 범위만 보장. 제한된 기술 MVP와 일반 AI 전체 유출 방지는 다름. 필수 검증 누락 시 완료 불가 |
@@ -1311,6 +1430,20 @@ go test -race -count=1 ./...
 #### F. 사용자 문서·배포·운영
 
 이 그룹은 제품 기능을 조용히 늘리는 작업이 아니라 이미 구현한 기능을 재현·사용·유지하기 위한 작업이다. CI-01/02와 함께 13.7절에 암묵적으로 있던 일을 명시적인 ID로 분리했다. 공개 릴리스·계정·서명 키·라이선스 선택은 별도 확인 전 실행하지 않는다.
+
+#### TOOL-03 하위 세부 작업 — 개발·검증 도구 평가
+
+아래 항목은 TOOL-03의 하위 작업이며 12.1절의 상위 ID 수를 늘리지 않는다. 각 도구는 먼저 기존 환경에서 읽기 전용 또는 일회성 명령으로 평가하고, 도입은 결과·필요성·허용 경로를 검토한 뒤 별도 승인한다. 평가 결과가 도구의 존재나 설치 성공만으로 제품 검증을 대신하지 않는다.
+
+| 하위 ID | 작업 | 판정 기준·제약 |
+|---|---|---|
+| TOOL-03.a 사용량·토큰 가시성 | 공식 Codex 사용량 도구의 잔여율과 재설정 창을 실행 시작/5분 주기로 기록한다. CodexBar 등 로컬 표시 도구는 후보 조사만 한다. | quota 잔여율, 모델 토큰 사용량, API 예상 비용은 별개 지표로 기록한다. 로그/세션 DB 접근이 필요한 후보는 민감 데이터 수집·보관·외부 전송 여부를 먼저 확인하며 기본 설정으로 활성화하지 않는다. 공식 값을 읽지 못하면 수치를 추정하지 않는다. |
+| TOOL-03.b Go 의존성·DDD 경계 | 기존 그래프 및 import 구조를 점검하고 `go-arch-lint`를 후보로 평가한다. 최소 규칙 후보는 `internal/core`의 platform import 금지, sensor→core 방향, taint/policy 로직의 단일 소유 경계다. | import 규칙으로 확인 가능한 의존성만 자동화한다. DDD 용어·bounded context 적합성은 설계 리뷰 대상이다. 설정 파일, Makefile, CI 수정 없이 임시 실행 또는 샘플로 평가하고, 채택 시 경로 승인과 별도 검토를 받는다. |
+| TOOL-03.c 정적 분석·취약점 점검 | 현재 `gofmt`, `go vet`, 기존 테스트/빌드 절차와 중복을 비교한 뒤 Staticcheck 및 govulncheck를 후보 평가한다. | 버전, 네트워크 접근, DB/cache 변경, false positive 처리와 재현성을 기록한다. pinned Go/module을 임의 갱신하지 않고 CI·스크립트·의존성 파일을 추가하지 않는다. |
+| TOOL-03.d 테스트·속성 검증 | 기존 table/unit/replay/integration 계층을 목록화한다. 경계 decoder, PID 생애·순서·손실, policy 입력에 대해 Go 내장 fuzzing과 결정적 합성 fixture의 공백을 평가한다. | 예상 불변식과 반례를 먼저 정의한다. 새 property-testing 라이브러리는 구체적인 공백과 유지 비용이 입증된 경우에만 제안한다. 실행하지 않은 테스트는 `not_tested`다. |
+| TOOL-03.e eBPF 검증 | pinned cilium/ebpf·bpf2go, 허용된 Linux guest, bpftool과 실제 kernel 검증 단계를 기준으로 도구 체인을 정리한다. veristat은 verifier 로그 분석 후보로만 평가한다. | compile, verifier, load, attach, 실제 관찰, 실제 pre-op block을 별도 결과로 기록한다. privileged runner, CI, syzkaller, VM 프레임워크는 현 범위에 추가하지 않는다. verifier 통과만으로 실제 기능이나 enforcement를 주장하지 않는다. |
+
+**도입 순서:** TOOL-03.a~e의 현재 상태와 빈틈을 기록 → 필요한 후보만 공식 저장소/문서와 라이선스·활성도·권한 요구를 확인 → 일회성 평가 → 기존 검증 대비 이득/비용 및 보안 경계 리뷰 → 허용 경로를 확인하고 승인된 최소 변경으로 도입 → 정적·행동 증거와 잔여 한계 기록. 평가만 끝났거나 설치만 된 후보는 `evaluated`, 실제 채택·검증이 끝난 도구는 근거를 붙여 `adopted`로 구분한다.
 
 | ID | 작업·산출물 | 선행·완료 기준 |
 |---|---|---|
@@ -1334,7 +1467,7 @@ go test -race -count=1 ./...
 
 **실행 순서:** 완료 P0/P1 재확인 → 현재 PRE-02/ENV-01 게이트 해결 → ENV-02 → P2-01→02→03→04 → Phase 2 보고 → P3-01→02→03 → Phase 3 보고 → P4-01 설계 확인→02→03→04 → V-01 → F5 → F6 → F7 → F8 → F9. F10은 조건부다. TOOL/MCP는 선택 보조 작업, CI/DOC/REL은 해당 선행 완료와 별도 권한이 있을 때 끼워 넣는 작업이며 다음 제품 Phase의 검증을 생략하는 우회 경로가 아니다.
 
-현재 G1/G2/G4 문서 정합성은 반영했으며, 다음 실행을 막는 것은 스킬 개수가 아니라 **허용된 Linux 검증 환경(G3)**이다. 상위 작업 간 달력·공수는 아직 추정하지 않는다. ENV-01/02에서 실제 kernel/toolchain 상태를 확인하기 전 eBPF 작업 기간을 확정할 근거가 없기 때문이다.
+현재 G1/G2/G4 문서 정합성은 반영했다. 사용자가 제공한 최신 guest 정보로 환경 준비 상태는 확인됐지만, 이 세션의 Lima 제어 socket 제한 때문에 assistant가 guest 명령을 직접 실행하지 못한다. 남은 실행 gate는 guest 환경 확보가 아니라 **최신 source/object 동기화와 현재 변경분의 verifier/runtime acceptance**다. 상위 작업 간 달력·공수는 아직 추정하지 않는다.
 
 ### 12.12 현재 실행 게이트와 재개 절차
 
@@ -1342,25 +1475,286 @@ go test -race -count=1 ./...
 
 | 게이트 | 확인한 근거·이유 | 최소 제안 / 재개 조건 | 현재 상태 |
 |---|---|---|---|
-| G1 감사 출력 계약 | 기존 prompt의 audit stdout 요구가 대상 stdout 보존과 충돌 | 승인 후 ARCHITECTURE/prompt에 target stdin/out/err 보존과 `--observe`의 필수 `--audit-file PATH` 계약 반영. 새 일반 파일 `0600` 배타 생성·기존 파일/symlink/FIFO/장치 거부·소유자/권한/경합 검증. 크기 상한·쓰기 실패 lifecycle은 P2-03/04에서 구현 전 확정; stdout/stderr 감사 fallback·자동 보안 kill 금지 | **문서 반영 완료**, 옵션·제품 기능 미구현 |
-| G2 생성물 경로 | 기존 tree에 bpf2go 생성 쌍의 정확한 이름이 없음 | 승인 후 기존 `internal/sensor/linux`의 sensor.go 및 실제 생성 `.go`/`.o`, 기존 `bpf/` C/header·생성 `vmlinux.h`, 기존 fixture/integration·Makefile·portable CI 수정만 허용. 정확한 basename/arch/endian suffix는 ENV-02에서 생성 전에 확인·기록. 새 package·skill 경로·privileged CI는 제외 | **문서 반영 완료**, 생성물 미생성·ENV-02 대기 |
-| G3 Linux 실행 권한 | VM Stopped. 상태 경로 `/Users/bhshin/.lima/ebpf-lab`는 이 세션 writable roots 밖이며 approval escalation 불가 | 허용된 Linux 실행 환경이 연결된 세션에서 이어가거나, 사용자가 VM을 검토·시작한 뒤 허용된 guest 명령 실행 경로를 제공. 단순히 Mac에서 시작만 해도 현재 세션의 SSH/control 접근이 자동 허용된다고 보장하지 않음 | **환경 권한 필요**, 시작 미시도 |
+| G1 감사 출력 계약 | 기존 prompt의 audit stdout 요구가 대상 stdout 보존과 충돌 | target stdin/out/err 보존과 `--observe` 필수 `--audit-file PATH`; 새 일반 파일 `0600` 배타 생성, 기존 파일/symlink/FIFO/device 거부, owner/parent 경로 검사. 현재 writer 64 MiB cap, sticky write/close failure, incomplete/error 결과, 실행 중 자동 kill·stdout fallback 없음 | **계약과 구현 경로 문서화 완료**; 디스크 오류와 cap-boundary failure-injection은 P4-04 통합 검증 대기 |
+| G2 생성물 경로 | 생성 ident·suffix·output 경로를 ENV-02에서 고정 | 승인된 기존 C/header·`internal/sensor/linux` 및 `internal/enforce` generated Go/object와 fixture/Makefile/portable 검사 범위 | **현재 source와 tracked artifact 대조 완료**: sensor `process` BPFEL/BPFEB, enforcement `enforce` BPFEL. 신규 재생성 재현성·verifier/load/attach는 P4-04 증거 대기 |
+| G3 Linux 실행 권한 | 과거 이 세션의 `limactl shell`은 host-agent/SSH socket `Operation not permitted`로 guest 명령 전에 실패했다. 이후 사용자가 guest 출력(aarch64, Linux `7.0.0-38-generic`, BPF-LSM active, cgroup v2, root/sudo, Go 1.26.8, clang 21.1.8 BPF target, bpftool 7.7.0, llvm-strip/libbpf 사용 가능)을 제공했고, 안내한 guest 명령이 이상 없이 실행됐다고 보고했다. 이는 guest 준비 상태에 대한 사용자 제공 증거이며, assistant 세션의 socket 제한과는 별개다. | 기존 guest 터미널에서 최신 checkout/source를 대상으로 생성·verifier/load/attach 및 P4-04 acceptance를 수행하고 결과를 현재 worktree와 대조한다. host-side BPF 생성은 runtime 증거가 아님 | **guest 준비는 사용자 보고로 충족; 최신 enforcement object 생성 및 현재 변경분 runtime acceptance는 미검증** |
 | G4 doctor toolchain 검사 | AGENTS의 Phase 2 clang 검사와 기본 doctor 비실행 계약의 접점 | 승인 후 기본 doctor/AI CLI 탐지는 계속 비실행, 신뢰된 명시적 절대 경로의 compiler/LLVM/bpftool만 별도 opt-in probe로 실행하도록 반영. 후보 `doctor --probe-toolchain`은 미구현. 고정 버전 인자·timeout·출력 상한·신뢰/권한 기준은 구현 전에 기록. PATH/프로젝트 fallback·shell·승격·설치·mount·BPF load 금지. 절대 경로/실행 권한은 신뢰 증거가 아니고 버전 실행의 무부작용이나 BPF capability를 보장하지 않음 | **문서 반영 완료**, probe 미구현 |
+
+**Lima 재확인 — 2026-10-21 22:55 KST:** `limactl list --json`은 `ebpf-lab`을 `Broken`으로 표시했지만 host-agent socket 접근 오류는 계속 `operation not permitted`였다. `stat`은 `ha.sock`이 존재함을 보였고 `lsof -U -a -p 67705`는 PID 67705의 `limactl` 프로세스가 `ha.sock` 및 Lima endpoint socket들을 열고 있음을 확인했다. `ha.stderr.log`에는 guest 시간 동기화 기록이 22:55까지 이어졌고 `serialv.log`는 Ubuntu guest의 `serial-getty`와 login prompt를 보여준다. 따라서 로그상 VM은 boot된 것으로 보이나 이는 현재 guest shell 접근, kernel/BTF/BPF-LSM 상태 또는 BPF 검증 증거가 아니다. SSH/localhost guest 접속은 동일하게 `operation not permitted`로 거부됐고 `ps`도 sandbox에서 실행 거부됐다. 예상 경로 `serial.log`는 없고 실제 console 기록은 `serialv.log`에 있다. VM lifecycle, socket/lock, 설정 및 디스크 변경은 수행하지 않았으며, 이 근거는 VM 전체 삭제·재생성을 정당화하지 않는다.
 
 G1/G2/G4는 사용자 후속 “진행”으로 승인된 최소 문서 정리이며 기존 보안 모델·고정 버전·Phase 0 이력은 변경하지 않았다. 이 승인은 G3의 세션 권한을 늘리거나 미래 Phase의 규범 변경까지 허용하지 않는다. `.lima`를 임시 경로로 복제하거나 LIMA_HOME을 바꿔 제한을 우회하지 않는다.
 
-**G3의 시작 부작용:** 현재 VM 설정 `lima.yaml:7`은 `mounts: []`다. `:10` 이후 provisioning에는 `apt-get`, `modprobe`, tracefs mount가 있다. 유효 설정은 user containerd·host resolver·proxy 환경 전파를 활성화하고 plain mode가 아니다. 실제 재시작에서 어떤 provisioning이 실행될지는 아직 확인하지 않았으므로 시작을 단순 읽기 전용 진단이라고 부르지 않는다. 기존 readiness의 CONFIG_BPF/bpftrace 성공만으로 Go·clang BPF target·bpftool·BTF·활성 BPF-LSM을 갖췄다고 판단하지 않는다.
+**VM 시작 부작용 기록:** 기존 `ebpf-lab` 시작은 2026-10-19에 실행했다. startup은 VM을 READY로 표시했고 guest에서 tracefs, clang, bpftool이 관측됐다. 이것은 설치가 이번 시작에서 새로 일어났다는 증거는 아니다. 시작은 순수 read-only 작업이 아니었으며, 그 이후 ENV-01 점검 명령은 읽기 전용이었다. 전체 provisioning diff는 별도 확인하지 않았다.
 
-**허용된 환경에서의 다음 한 작업:** ENV-01을 완료한다. 현재 목록과 설정을 재확인하고, 선택한 VM의 시작·진단 범위가 허용된 경우에만 guest에서 5.3절의 읽기 전용 검사들을 실행한다. 실제 출력으로 5.7 manifest를 채운 뒤 부족한 패키지·권한·커널 기능에 대한 최소 수정안을 제시한다. 바로 `sudo apt install`, 커널 재부팅, BPF attach 또는 실제 AI 실행을 묶어서 수행하지 않는다.
+**ENV-01 결과와 제한:** 기존 `ebpf-lab`을 시작해 guest에서 OS/kernel/BTF/config/LSM/toolchain/UID/capability/mount/resource를 직접 확인했다. VM 설정에는 Ubuntu image URL과 SHA-256이 기록되어 있고, guest mount에는 host home/shared directory가 없으며 `/mnt/lima-cidata`는 read-only ISO다. SSH agent/X11 forwarding은 꺼져 있고, Lima 설정은 proxy env 전달을 켜 두었으나 guest 환경에서는 proxy 및 `SSH_AUTH_SOCK` 이름이 발견되지 않았다. startup 로그에는 SSH vsock local port, TCP localhost, UDP mDNS/NTP forwarding이 있어 전체 네트워크 격리는 입증되지 않았다. ENV-01에서 실제 프로그램/target 실행으로 supervisor-control 파일 접근을 시험하지 않았고 BPF feature probe/load/attach도 하지 않았다. 이 항목들은 `not_tested`로 남기며 제품 launch 권한 보장으로 해석하지 않는다. guest shell 접근은 기본 샌드박스에서 차단됐으나 승인된 권한 상향 읽기 전용 호출로 성공했다.
+
+ENV-01의 환경 판정은 **현재 VM guest 진단 완료, enforcement 부적합**이다. target 행동 및 process observer의 load/attach는 아래 2026-10-19 P2-01 실행 기록에서 제한된 범위로 확인했다. file/connect 관측, supervisor 통합 및 enforcement는 아직 미검증이다. boot option 변경과 재부팅은 실행하지 않았다.
+
+**현재 실행 기록 — 2026-10-19, P2-01 process observer (완료, 한계 기록)**
+
+- 순서: ENV-01/02 완료 후 P2-01을 진행했다. 이 시점의 다음 카드는 P2-02였다. 주간 사용량 도구에서 used `1%`, remaining `99%`를 확인했다.
+- 구현: 허용된 `bpf/`와 기존 `internal/sensor/linux/` 경로에 typed `tp_btf` fork/exec/exit observer, raw ABI decoder, scope/birth/drop maps, ring buffer reader와 link/object cleanup을 작성했다. 생성물은 ENV-02에서 고정한 `bpf2go@v0.22.0`로 BPFEL/BPFEB 각각 생성했다.
+- verifier 수정 증거: 첫 VM 로드에서 fork program의 `R2 !read_ok`가 확인됐다. `tp_btf`의 인자 배열을 직접 함수 인자로 선언한 것이 원인이었다. Cilium `bpf_tracing.h`의 `BPF_PROG` wrapper를 적용하고 object를 재생성한 후 privileged VM probe가 성공했다.
+- VM 실행 증거: root guest `go test -count=1 -v ./internal/sensor/linux` 통과. `TestProcessObserverThreadLifecycle`는 fork·초기 exec·exit, worker thread 종료 후 process group exit, non-leader thread의 `/bin/true` exec와 birth identity 연속, 종료 PID map 정리 및 중복 `Close`를 확인했다.
+- 정체성: `TestRawNormalizationSeparatesPIDBirths`에서 같은 PID와 scope라도 서로 다른 birth ID가 서로 다른 ProcessKey가 됨을 확인했다. 실제 OS PID 번호 재사용을 강제한 실행은 미실행이다.
+- 로컬 검증: `gofmt` 실행, 저장소 전체 `go test ./...`, `go vet ./...`, `go build ./...` 명령이 종료 코드 0으로 끝났다. Go가 module stat cache 임시 파일 작성 권한 경고를 한 번 출력했으나 명령은 성공했다. `git diff --check`도 통과했다.
+- 아직 미검증: 실제 PID 재사용 실행, 부분 attach 실패 주입에 따른 reader/map/link cleanup, PID namespace가 다른 target 의미, attach 전 대상 실행 경합. attach-before-exec는 P2-04 수용 기준이다.
+- 생성 재현성: pinned generator 반복에서 BPFEL object hash는 일치했으나 BPFEB object 전체 hash는 달라졌다. 비교 결과 BPF instructions와 `.BTF.ext` relocation은 동일하고 `.BTF`의 사용되지 않는 forward declaration ID 순서만 다르다. BPFEB byte-for-byte 재현성은 미검증이며, ENV-02의 합성 probe hash 결과와 구분한다.
+- P2-01 판정: raw ABI·decoder, typed observer verifier/load/attach, fork/exec/exit, worker thread/process 종료 구분, birth identity 연속·구분과 정상 종료 cleanup을 guest 및 portable test로 확인해 카드 완료 처리했다. 위 미검증 항목은 남은 한계로 유지한다.
+- 코드 탐색 그래프: 현재 branch를 가리키는 project 이름으로 검색했으나 해당 이름은 미등록이었다. 반환된 AgentTaint 인덱스로 재검색해도 새 sensor symbol이 없었고 재인덱싱 호출은 완료되지 않아 중단했다. 이는 제품 검증을 막지 않지만 해당 그래프 인덱스의 freshness는 미검증이다.
+- 다음 단위(당시): 순서에 따라 P2-02 file/IPv4 connect observer. P2-01의 미검증 항목은 통과로 표시하지 않았다.
+
+**현재 실행 기록 — 2026-10-19, P2-02 file·IPv4 connect observer (완료, 한계 기록)**
+
+- 순서·사용량: P2-01 직후 순서대로 수행했다. 주간 사용량 도구는 used `1%`, remaining `99%`를 반환했다.
+- 구현: `bpf/file.bpf.c`에서 `openat`/`openat2` 진입·종료, 요청 path/access intent와 syscall 결과를 수집한다. `bpf/network.bpf.c`는 IPv4 `connect`의 목적지·포트와 syscall 결과를 수집한다. 모두 공용 ring buffer를 사용하고 기존 `process.bpf.c` collection에 포함했다. 유저스페이스 raw decoder는 파일·네트워크 ABI를 검증하고 frozen `core.Event`로 정규화한다. `Sensor.New`는 해당 syscall tracepoint 6개를 추가 attach한다. taint·policy·block·audit stream은 이 작업에 추가하지 않았다.
+- 생성·정적 증거: `bpf2go@v0.22.0`로 Linux guest의 clang에서 BPFEL/BPFEB 산출물을 생성했다. Go 전체 `go test ./...`, `go vet ./...`, `go build ./...`, Linux/arm64 sensor package cross-compile 및 `git diff --check`가 통과했다. 호스트 모듈 cache 임시 쓰기 경고는 출력됐으나 명령 종료 코드는 0이었다.
+- guest runtime 증거: root guest의 `TestFileAndConnectObserver`에서 `openat` 상대 경로 성공 및 없는 파일 실패, `openat2` 성공, 로컬 IPv4 TCP connect 성공 및 닫힌 포트 connect 실패를 관찰했다. 성공·실패 결과와 주소·포트·상대 경로·read access intent를 확인하고 정규화 이벤트가 `core.DecodeEvent`에 수용됨을 확인했다. 전체 privileged Linux sensor suite에서 기존 process lifecycle/exec/thread-exit와 새 작업 이벤트 테스트가 모두 통과했다.
+- raw fixture 증거: BPFEL·BPFEB byte order, 정상·실패·unknown 결과, 잘림, 비UTF-8, invalid access/padding/flags, IPv4 주소·포트 디코딩을 검사했다. 잘림·비UTF-8 경로는 정상 `core.Event`로 정규화되지 않는다.
+- 관측 의미: `file_open`은 open syscall 및 요청 접근 모드를 뜻하며 파일 byte의 실제 read/write를 증명하지 않는다. 상대 경로는 dirfd와 결합하거나 canonicalize하지 않는다. `network_connect` 결과는 connect syscall 반환값만 반영하며 TCP handshake·peer 수신·데이터 전송을 증명하지 않는다. EINPROGRESS/EALREADY/EINTR은 unknown으로 남긴다. 이 observer는 detect-only이며 어떤 것도 차단하지 않는다.
+- 미검증/제한: legacy `open`/`creat`, IPv6 및 비-AF_INET, symlink/inode 기반 경로 identity, dirfd resolution, 실제 비UTF-8 filename/truncated pathname 런타임 경로, connect 후 handshake·payload, ring-buffer drop/partial failure health 전달, attach-before-target-start 경합은 검증하지 않았다. drop/quality를 안전한 audit 상태에 반영하는 일은 P2-03/P2-04에서 수행한다.
+- P2-02 판정: source raw observation, decoder/normalizer, verifier/load/attach와 대표 syscall success/failure가 guest runtime 및 portable tests로 확인되어 카드 완료 처리했다. 위 범위 밖 항목은 미검증으로 유지한다. 다음 카드는 순서에 따라 P2-03이다.
+
+**현재 실행 기록 — 2026-10-19, P2-03 run scope·audit·loss quality (완료, 한계 기록)**
+
+- 순서·사용량: P2-02 다음 카드로 진행했다. 작업 시작 시 Codex quota 도구에서 7일 창 used `2%`, remaining `98%`를 확인했다. 현재 branch는 `runner-signal-exit-code`; 기존 `docs/ARCHITECTURE.md`와 이 계획 파일의 변경을 보존했다.
+- 구현: `agenttaint run --observe --audit-file PATH -- <command>`가 전용 Linux observer를 준비하고 barrier를 확인한 뒤 target을 시작한다. run ID·scope ID와 ProcessKey membership으로 root 및 관측된 fork descendant만 출력하며, 동시 run은 별도 scope/file로 분리한다. 하나의 bounded queue와 FIFO writer가 schema 1 JSONL을 감사 파일에 기록한다. target stdin/stdout/stderr는 그대로 전달한다.
+- 감사 파일: 새 regular file을 `0600`, exclusive/no-follow로 만들며 기존 파일과 위험한 경로를 거부한다. 부모 디렉터리는 pinned FD로 순회해 symlink/교체 경합을 제한한다. 초기 준비 실패 시 target은 시작하지 않으며, 실행 중 audit 실패는 자동으로 target을 kill하지 않고 run 결과를 incomplete/error로 만든다. 실패 전 발생한 시스템 효과를 되돌리지 않는다.
+- 손실·건강: ring-buffer reserve 및 capture 위치별 per-CPU drop counter를 구분하고 barrier 이전 baseline과 비교한다. raw decode/normalization/event ID/queue/write/close 및 health 조회 실패를 별도 품질 사유로 누적하며 한 번 incomplete가 된 기록을 clean으로 되돌리지 않는다. 실행 품질은 core event payload에 새 필드를 추가하지 않고 supervisor 오류로 알린다. JSONL은 기존 `core.DecodeEvent`가 읽는 schema를 유지한다.
+- Linux guest 증거: 최신 arm64 테스트 바이너리로 root guest의 전체 `internal/sensor/linux` 테스트와 전체 `internal/runner` 테스트를 각각 실행해 통과했다. runner에는 두 observed run 동시 실행 격리, 각 감사 JSONL의 `core.DecodeEvent` 수용, target stdout/stderr 분리, audit mode 검사 및 위험 경로 거부 테스트가 포함된다. 센서 테스트는 `Barrier`/`DropCounts` 및 기존 process/file/connect 통합을 포함한다. 이 기록은 `ebpf-lab` guest에서 실행한 결과다.
+- host 증거: `gofmt` 적용, `go test ./...`, `go vet ./...`, `go build ./...`, Linux/arm64 runner 및 sensor test-binary cross-build, `git diff --check` 통과. Go 명령은 사용자 module-cache stat 파일을 쓸 수 없다는 경고를 출력했지만 완료 코드는 0이었다. guest test suite가 실제 BPF load/verifier/runtime 증거를 보완한다.
+- 한계·미검증: BPF drop 경로를 인위적으로 포화시킨 loss 주입, writer 디스크 오류/64 MiB 상한 도달, malformed kernel record의 end-to-end 강제 유발, parent directory adversarial race의 반복 스트레스는 실행하지 않았다. descendant를 끝까지 추적할 수 없는 bounded drain에서는 incomplete로 보고하고 기존 동작상 살아있는 descendant를 종료하지 않는다. supervisor read 오류 후 target 종료 대기, 취소 신호 전달, 비특권 target 실행 및 내부 FD 비상속도 P2-04에서 다룬다.
+- Security semantics: 이 Phase 2 observer는 tracepoint 기반 detect-only다. `file_open`은 요청된 open과 접근 의도이지 읽은 byte의 증거가 아니며 `network_connect`는 syscall 결과이지 handshake나 전송 증거가 아니다. 어떤 것도 차단하지 않는다. 프로세스 taint는 민감 데이터 접근 이력이지 byte-level taint를 뜻하지 않는다.
+- P2-03 판정: scoped run·동시 run 격리·감사 경로·target stdio 보존·bounded queue·drop health·schema JSONL이 portable 및 guest 통합 테스트로 확인되어 카드 완료 처리했다. 미검증 경로는 위와 같이 남긴다. 다음 카드는 순서에 따라 P2-04다.
+
+**현재 실행 기록 — 2026-10-19, P2-04 start/stop·권한·Linux 검증 (완료, 한계 기록)**
+
+- 순서·상태: P2-03 바로 다음으로 수행했다. 현재 branch는 `runner-signal-exit-code`; 변경 전부터 있던 `docs/ARCHITECTURE.md`와 이 계획 파일의 diff를 보존했다. 최신 공식 quota 조회는 7일 창 used `4%`, remaining `96%`였다.
+- 구현: root supervisor는 `--run-as UID:GID`를 요구하고 UID/GID 0을 거부한다. root supervisor가 지정한 target은 supplementary groups를 비운다. 비root 실행은 effective UID/GID와 기존 supplementary groups를 상속한다. helper는 real/effective/saved IDs와 capability를 확인하며 모든 capability를 제거하고 `no_new_privs`를 설정한 뒤 target을 exec한다. 추가 application FD는 전달하지 않고 FD 0~2만 유지한다. reader readiness 이후 nonce가 일치하는 one-time permit을 받은 경우만 target launch가 허용된다.
+- 종료·수명: observed run은 context 취소 시 target process group에 SIGINT, 3초 뒤 SIGTERM, 추가 1초 뒤 SIGKILL을 보낸다. 추적 중인 자손이 남으면 5초 이후 coverage를 incomplete로 표시하고도 관측을 유지한다. `setsid` 자손에게 process-group signal이 도달한다고 보장하지 않는다. target environment와 working directory는 상속되며 격리 경계가 아니다.
+- 호스트 증거: 2026-10-19에 `GOCACHE=/tmp/agenttaint-gocache GOPROXY=off go test ./...`, 같은 환경의 `go vet ./...`, `go build ./...`, Linux/arm64 runner·sensor test-binary cross-compile 및 `git diff --check`를 실행했고 종료 코드 0으로 통과했다. `go build`는 사용자 module-cache stat 파일 쓰기 경고를 출력했지만 종료 코드는 0이었다.
+- Linux guest 증거: `ebpf-lab`에서 최신 runner와 sensor 전체 테스트가 통과했다. 테스트는 helper의 잘못된/짧은/EOF permit에서 target marker가 생기지 않음, 비특권 ID·groups·capability·`no_new_privs`, FD 200 비상속, cancellation signal 전달, `setsid` 자손 종료 전까지 observer가 유지됨을 포함한다. 자손 drain 시나리오는 5초 초과 후 종료까지 관측하는 데 성공했다.
+- 미검증: 실제 setuid 재상승 차단 테스트는 guest 임시 파일시스템이 `ST_NOSUID`라 skip되어 `not_tested`다. helper timeout 및 parent-death의 target marker 부재를 별도 failure injection으로 확인하지 않았다. setsid로 분리된 자손의 취소 신호 전달, 무한 생존 자손의 종료, environment/cwd 격리도 보장하지 않는다.
+- Security semantics: 관측은 detect-only이며 OS 작업을 차단하지 않는다. file/network 이벤트의 의미는 P2-02 기록과 같고 byte-level taint를 뜻하지 않는다.
+- 판정·다음 순서: 위 guest 증거에서 명시한 수용 경로가 확인되어 P2-04를 완료 처리했다. 12.11 순서상 다음은 CI-02이며, 사용자가 금지한 CI 변경을 추가하지 않고 기존 환경에서 가능한 검토만 한다. 그 다음 제품 카드는 P3-01이다. CI 추가가 허용되지 않는 한 CI-02 실행 job은 미완료로 유지한다.
+
+**현재 실행 기록 — 2026-10-19, P3-01 SECRET 상태 전이·replay (reference engine 완료)**
+
+- 순서·계약: P2-04 다음 실행 가능 제품 카드다. CI-02의 격리 workflow는 사용자가 금지한 변경이므로 추가하지 않았다. `prompts/03-taint-engine.md`의 PID-only 문구는 기존 `core.ProcessKey`와 12.11 card의 PID 생애 요구에 맞게 수정했다. 단일 `SECRET` label만 사용한다.
+- 구현: `core.LabelSecret`과 `internal/taint.Engine`을 추가했다. source path는 입력 문자열과 정확히 일치시키며 canonicalize·symlink resolution을 하지 않는다. `FileOpen`은 `completed/success`일 때만 label을 준다. 이는 성공한 open/접근 의도이며 파일 byte read의 증거가 아니다. `ProcessFork`는 이벤트 순서상 부모 label의 snapshot을 자식 key로 복사하고, exec는 같은 `ProcessKey`에서 상태를 유지하며, exit는 정확한 PID+birth+scope key를 제거한다. 서로 다른 scope와 same-PID thread fork 표현은 거부한다.
+- 손실·순서: 엔진은 이벤트를 받은 순서대로 적용하고 wall-clock timestamp로 재정렬하지 않는다. 누락 이벤트는 stream만으로 추론할 수 없으므로 caller가 `MarkIncomplete`로 외부 observer health를 전달해야 한다. 이 표시는 기존 label을 자동으로 제거하거나 정책 결과를 결정하지 않는다. P3-02/03은 incomplete history를 allow로 해석하지 않도록 연결 계약을 정해야 한다.
+- 검증: 성공·실패·attempt source open, fork snapshot, exec 연속성, 정확한 exit cleanup, PID 재사용/birth 및 scope 분리, 이후 source 접근이 기존 child에 소급 전파되지 않음, loss 상태 유지, invalid/thread/cross-scope key 거부 단위 테스트가 통과했다. `go test ./...`, `go vet ./...`, `go build ./...`, `git diff --check`가 종료 코드 0으로 통과했다. build는 사용자 module-cache stat 경고를 출력했다.
+- 한계: policy parser/evaluator·network sink decision·JSON violation·Linux audit integration은 P3-02/03 미완료다. 실제 파일 경로 alias/상대 경로 동일성, thread 공유 메모리, 읽기 syscall의 byte 범위, 미통지 event loss는 검증하거나 지원하지 않는다. 누락된 fork가 health로 전달되지 않으면 child가 clean으로 남을 수 있다.
+- 판정·다음 순서: 이 단위는 reference state transition 범위에서 완료했다. 다음은 P3-02 YAML policy schema/evaluator다. CI-02 미완료와 지원 범위는 계속 공개한다.
+
+**현재 실행 기록 — 2026-10-19, P3-02 YAML policy snapshot·evaluation (완료)**
+
+- 구현: 유지보수 중인 `go.yaml.in/yaml/v3@v3.0.5`를 사용한다. `Load`는 최대 1 MiB의 regular file을 한 번 읽고 SHA-256 digest를 가진 불변 snapshot을 만든다. 상대 source path는 policy 파일의 디렉터리 기준으로 lexical clean하며 홈·환경변수·명령 치환 표기법을 거부한다. YAML은 한 문서, known fields, unique keys만 받고 alias/anchor/merge, 64단계 초과 nesting, 20,000 초과 node, 1,024 초과 source/rule, duplicate source/name을 거부한다.
+- 계약: `SECRET` 단일 label만 허용한다. sink는 explicit IPv4 CIDR 집합과 optional decimal port allowlist(1~65535)를 사용한다. 공인/사설/loopback 자동 분류는 없다. 여러 rule은 deny > audit > allow이며 같은 action은 rule 이름 사전순으로 결정한다. no-match는 allow다. evaluator는 policy verdict만 반환하며 operation을 차단하지 않는다.
+- 경로 한계: resolved policy source path와 event의 raw `resource.path`를 exact match한다. 상대 event path, dirfd, symlink/hardlink/rename/mount identity를 확장하지 않는다. 따라서 상대 경로로 같은 파일을 열었더라도 absolute policy source와 같다고 추정하지 않는다. P3-03 fixture는 absolute synthetic path를 사용한다.
+- 검증: sample policy load, snapshot digest/immutability, allow/audit/deny precedence, label 필요성, CIDR·port 경계, private CIDR의 명시적 설정, duplicate/unknown/multi-document/alias/merge, source/action/path errors, byte/source/rule/depth limits를 unit tests로 검사했다. 전체 저장소 검증은 P3-03 최종 실행 기록과 함께 갱신한다.
+- 한계: SHA-256은 bytes 식별자이지 author/trust 서명이 아니다. 파일 identity·relative event path 해석을 제공하지 않는다.
+- 판정·다음 순서: parser/evaluator 범위의 unit 기준을 통과해 완료 처리했다. P3-03 runner 통합은 별도 카드로 진행한다. `deny`는 감사 결과일 뿐 실제 block이 아니다.
+
+**현재 실행 기록 — 2026-10-19, P3-03 policy audit integration (완료)**
+
+- 구현: `agenttaint run --observe`는 `--policy PATH`를 요구하고 target 시작 전에 정책 snapshot을 읽는다. 순서 보존 event consumer가 taint를 갱신하고 completed IPv4 connect를 평가한다. `audit`/`deny`는 raw connect 바로 뒤에 schema v1 `policy_violation` JSONL을 추가한다. 파생 이벤트는 source provenance, SECRET label, destination, 선택 rule, syscall의 실제 `operation_result`를 보존한다. allow는 파생 기록을 만들지 않고 raw event를 남긴다.
+- 손실 의미: observer/audit history가 incomplete로 표시된 뒤에는 policy verdict 생성을 중지한다. incomplete 상태를 allow로 바꾸지 않으며 coverage 오류는 별도 run 오류로 보고한다.
+- 합성 검증: normal flow, direct source→sink, fork child sink, audit-only, unsuccessful source open, incomplete history, child→parent unsupported flow를 `internal/runner/policy_pipeline_test.go`에서 검증했다.
+- Linux guest 증거: 기존 `ebpf-lab`의 Linux `7.0.0-34-generic` aarch64 guest에서 cross-compiled runner test binary를 root로 실행했다. `TestRunObservedPolicyAuditPipeline` PASS (0.93s). 실제 BPF 관측과 JSONL decode에서 normal source, direct source→sink, fork child sink, audit-only를 검사했다. 네 연결 모두 local listener에 도달해 deny/audit가 연결을 막지 않는 것을 확인했다.
+- 범위 결정: 사용자의 “스크립트 추가 금지” 지시에 맞춰 P3 prompt를 수정했다. 네 scenario는 Go integration tests가 임시 디렉터리에 실행 fixture를 만들고 제거하는 방식으로 검증한다. 저장소 내 재현 스크립트는 추가하지 않는다. child→parent와 기존 소켓 send는 미지원 경계로 합성 테스트에서 확인했으며 OS 수준 행위 전체를 검증하지 않았다.
+- 보안 의미: `deny`는 post-event audit verdict이며 연결을 막지 않는다. process label은 파일 접근 이력으로서 byte-level taint 또는 전송 payload 포함 증거가 아니다.
+- 판정·다음 순서: P3-03 완료. 다음은 P4-01의 동기 집행 책임 계약과 지원 가능한 kernel hook 증거 검토다. CI-02는 금지된 workflow 추가가 필요하므로 별도 미완료다.
+
+**이어받은 실행 기록 — 2026-10-20, AI-00 및 P4-01 완료, P4-02 구현 (진행 중)**
+
+- 기준선: branch `runner-signal-exit-code`, HEAD `fc986d9d27f81646df645068a48453fc0c73742b`. 시작 시 quota 도구는 7일 창 used 21%, remaining 79%를 반환했다. tracked diff와 untracked 제품 코드가 이미 다수 존재하므로 이번 실행의 신규 변경과 구분하고 모두 보존한다.
+- 순서 판정: 12.10/12.11의 증거상 P2-01~04와 P3-01~03은 기록된 수용 범위에서 완료, CI-02는 별도 workflow 금지로 미완료다. P4-01 설계 승인 후 문서 순서대로 P4-02를 시작했다.
+- 코드 구조 증거: codebase-memory graph에서 `RunObservedWithPolicy` → `runObservedPlatform` → `newPolicyAuditProcessor` → `taint.Engine`/`policy.Snapshot` 경로를 확인했다. `consumeRunEvents`가 observer event를 Go에서 처리한 뒤 `Process`가 label을 갱신하고 connect를 평가한다. `policy.Evaluate`는 verdict만 반환한다. 이 흐름은 이미 기록된 P3 audit 결과와 일치하며 pre-operation enforcement 증거가 아니다.
+- 현재 scope 구현 차이: 기존 `runObservedPlatform`은 무작위 scope ID를 만들고 Linux observer에 전달한 뒤 helper를 시작한다. BPF `current_scope()`는 singleton `process_scope[0]`을 읽어 값이 없으면 `0`을 반환한다. 이는 observer event tag용이며 실행 전체의 kernel membership/실패 상태를 분리하는 enforcement contract가 아니다. enforcement에서 이를 그대로 재사용하지 않는다. 초기 P4 profile은 target과 descendants를 전용 cgroup v2에 넣고, LSM hook의 현재 cgroup ID를 run scope로 대조하는 방식으로 제한한다. 해당 cgroup ID는 attach 전에 map/program에 설정하고, target은 cgroup 배치·map 준비·필수 link attach가 모두 끝난 뒤 exec permit을 받는다. cgroup 식별 또는 이동 권한이 없으면 block target은 시작하지 않는다. kernel/runtime에서 helper 허용·cgroup 상속·syscall scope를 검증하기 전까지 이 선택은 설계이며 구현 증거가 아니다.
+- 커널 원자료: Linux v7.0의 `file_open` 및 `socket_connect`는 sleepable BPF-LSM hook 목록에 있고, 이 버전의 `bpf_d_path` 허용 조건은 sleepable LSM hook을 포함한다. BPF-LSM 문서는 앞선 LSM hook의 non-zero 결과를 보존하고, 자체 거부는 negative errno로 반환하는 예를 보인다. [Linux v7.0 BPF-LSM source](https://github.com/torvalds/linux/blob/v7.0/kernel/bpf/bpf_lsm.c), [Linux v7.0 `bpf_d_path` verifier permission](https://github.com/torvalds/linux/blob/v7.0/kernel/trace/bpf_trace.c), [BPF-LSM documentation](https://docs.kernel.org/7.1/bpf/prog_lsm.html). 이 정적 원자료는 해당 VM에서의 hook attach·verifier·동작 증거가 아니다.
+- fork 순서 추가 근거: Linux v7.0 `kernel_clone()`은 `trace_sched_process_fork(current, p)`를 호출한 뒤 `wake_up_new_task(p)`를 호출한다. 따라서 이 표준 경로에서는 tracepoint callback이 동기적으로 child를 준비할 수 있는 순서다. 이 사실은 task 생성 API 전체를 포괄하지 않고 map update 성공을 보장하지도 않는다. 별도 inactive-task 경로와 실제 guest 동작은 계속 확인 대상이다. [Linux v7.0 `kernel/fork.c`](https://github.com/torvalds/linux/blob/v7.0/kernel/fork.c#L2497-L2528).
+- open 시점 추가 확인: Linux v7.0 `fs/open.c`의 `do_dentry_open`은 `security_file_open(f)` 성공 뒤에도 `fsnotify_open_perm_and_set_mode`, `break_lease`, filesystem `->open()`이 실패할 수 있는 순서다. 해당 경로에는 `security_file_post_open` 호출이 없다. 따라서 이 hook에서의 동기 taint는 성공한 `open()` 결과가 아니라 접근 시도에 대한 보수적 집행 상태가 된다. 이는 현재 성공 완료 기반 audit reference 의미와 구분해야 한다. [Linux v7.0 `fs/open.c`](https://github.com/torvalds/linux/blob/v7.0/fs/open.c#L3703-L3749).
+- 환경 상태: `limactl list`의 `Broken` 표시는 당시 host-agent socket 접근이 sandbox에서 거부된 결과였다. 현재 guest에 다시 접속해 읽은 증거는 Linux `7.0.0-38-generic`, `/proc/cmdline`의 `lsm=lockdown,landlock,yama,apparmor,ima,evm,bpf`, `/sys/kernel/security/lsm=lockdown,capability,landlock,yama,apparmor,bpf,ima,evm`다. 따라서 이번 P4-02 검증 guest에서 BPF-LSM은 활성이다. 앞선 `7.0.0-34` inactive 관측은 환경이 바뀌기 전의 역사적 상태다.
+- 규범 결정: 사용자는 “Go reference는 유지하고 BPF에 제한 projection 허용”을 승인했다. `internal/taint`는 성공한 completed open 의미의 audit/reference로 남고, `internal/policy`는 canonical parsing/validation/precedence를 소유한다. `internal/enforce`가 지원 subset만 bounded ABI로 전달하며 BPF는 승인된 source-attempt state update와 sink decision만 수행한다. `file_open` attempt의 보수적 taint는 성공 open audit 사실로 승격하지 않는다.
+- 미결정·미검증: 성공한 source open과 pre-op hook 시점의 관계, bounded path/source identity, fork/thread label update의 자식 실행 전 순서, map 포화·update 실패 시 fail-closed 동작, PID 생애/재사용과 concurrent run 분리, guest의 실제 BPF-LSM 활성화·hook attach·syscall errno/receiver 효과. 이 조사만으로 P4-01을 완료 처리하지 않는다.
+- 진행: 승인 계약과 scope/fault 동작을 AGENTS/ARCHITECTURE/SECURITY_MODEL/THREAT_MODEL/Phase 4 prompt/master plan에 반영했다. 현재 observer scope helper가 누락 값을 `0`으로 처리하는 사실을 graph snippet으로 확인해 enforcement 재사용을 금지했다. `git diff --check` 통과. 실제 enforcement code, hook load/attach, pre-op 검증은 시작·완료되지 않았다.
+- 장애·경합 계약: attach/link/map prepopulation 또는 policy subset 검증 실패는 target 시작 barrier 전에 오류다. source `file_open`에서 상태를 안전하게 기록하지 못한 경우 source operation을 허용하지 않는다. `socket_connect`에서 process identity, scope, rule state 중 필요한 값이 불명확하면 clean으로 간주하지 않고 거부한다. fork tracepoint의 일반 `kernel_clone()` 경로에서 child state 복사가 실패하는 경우, callback에서 fork 자체를 취소할 수 없으므로 scope 내 후속 sink를 fail-closed로 만들 지속적인 오류 표지가 필요하다. 그 표지를 보장할 map layout/갱신 경로가 입증되기 전에는 fork를 포함한 block profile을 지원한다고 주장하지 않는다. Ring-buffer loss는 독립 telemetry 상태이며 집행 map을 갱신하거나 allow로 바꾸지 않는다.
+- 경합·identity 계약: key는 run scope + process birth identity를 포함하며 PID 단독 key 금지. source state 갱신과 sink 판단은 각각 pre-op hook에서 동기화한다. `file_open` 성공 뒤 실패할 수 있는 경로 때문에 보수적 source-attempt label은 Go audit reference와 별도 상태로 유지한다. fork child initialization은 확인된 표준 `kernel_clone()` tracepoint-before-wakeup 순서에만 한정해 설계하며, identity 확보 실패, task 생성 별도 경로, PID reuse, exit cleanup/update 오류, 동시 fork/sink는 구현 시험으로 입증하기 전까지 지원 범위가 아니다. 명시적 clean 상태와 미등록/불명 상태를 구별하고, 불명 상태를 clean으로 해석하지 않는다.
+- scope/fault 상태: 현재 observer의 singleton scope tag는 집행 membership으로 재사용하지 않는다. 초기 enforcement profile은 cgroup v2 scope를 요청하고 hook에서 현재 cgroup ID를 확인한다. scope별로 preallocated 단일 fault word를 attach 전 초기화한다. fork/label map 동기 갱신 실패 시 callback은 해당 fault word를 sticky degraded로 설정하고, 이후 해당 cgroup의 sink는 label 값과 무관하게 거부한다. fault word lookup이 실패하면 그 scope에서 거부한다. 다른 cgroup은 해당 profile의 rule/state에서 분리한다. 이 프로토콜은 bounded map behavior, verifier 및 동시성 시험을 통과하기 전까지 요구사항이지 보장된 구현이 아니다.
+- P4-02 구현: Go `policy.Snapshot`에서 최대 64개 source path와 최대 256개 IPv4 deny match만 허용하는 제한 projection을 추가했다. allow/audit rule은 kernel deny table에 넣지 않으며 용량·경로·CIDR이 지원 범위를 넘으면 시작 전 오류다. `internal/enforce`가 config/source/deny/fault map을 채우고 fork/exec/exit trace와 `file_open`/`socket_connect` LSM hook을 attach하도록 구성했다. `--block`은 전용 private cgroup v2 scope에 helper를 배치하고 모든 준비 뒤 launch permit을 보낸다. cancel/abnormal path에서는 cgroup kill을 시도하고 enforcer link를 정리한다. 이 코드는 live attach/denial을 증명하지 않는다.
+- guest 설정·검증: P4-02에서만 실제 hook 검증을 위해 `/etc/default/grub`을 `/etc/default/grub.agenttaint-20261020`에 먼저 복사했다(원본 SHA-256 `90c43ba40b497af0a5ed7e3655710731bce21cc1c9c2bdf9bd772fda69be5e39`). cloud image 설정이 `GRUB_CMDLINE_LINUX_DEFAULT`를 덮어쓰는 것을 생성된 `grub.cfg`에서 확인해 `GRUB_CMDLINE_LINUX`에 기존 LSM 순서를 보존한 `lsm=lockdown,landlock,yama,apparmor,ima,evm,bpf`를 추가하고 Lima VM을 재시작했다. 실제 `/proc/cmdline`과 `/sys/kernel/security/lsm`에서 bpf 활성화를 확인했다. 데이터 디스크는 보존했다.
+- 검증 증거: 전체 `go test ./...`, 전체 `go vet ./...`, `git diff --check`가 성공했다. Linux/arm64 `go build ./...`, Linux/arm64 `go vet ./...`, runner/policy/CLI Linux/arm64 test-binary compile도 성공했다. 첫 Linux cross-build의 named return 재선언 오류를 수정했다. 저장소의 generated enforcement object가 현재 C source보다 오래된 것을 실제 verifier가 `bpf_d_path` pointer type 오류로 거부하며 확인했다. guest pinned `bpf2go`로 현재 source에서 Go binding/object를 다시 만들고 저장소 산출물을 교체했다. 갱신 object는 guest `clang` compile과 `bpftool prog loadall` verifier/load를 통과했다. 앱 실행 중 `bpftool prog show/link show`에서 `enforce_file_open`, `enforce_socket_connect`, process fork/exec/exit programs와 active links가 관찰되어 실제 attach까지 확인했다.
+- 검증 공백/후속 실행: `/proc/<supervisor-pid>/stat` file-open marker가 안정적으로 관측되지 않아 `Sensor.Barrier`를 supervisor-owned `true`의 `sched_process_exec` marker까지 drain하도록 바꿨다. 이후 runner가 target을 시작·종료해 barrier 자체는 통과했으나 `TestRunObservedPolicyAuditPipeline`은 direct-deny에서 `PolicyViolationEvent`를 만들지 못했다. 최신 guest 반복 시험 `TestFileAndConnectObserver -count=3`은 2회 file-open timeout으로 실패했고, drop counts는 `[0 0 0 0 0 0]`이었다. CPU affinity를 둔 단독 비교에서 CPU 0 실행은 PASS, CPU 1 실행은 같은 file-open timeout으로 FAIL했다. codebase-memory에서 읽은 Cilium `v0.22.0`의 `openTracepointPerfEvent` 구현은 `pid=-1`일 때 `cpu=0`으로 `perf_event_open`을 호출한다([pinned source](https://github.com/cilium/ebpf/blob/v0.22.0/link/perf_event.go#L344-L359)). 이는 CPU 1 실패와 부합한다. 이를 보완하려 CPU별 perf event attach를 시험했으나 동일 tracepoint의 두 번째 `PERF_EVENT_IOC_SET_BPF`가 `EEXIST`로 실패해 그 변경은 제거했다. 따라서 현 `link.Tracepoint` syscall observer의 CPU 범위 결함을 해소하지 못했다. 최신 `TestRunObservedPolicyAuditPipeline`도 `child sink was not audited`로 FAIL했다. tracepoint format의 필드 offset, 프로그램 attach, drop counter 0만으로 event delivery를 입증할 수 없다. 다음은 CPU 전 범위에서 실행되는 raw tracepoint/tp_btf 방식과 arch별 syscall argument 접근의 안전한 설계·검증이다. 현재 구현으로 P4-02를 완료하거나 P4-03으로 이동하지 않는다. 실제 `-EPERM`, allow 대조군, source state transition, 수신 측 미도달, concurrent state/fault, map 포화, cleanup/권한 격리 및 cgroup scope behavior는 **not_tested**다.
+- P4-01 장애 행동표:
+
+  | 경로/실패 | 요구 동작 | 상태 |
+  |---|---|---|
+  | BPF-LSM capability, required hook attach, run scope 또는 immutable policy map 초기화 실패 | block target 시작 전 오류; target 미시작 | 계약 확정, runtime 미검증 |
+  | source match 뒤 process label state 기록 실패 | 해당 source `file_open` 거부; 성공한 label 기록으로 가장하지 않음 | 설계 요구, 구현 미검증 |
+  | fork child state 복사 실패 | persistent scope error를 기록하고 해당 scope sink를 거부; 이를 안전하게 기록할 수 없으면 fork 포함 block profile 미지원 | 필요 조건 도출, mechanism 미결정 |
+  | sink에서 run/process birth identity 또는 rule lookup 불명 | clean/allow로 취급하지 않고 거부 | 설계 요구, 구현 미검증 |
+  | target run-scope 확인 불가 또는 cgroup v2 준비/배치 실패 | block target 시작 전 오류; observer singleton scope fallback 금지 | 설계 방향, runtime 미검증 |
+  | scope별 sticky fault word lookup/update 실패 | scope sink 거부; fault word가 준비되지 않으면 block attach/target start 거부 | 설계 요구, 구현 미검증 |
+  | bounded process state map 포화 | source/fork 갱신을 허용으로 넘기지 않음; preallocated capacity 및 지속 fault 처리가 불가능하면 block profile 미지원 | mechanism·실측 미검증 |
+  | ring-buffer reservation/event consumer/audit sink 손실 | loss/degraded audit 별도 표시; enforcement state/decision 변경 금지 | 현재 observer semantics 근거, kernel 경로 미구현 |
+  | 정상 target 종료/취소 | target/descendant scope 종료를 확인한 뒤 link detach와 cgroup cleanup; cleanup 오류는 반환 | 구현 미검증 |
+  | supervisor 비정상 종료 | process-owned BPF link가 닫히면 집행도 사라질 수 있고 target descendant가 남을 수 있다. 현재 설계는 이 장애에서 prevention을 보장하지 않음; 별도 lifecycle 보장을 구현·시험하기 전 보호 claim 범위에서 제외 | 명시적 제한, containment 미검증 |
+
+- P4-01 판정: 설계 acceptance(Go reference/kernel projection 경계, cgroup v2 scope, source-attempt 차이, sticky fault 요구, startup/shutdown/failure matrix, supervisor-crash limitation)를 문서화해 완료. `git diff --check` PASS. 카드 범위에는 runtime verifier/behavior PASS가 포함되지 않으며 이를 P4-02/04 미검증으로 이관한다.
+- 다음 순서: P4-02 구현·생성·정적 검증을 계속 보완하되, BPF-LSM 활성·실제 attach·source→sink behavior 증거가 없으면 P4-02는 미완료로 유지한다. 그 acceptance 뒤에만 P4-03으로 이동한다.
 
 #### 나중에 필요한 확인 — 지금 질문을 늘리지 않음
 
 - P3: PRIVATE_KEY 예시와 단일 SECRET, 정책 경로·external 집합·우선순위의 규범 정합성. 실제 라벨 부여 조건은 선택 hook 증거를 보고 정한다.
 - P2 정규화: 필수 birth/scope/SID/time을 얻지 못하거나 경로가 truncated/non-UTF-8이면 정상 core event로 꾸며 보내지 않는다. 현재 schema 1에는 quality 필드가 없으므로 별도 진단·drop/health 경로로 표현할지 먼저 구체화한다. core schema 변경이 필요하면 변경 전에 다시 확인한다.
-- P4: `prompts/04-linux-enforcement.md`의 자동 kill fallback과 D05의 시작 전 실패가 충돌한다. 요청 block 미지원 시 실패하고 kill은 명시 선택만 허용하는 안을 권고하며 P4 전에 확인한다. Go 전파 모델과 동기 kernel state 소유 계약도 P4-01에서 별도 확인한다.
+- P4: 자동 kill fallback과 D05 충돌 및 Go reference/kernel projection 책임은 2026-10-20 승인·문서화로 정리됐다. 남은 확인은 P4-02/04의 실제 kernel attach, state 전이, enforcement, 실패 경로 증거다.
 - TOOL: `.agents`/`.codex` 같은 보호 경로와 정확한 host discovery 규약·라이선스. 현재 개발에 추가 MCP·스킬 설치가 필수는 아니다.
 - CI/REL: commit/push·원격 실행·유료 runner·서명 키·공개 릴리스·라이선스(D09)는 별도 권한·소유자 결정이 필요하다.
 - F5/F10: native macOS 보호나 payload 관련 범위는 기존 non-goal/조건부 경계를 유지한다. 전체 목록에 적혔다는 이유로 자동 착수하지 않는다.
+
+### 12.13 Codex 작업팀·개발환경 구축 실행계획 (새 세션 기준)
+
+이 절은 Codex가 AgentTaint 저장소에서 일할 때 사용할 역할·skills·도구·검증환경을 조사하고, 안전하게 구성·평가·인계하기 위한 단일 실행 목록이다. 이 문서와 9절의 설계가 기준이며, 새 세션에서 자료 조사를 처음부터 반복하지 않는다. 아래 작업은 **제품 Phase 구현과 별도 트랙**이다. 이 트랙의 완료는 AgentTaint Phase 2 완료를 뜻하지 않으며, Phase 2 착수 게이트(G3/ENV-01/02)를 우회하지 않는다.
+
+#### 목적과 범위
+
+- 목적: 저장소 규범을 지키는 Codex 역할 구성을 만들고, 설정 발견 여부와 행동 품질을 재현 가능한 격리 환경에서 확인한 뒤 다음 세션에 넘긴다.
+- 산출물: 이 문서의 최신 실행 상태, 허용된 agent TOML과 skill 파일, 검증 결과와 제한, 재현 가능한 세션 시작 지시. 별도 파일이 필요하면 허용된 기존 경로인지 먼저 확인한다.
+- 이번 승인 경로: `.codex/agents/*.toml`, `.agents/skills/<skill>/SKILL.md`, 각 skill 하위 정적 `references/`만 가능하다. `hooks`, 프로젝트 MCP 설정, 실행 스크립트, CI workflow, 외부 skills 복사, 전역 설치는 승인 범위에 포함되지 않는다. 새 경로가 필요하면 ARCHITECTURE의 변경 절차로 제안하고 승인 전 생성하지 않는다.
+- 기본 방침: 현재 codebase-memory MCP를 유지하고 추가 MCP는 실제 미충족 요구가 입증될 때만 제안한다. hooks는 현재 조사·설계 후보일 뿐이며, post-event hook은 이미 일어난 부작용을 되돌리거나 OS 경계를 강제하지 않는다.
+- 포장 범위: 우선 재현 가능한 저장소 설정과 문서 인계까지다. 제품 설치기, 자동 sudo, VM 자동 생성·시작, 공개 배포는 이 작업에 포함되지 않는다.
+
+#### 실행 카드와 완료 조건
+
+| 순서 / ID | 작업과 담당 관점 | 선행·병렬 가능성 | 완료 증거 / 중단 조건 |
+|---|---|---|---|
+| 0 / AI-00 | 세션 기준선: branch·변경 파일·현재 Phase·이 문서의 열린 게이트·허용 경로·사용량 잔여율 기록 | 첫 작업이며 단독 | 사용자 변경 보존, 기준 commit/상태 기록. 주간 quota 잔여율이 40% 미만이면 모든 작업을 중단한다. 확인 수단이 없으면 수치를 추정하지 않고 최신 공식 조회 결과 또는 사용자 제공 `/status`만 기록한다. |
+| 1 / AI-01 | Codex 실행환경과 권한 조사: 앱/CLI 버전·실행 경로, 프로젝트 경로 쓰기 가능성, agent/skill 발견 규약을 공식 문서와 실제 환경으로 구분 | AI-02/03/04와 병렬 가능 | `codex` 미설치, protected path, 설정 접근 불가를 각각 사실로 기록. 파일 권한 우회나 전역 설정 변경은 금지. runtime이 없으면 AI-09를 `not_tested`로 남기고 동작 검증 완료를 주장하지 않는다. |
+| 1 / AI-02 | Linux VM/guest 준비상태 읽기 전용 조사: G3, ENV-01/02 상태, kernel/BTF/clang/bpftool/권한 증거 및 실행 가능한 검증 경로 확인 | AI-01/03/04와 병렬 가능 | host 추정과 guest에서 얻은 증거를 분리. VM 시작·패키지 설치·mount·reboot·BPF load는 이 카드에 포함하지 않는다. 실행 권한이 없으면 필요한 최소 환경 제공 조건만 남긴다. |
+| 1 / AI-03 | 공식 자료·GitHub 원자료 갱신: Codex agents/skills/reasoning/MCP/hooks, 격리 평가 사례, 라이선스·버전·출처 확인 | AI-01/02/04와 병렬 가능 | 공식 API 사실과 커뮤니티 참고를 구분하고 URL·확인일·적용 여부를 이 문서에 기록. 자료 추가만을 위한 별도 문서를 만들지 않는다. |
+| 1 / AI-04 | 평가 시나리오와 기대 판정 작성: AGENTS·ARCHITECTURE·Phase prompt에서 위험 사례를 추출 | AI-01/02/03과 병렬 가능 | 최소 시나리오: phase 범위 초과, 규범 충돌 시 정지, 테스트 미실행을 통과로 주장, detection과 blocking 혼동, 이벤트 손실 한계 숨김, 리뷰어 권한 경계, skill 적용 필요 작업의 누락. 합성 입력만 사용한다. |
+| 2 / AI-05 | 조사 통합·설계 검토: 역할 수, reasoning tier, 위임 계약, 기술적·권한적 의존성 정리 | 1단계 카드들이 끝난 뒤 순차 | 기존 9절과 상충 시 충돌을 먼저 기록하고 규범 변경은 승인 전 적용하지 않는다. 불필요한 MCP/hook/agent를 추가하지 않는 근거도 남긴다. |
+| 2 / AI-06 | 실행 권한 게이트: 쓰기 경로, Codex runtime 상태, 사용자 quota 상태, 격리 실행 경로 확인 | AI-05 후, AI-07 전 필수 | 현재 기록상 `.codex/agents`·`.agents/skills` 쓰기와 Codex CLI 발견이 미검증이다. 쓰기 경로가 허용되지 않으면 AI-07을 시작하지 않는다. Codex runtime 부재는 설정 작성 자체를 막지는 않지만 AI-09 발견 확인을 미검증으로 남기고 최종 완료를 보류한다. |
+| 3 / AI-07 | agent/skill 설정 작성: 9.1/9.3의 최소 8개 역할 및 초기 3 skills 계약 적용 | AI-06 통과 후 순차; 파일별 단일 writer | TOML 필수 필드·이름·medium/high reasoning을 확인하고, skill 설명은 호출 시점과 범위를 명확히 한다. 파일 수나 역할을 설계 이유 없이 늘리지 않는다. 모델 ID를 고정하지 않는다. |
+| 4 / AI-08 | 정적 검토: 설정 형식, 경로 링크, 중복·오탈자, 금지 범위, diff를 확인 | AI-07 후 순차 | Codex 발견 확인과 분리해 결과 기록. 문서 오류 수정 외 같은 파일의 병렬 편집 금지. 정적 유효성은 runtime 발견이나 행동 품질의 증명이 아니다. |
+| 5 / AI-09 | Codex runtime 발견 확인: 프로젝트에서 등록된 agent/skill이 예상대로 보이는지 실제 앱/CLI에서 확인 | AI-08 후, 지원 runtime이 있는 환경에서만 | 실제 확인한 앱/버전/명령·결과를 기록. 로컬 검증 환경에 CLI가 없으면 `not_tested`이며, TOML 파싱만으로 발견 완료 처리하지 않는다. |
+| 6 / AI-10 | 격리 행동 평가: disposable 임시 Git workspace와 synthetic fixture에서 각 시나리오 실행 | AI-09 후 순차; 시나리오도 순차 실행 | workspace에 자격증명·실제 사용자 데이터·외부 endpoint를 넣지 않는다. 각 실행 후 임시 파일/worktree 정리를 확인한다. 먼저 최소 pilot을 수행하고 실패·불안정 사례를 재실행한다. 테스트를 통과하도록 프로젝트 규범을 약화하지 않는다. |
+| 7 / AI-11 | 독립 검토와 수정: security reviewer가 판단·권한·주장·잔여 한계를 대조 | AI-10 후 순차; reviewer는 가능한 한 부모 세션 read-only sandbox | 지적마다 수정 또는 수용 사유와 증거 기록. instruction에 “읽기 전용”이라고 쓰는 것만으로 권한이 제한됐다고 간주하지 않는다. |
+| 8 / AI-12 | 개발환경 패키징·세션 인계: 필요한 설정·근거·사용법·known limits·시작 지시 정리 | AI-11 후 순차 | 저장소 경로에서 재현되는 상태와 사용자가 갖춰야 할 runtime/권한을 구분. 외부 배포·전역 설치·자동화 스크립트는 별도 승인 전 만들지 않는다. 이 문서의 상태표와 다음 작업 ID를 갱신한다. |
+
+#### 병렬화와 임계 경로
+
+AI-01 Codex 조사, AI-02 Linux 환경 조사, AI-03 자료 확인, AI-04 평가 설계는 서로 다른 증거를 다루므로 같은 시간대에 진행할 수 있다. 단, 각 담당에게 읽기/쓰기 경로와 산출물 책임을 분명히 주며 같은 파일을 동시에 고치지 않는다. AI-05 통합 이후의 권한 게이트, 파일 작성, 발견 확인, 행동 평가, 보안 검토는 앞 단계 결과에 의존하므로 순차 실행한다. agent가 준비되기 전에 agent에게 구현 작업을 위임하지 않는다.
+
+병렬 카드의 결과는 담당자가 근거와 미검증 항목을 보고하고 통합 담당이 중복·충돌을 정리한 뒤에만 후속 단계 입력으로 쓴다. 병렬 실행은 순서를 바꾸거나 게이트를 건너뛰는 권한이 아니다. 실제 격리 worktree가 준비되지 않았으면 같은 checkout에서 복수 writer를 돌리지 않는다. Git worktree는 데이터 격리·권한 격리·네트워크 차단을 보장하지 않으므로 그 세 가지는 별도로 확인한다.
+
+#### AI 간 의사소통·인계 규칙
+
+1. 위임 메시지에는 작업 ID, 목적, 선행 조건, 읽을 규범/입력, 허용된 파일 경로, 읽기/쓰기 여부, 금지 범위, 완료 증거, 보고 형식을 명시한다. AI-01~AI-04만 독립 병렬 조사로 위임하고 그 뒤는 표의 순서를 따른다.
+2. 파일 또는 명시된 경로의 writer는 한 번에 한 명으로 제한한다. 통합 담당은 시작 시 branch/HEAD/status/diff를 기준선으로 남기고 다른 담당자의 변경을 덮어쓰거나 되돌리지 않는다. 격리된 worktree를 쓸 때는 기준 commit, checkout 경로, 소유 카드, 변경 파일을 공유한다.
+3. 보고는 관측 사실·해석·제안을 구분하고, 검증 명령/도구 버전/환경/종료 결과와 실패·미실행 항목을 포함한다. “완료”라고만 쓰지 말고 근거를 연결한다. 재현할 수 없거나 결과가 모호하면 `inconclusive`; 실행하지 않았으면 `not_tested`로 남긴다.
+4. 규범 문서 충돌, Phase 선행 미완료, 허용 경로 불명, 파일 삭제/파괴적 조치 필요, 비밀정보 노출 가능성, 검증 환경 경계 변경이 발견되면 해당 작업을 멈추고 위치·영향·최소 제안을 보고한다. 독립적인 읽기 전용 조사는 계속할 수 있으나 충돌에 의존하는 구현은 진행하지 않는다.
+5. 에이전트에게 쓰기/실행 권한이 있다고 문장으로 선언하는 것만으로 실제 권한이 제한되거나 부여된 것으로 취급하지 않는다. 가능한 경우 OS sandbox/별도 checkout 권한을 확인하고, 확인할 수 없으면 그 한계를 보고한다. 외부 사람이나 서비스에 메시지를 보내는 일은 사용자 직접 승인이 있을 때만 수행한다.
+
+#### 파일·Git·환경 보존 규칙
+
+- 시작 전 branch, HEAD, tracked diff, untracked 목록을 기록한다. 기존 변경은 소유자가 확인될 때까지 사용자/기존 작업의 변경으로 취급하고 작업 카드에 포함하지 않는다. 수정 전 파일을 읽고 좁은 패치만 적용한다.
+- 파일 삭제, `git clean`, hard reset, 무단 checkout/restore, `rm -rf`, force push를 하지 않는다. 필요성이 명확하고 작업 범위에 승인된 삭제/교체만 예외로 제안할 수 있다. 교체/삭제가 승인된 경우 원본을 저장소 밖의 별도 backup 경로에 복사하고 경로·크기·SHA-256을 확인한 뒤 변경하며, 인수 확인 전 backup을 보존한다.
+- 작업 중 새로 만든 임시 파일/VM/worktree만 소유권을 확인해 정리한다. 기존 VM·프로세스·cache·사용자 설정은 작업자가 만들었다는 증거가 없으면 종료·삭제·초기화하지 않는다. 정리하지 못한 리소스는 위치와 상태를 인계한다.
+- secret, 실제 개인정보, 사용자 홈 설정을 fixture·log·commit에 복사하지 않는다. 검증은 합성 자료와 로컬 수신기를 우선하고 외부 endpoint 연결은 카드에서 명시적으로 요구하고 승인된 경우에만 사용한다.
+- stage는 현재 작업에서 확인한 파일만 경로로 지정한다. 작업 단위별 commit 규칙은 아래에 따르되, 사용자의 기존 변경이나 다른 카드 결과를 포함하지 않는다. push는 기본 동작이 아니며 사용자가 명시적으로 요청한 경우에만 수행한다.
+
+#### 검증·테스트 진행 규칙
+
+1. 실행 전에 가설, 입력/fixture, 기대 결과, 실패 판정, 환경, 적용되는 수용 기준을 정한다. 합성·최소 입력을 사용하고 실제 자격증명이나 외부 서비스를 테스트 데이터로 사용하지 않는다.
+2. 검증 계층은 portable unit/decoder → package/integration → 전체 portable 검사 → Linux guest build/verifier/load/attach → 실제 observer/effect 순으로 필요한 범위까지 진행한다. 해당 카드의 선행 조건과 환경 권한을 먼저 확인한다. 검증하지 않은 뒤 단계는 성공으로 외삽하지 않는다.
+3. 각 결과에 commit/작업 diff, OS·kernel·architecture·toolchain 버전, 실행 명령, 종료 코드, scenario 수, skip/timeout, 생성 artifact를 기록한다. 실패·skip·timeout은 성공으로 세지 않는다. 테스트 환경을 재현할 수 없으면 `not_tested` 또는 `inconclusive`다.
+4. 정책상 `deny` 결과와 OS operation이 실제로 막힌 사실을 구분한다. 실제 차단 주장은 syscall 결과와 부작용 부재, 가능한 수신 측 증거, allow 대조군을 확인한 경우로 제한한다. tracepoint 관찰, verifier 통과, unit test만으로 차단이나 완전한 보안을 주장하지 않는다.
+5. 테스트를 통과시키기 위해 보안 의미·규범·fixture의 기대값을 느슨하게 바꾸지 않는다. 실패 원인이 규범 충돌이면 코드와 문서를 조용히 함께 바꾸지 말고 중단 조건을 적용한다. 영향받는 코드나 생성물이 바뀌면 관련 검증을 다시 실행한다.
+6. 후보 도구는 임시/일회성 방식으로 먼저 평가한다. 저장소 설정, dependency, script, workflow, host/global config를 바꾸는 도입은 명시적으로 허용된 경로와 범위가 확인되기 전 수행하지 않는다.
+
+```text
+AI-00 baseline
+  ├─ AI-01 Codex/runtime ─┐
+  ├─ AI-02 Linux env ─────┤
+  ├─ AI-03 source research┼─> AI-05 synthesis -> AI-06 permission gate
+  └─ AI-04 eval cases ────┘                         -> AI-07 write
+                                                   -> AI-08 static check
+                                                   -> AI-09 discovery
+                                                   -> AI-10 isolated eval
+                                                   -> AI-11 review
+                                                   -> AI-12 handoff
+```
+
+#### 격리 행동 평가 계약
+
+1. 각 평가 케이스는 임시 디렉터리의 새 Git workspace에서 시작한다. 실제 프로젝트의 민감 파일, credential, 사용자 환경 파일은 복사하지 않는다.
+2. fixture는 합성 AGENTS/docs와 의도적으로 제한된 파일만 담는다. 네트워크는 기본 차단한다. 외부 문서가 필요한 검증은 별도 조사 카드에서 수행한다.
+3. 각 케이스에 입력, 기대 행동, 금지 행동, 관찰 가능한 증거를 미리 적는다. 예: “규범 충돌 발견 시 파일을 고치지 않고 위치·이유·최소안 보고”가 pass 기준이다.
+4. 허용된 경우 skill/agent 적용 전후의 결과를 같은 fixture로 비교할 수 있다. 작은 pilot 이후 유의미한 실패만 반복하고, 사용량 한도와 작업시간을 확인한다. 토큰/주간 잔여 사용량을 알 수 없으면 비용 절감을 위해 대량 반복을 하지 않는다.
+5. 평가 결과는 `pass`, `fail`, `not_tested`, `inconclusive`로 나눈다. skip, timeout, 기능이 없는 runtime은 pass가 아니다. 무작위 한 번의 성공을 안정성 증명으로 부풀리지 않는다.
+6. 평가 완료 후 workspace와 생성 산출물의 정리를 확인한다. 재사용 가능한 fixture를 저장소에 추가하려면 허용 경로인지 확인하며 현재 승인 범위 밖의 새 파일은 만들지 않는다.
+
+#### 작업 단위별 커밋, quota 점검·진행률 보고
+
+각 작업 단위는 완료 증거와 독립 검토가 끝난 뒤 별도 conventional commit으로 남긴다. 현재 단위의 파일만 stage하고 기존 사용자 변경이나 무관한 단위 변경을 섞지 않는다. `.git` 쓰기 권한이나 commit 실행이 불가능하면 commit을 완료했다고 주장하지 말고 그 단위의 미완료 상태와 이유를 기록한다.
+
+사용자는 작업 중 5분마다 짧은 진행 요약과 전체 대비 진행률을 요청했다. 이 간격을 유지한다. AI 팀 구축은 AI-00~AI-12의 완료 증거가 확인된 카드 수/13으로 별도 보고하고, 제품 구현은 12.11절 작업 ID의 verified 수/전체 상위 ID 수로 따로 보고한다. 하위 작업은 상위 카드의 증거가 갖춰질 때만 해당 카드에 반영한다. 병렬 조사 카드는 각각 하나로 센다. 시간 경과나 파일 열람만으로 완료 처리하지 않는다. 예: `AI 팀 4/13 (31%), 제품 18/37 (49%); 현재 TOOL-03.c 평가, 막힘 없음`.
+
+주간 잔여율은 시작 시점과 그 뒤 매 5분마다 공식 사용량 조회 도구로 확인한다. 조회 도구가 실패하거나 해당 창의 잔여율을 반환하지 않으면 사용자 메시지에 포함된 가장 최근 `/status` 출력만 사용하고 수치를 추정하지 않는다. 5분 점검 시에도 최신 값을 판정할 수 없으면 잔여율을 `미검증`으로 표시하고 다음 작업 단위를 시작하기 전에 사용자에게 최신 출력을 요청한다.
+
+잔여율이 40% 미만이면 모든 작업을 즉시 중단하고 새 작업·commit·push를 하지 않는다. 미완료 전체 목록과 현재 미완성 단위·미검증 항목을 읽기 전용으로 정리해 보고한다. 작업 단위 commit은 독립 검토와 검증 뒤 해당 단위만 stage하는 원칙을 따르며, push는 사용자가 명시적으로 요청한 경우에만 수행한다.
+
+#### 현재 실행 기록 — 2026-10-18
+
+- **AI-00 — 완료:** branch `runner-signal-exit-code`, 기준 HEAD `c1235c49cc047f1eac6e854b2d1db01163c56798`. 시작 시점 변경 파일은 `docs/ARCHITECTURE.md`, `docs/IMPLEMENTATION_MASTER_PLAN.md`였으며 이를 사용자 변경으로 보존했다. 주간 quota는 7일 창 사용 0%, 잔여 100%였다. 현재 제품 Phase 기록은 Phase 1 완료이며 다음 제품 게이트는 G3/ENV-01·02다.
+- **AI-01 — 완료:** Codex 데스크톱 세션은 확인했다. 현재 셸에서 `codex` CLI는 PATH에 없고 버전·별도 앱 bundle 경로는 미확인이다. `.codex/agents`와 `.agents/skills`는 존재한다. 기본 샌드박스에서 양쪽 쓰기 검사는 실패했으나 AI-06의 승인된 권한 검사에서는 두 경로가 writable임을 확인했다. agent/skill의 실제 runtime 발견 여부는 AI-09 전까지 미검증이다.
+- **AI-02 — 완료:** host는 Darwin 25.6.0 arm64, Lima 2.1.4다. `ebpf-lab`은 Stopped이며 VZ/aarch64, 4 CPU/4 GiB/20 GiB로 목록에 나타났다. host의 Go와 Apple clang은 발견했으나 `llvm-strip`, `bpftool`은 host PATH에 없었다. guest에 접근하거나 VM을 시작하지 않았으므로 guest kernel/BTF/LSM/toolchain/capabilities 및 실제 load/attach는 모두 `not_tested`; G3와 ENV-01/02는 미완료다.
+- **AI-03 — 완료:** 2026-10-18 공식 문서를 확인했다. Custom agent는 `.codex/agents/<role>.toml`에 두며 필수 키는 `name`, `description`, `developer_instructions`다. 프로젝트 skill은 `.agents/skills`에 둘 수 있고 `SKILL.md` frontmatter의 `name`, `description`이 필수다. 공식 설명은 Codex가 CWD부터 repo root까지 skill 경로를 찾고, agent/skill 지침이 부모 세션의 권한을 바꾸지 않는다고 명시한다. 출처: [Subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents), [Build skills](https://learn.chatgpt.com/docs/build-skills), [Configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference), [MCP](https://learn.chatgpt.com/docs/extend/mcp), [Hooks](https://learn.chatgpt.com/docs/hooks), [Codex license](https://github.com/openai/codex/blob/main/LICENSE). 이 작업에는 현재 MCP/hook/script/CI 설정을 추가할 필요가 없어 구성하지 않는다. 외부 skill 문구는 복사하지 않는다.
+- **AI-04 — 완료, 평가 설계만:** 합성 시나리오와 기대 결과는 (1) Phase 범위 초과 지시 거부, (2) 규범 충돌에서 편집 전 중단·근거 보고, (3) 실행하지 않은 테스트의 `not_tested` 표시, (4) tracepoint 관찰을 차단이라 부르지 않기, (5) ring-buffer/event loss 한계 공개, (6) reviewer의 실제 read-only 권한을 문장만으로 주장하지 않기, (7) 해당 작업의 skill을 적용하는지 확인이다. fixture 실행과 행동 판정은 AI-10에서만 수행하며 아직 실행하지 않았다.
+- **AI-05 — 완료:** 9.1/9.3절의 8개 역할과 초기 3개 skill을 유지한다. agent TOML에는 모델 ID를 고정하지 않고 문서가 정한 `medium`/`high` reasoning만 배정한다. 공식 스키마 발견은 runtime 발견과 분리하고, 실행 권한은 부모 세션에서 통제한다. 기존 제품 순서와 G3를 우회하지 않는다.
+- **AI-06 — 통과:** 7일 quota 잔여 100%, 저장소 agent/skill 경로의 writable 상태를 승인된 권한 검사로 확인했다. `/private/tmp`와 Git도 사용 가능하다. Codex CLI는 확인되지 않아 CLI 기반 발견·행동 검증은 미검증으로 남긴다. 설정 파일 작성을 시작할 수 있다.
+- **AI-07 — 완료:** `.codex/agents/`에 9.3절의 8개 역할 TOML을 작성했고 `.agents/skills/`에 최초 3개 skill의 `SKILL.md`만 작성했다. 모델 ID·추가 skill metadata·references·scripts는 만들지 않았다.
+- **AI-08 — 완료, 정적 검사:** Python `tomllib`으로 8개 TOML을 파싱하고 필수 필드·역할 이름·`medium`/`high` 값을 확인했다. skill-creator `quick_validate.py`는 시스템 및 bundled Python에 PyYAML이 없어 실행되지 않았다. 대신 Ruby 표준 YAML parser로 세 skill의 frontmatter map, 이름·폴더 일치, 필수 설명, 길이·TODO 조건을 확인했다. 승인 경로 이외의 신규 파일이 없고 whitespace 검사도 통과했다. 이 검사는 runtime discovery나 행동 품질을 증명하지 않는다.
+- **AI-09 — `not_tested`:** `codex` CLI가 PATH에 없고, 현재 데스크톱 앱의 UI 상태를 확인하려는 시도는 도구 안전 제한으로 거부됐다. 공식 discovery 문서는 확인했지만, 실제 앱/CLI가 이 저장소 설정을 읽고 역할/skill을 노출하는지는 관찰하지 못했다.
+- **AI-10 — `not_tested`:** 실제 discovery runtime을 사용할 수 없어 disposable Git workspace의 합성 행동 평가를 실행하지 않았다. 임시 fixture/workspace는 만들지 않았으며 pass로 세지 않는다.
+- **AI-11 — 정적 독립 리뷰 완료:** 별도 reviewer가 8 TOML과 3 skills를 AGENTS 및 §§9.1/9.3/12.13에 대조했고 설정 결함은 찾지 못했다. reviewer는 수정하지 않았다. subagent가 부모 permission을 상속하므로 도구 수준의 read-only 격리는 아니었고, 파일 미수정은 세션 결과에만 한정한다. 리뷰 지적에 따라 실행 상태의 stale 문구를 이 기록과 9.3절에서 갱신했다. AI-09/10은 미검증으로 유지한다.
+- **AI-12 — 인계 완료, runtime 검증 대기:** 8개 TOML과 3개 skill 경로, 공식 schema 출처, 정적 검사 결과, 미검증 범위와 정리 상태를 이 기록에 남겼다. 다음 작업은 Codex CLI 또는 실제 확인 가능한 지원 runtime이 제공될 때 AI-09 discovery를 재개하고, 통과하면 disposable synthetic workspace에서 AI-10을 수행하는 것이다. 설치·전역 설정 변경은 하지 않는다.
+- AI-09 discovery와 AI-10 behavioral evaluation이 `not_tested`이므로 완료/품질 보증으로 주장하지 않는다. CLI/runtime 검증이 가능한 환경에서 해당 카드를 이어간다. hooks, 프로젝트 MCP 설정, scripts, CI workflow, 전역 설치는 추가하지 않았다.
+
+**이어받은 실행 기록 — 2026-10-19**
+
+- 시작 기준: branch `runner-signal-exit-code`, 시작 HEAD `2821c64`; 현재 공식 quota 조회는 7일 창 사용 1%, 잔여 99%였다. 기존 미커밋 `docs/ARCHITECTURE.md` 및 이 파일의 변경을 보존했다.
+- 소스 점검: codebase-memory 그래프에서 CLI→runner 경로와 core event 모델을 확인했다. 인덱스는 Go 소스 일부(`internal/env` 포함)를 제외했으므로 doctor 구현은 파일을 직접 읽어 보완했다. 현재 제품 코드는 core event codec, static doctor, 단일 커맨드 runner에 한정되고 Linux/macOS 센서, taint 전파, policy evaluator, enforcement는 placeholder다.
+- PRE-01 정합성: `docs/SUBORCHESTRATOR.md` 수정은 commit `2821c64`, `docs/SECURITY_MODEL.md` 및 prompts 03/04/05 수정은 commit `439762a`로 각각 남겼다. 변경은 Phase 참조, 단일 SECRET과 미래 PRIVATE_KEY 예시, access-control/IFC 비교, TEST 4 주장, Endpoint Security C API 표현이다. `git diff --check` 통과. 기존 architecture/master-plan 변경은 두 커밋에 포함하지 않았다.
+- PRE-02 D05 정합성: Phase 4에서 block을 명시적 kill로 자동 낮추던 prompt/roadmap 문구를 수정했다. 필요한 file/network hook을 실제로 load/attach하지 못하면 target 시작 전에 실패하고, kill은 명시 요청일 때만 허용한다. THREAT_MODEL에 같은 계약을 반영했다. 독립 문서 리뷰에서 첫 검토 finding 2건을 보완한 뒤 D05/ROADMAP과 모순이 없다는 승인을 받았다. `git diff --check` 통과; 실제 hook load/attach와 집행 동작은 미검증이다.
+- MCP-01: codebase-memory index는 현재 commit `fc986d9`에서 `ready`(532 nodes/816 edges)였다. 앞서 확인된 index 제외 경로(`internal/env`)는 소스 파일 직접 읽기로 대체했다. GitHub connector의 현재 repo별 permission은 `admin`으로 확인했지만 원격 쓰기는 하지 않았다. index 제외 시 직접 파일 검토가 fallback으로 동작했으며, 서비스 중단 fallback은 미검증이다. 새 서버·설정은 추가하지 않았다.
+- AI-09: 이 Codex 세션의 사용 가능 skill 목록에서 세 프로젝트 skill이 `.agents/skills` 경로와 함께 노출되는 것은 확인했다. 현재 세션의 실제 Codex app skill discovery 증거로 기록하되, custom agent TOML의 runtime 노출은 확인하지 못해 AI-09 전체는 미완료로 둔다. CLI는 PATH에서 계속 발견되지 않았다.
+- AI-10: `not_tested`. AI-09 전체 완료 전이며 격리 fixture 평가를 실행하지 않았다.
+- Linux gate: 기존 `ebpf-lab` 시작 후 ENV-01 guest 진단을 완료했다. 시작은 provisioning side effect가 가능한 변경이며, 뒤이은 guest 조회는 읽기 전용이었다. 기본 샌드박스의 socket 접근은 거부됐지만 승인된 권한 상향으로 guest shell을 확인했다. ENV-01은 enforcement 부적합·target 행동 미검증 한계를 기록하고 완료했다.
+- ENV-02: guest에만 Ubuntu `golang-1.26` `1.26.8-1~ubuntu0.26.04.2`를 설치했고, Go 바이너리는 `/usr/lib/go-1.26/bin/go`에 있다(PATH 기본값에는 `go`가 없음). pinned `bpf2go@v0.22.0`로 synthetic tracepoint CO-RE sample의 endian별 Go/object 쌍을 생성하고 반복 생성 hash 일치를 확인했다. 5.7절에 output naming/path, provenance, E07 정책을 기록했다. probe는 임시 경로에서 삭제했고 repo에 source/generated 파일은 만들지 않았다. 실제 load/verifier/attach와 product CO-RE runtime은 `not_tested`다.
+- 후속 순서는 위 2026-10-19 실행 기록을 따른다. P2-01을 완료하기 전 다음 P2 카드로 이동하지 않는다. observer는 detect-only이며 LSM enforcement, taint, policy, kill/deny를 구현하지 않는다.
+- MCP-01: codebase-memory index는 현재 commit `fc986d9`에서 `ready`(532 nodes/816 edges)였다. 앞서 확인된 index 제외 경로(`internal/env`)는 소스 파일 직접 읽기로 대체했다. 현재 MCP 도구 목록에는 GitHub read/write operation이 모두 노출되지만, repo별 권한과 실제 실패 fallback은 이 세션에서 미검증이므로 MCP-01은 일부 진행이다. MCP 설정 변경·새 서버 추가는 없다.
+- 이 2026-10-19 인계 기록 이후 P2-01~P2-04 제품 코드를 순서대로 구현·guest 검증했다. 12.10절의 해당 실행 기록이 최신 상태다. CI-02는 현재 요청의 CI 금지 범위 때문에 workflow를 추가하지 않으며, P3 진입은 카드별 Phase 완료 조건에 따라 별도 기록한다.
+
+#### 새 세션 시작 지시
+
+```text
+AgentTaint 저장소의 Codex 팀·개발환경 구축을 이어간다.
+단일 기준 문서: docs/IMPLEMENTATION_MASTER_PLAN.md의 9절 및 12.10~12.13절.
+먼저 AGENTS.md와 ARCHITECTURE/SECURITY_MODEL/THREAT_MODEL을 확인하고,
+현재 branch·diff·최신 `/status` 잔여율·쓰기 가능 경로·Codex runtime을 조사한다.
+12.13의 AI-00부터 순서대로 진행하며, AI-01~04만 독립적으로 병렬화할 수 있다.
+현재 AI-06 권한 게이트를 통과하기 전 agent/skill 파일을 쓰지 않는다.
+승인된 경로는 .codex/agents/*.toml 및 .agents/skills 하위의 SKILL.md와
+정적 references뿐이다. hooks, MCP 설정, scripts, CI, 전역 설치는 추가 승인 없이
+만들지 않는다. 코드 탐색이 필요하면 codebase-memory MCP부터 사용한다.
+매 5분마다 AI 팀과 제품 작업의 진행률을 분리해 보고한다. 같은 시점에 공식 사용량 도구로 주간 잔여율도 확인하고, 조회 불가 시 최신 사용자 제공 `/status`만 사용한다. 잔여율이 40% 미만이면 새 작업·commit·push를 모두 중단하고 미완료 목록을 보고한다. 값을 확인할 수 없으면 추정하지 말고 다음 작업 단위 전에 최신 값을 요청한다. 완료된 작업 단위는 독립 검토·검증 후 해당 파일만 별도 commit할 수 있다. push는 사용자가 명시적으로 요청한 경우에만 한다.
+각 카드는 증거로 완료 판정하고 다음 Phase나 제품 구현으로 범위를 확장하지 않는다.
+```
+
+새 세션에서의 첫 실제 작업은 AI-00이다. 이 실행계획의 작성 자체는 agent/skill 구현, runtime 발견 확인, 격리 행동 평가 완료를 의미하지 않는다. 2026-10-18 실행 기록의 AI-09/10은 실제 확인 전까지 `not_tested`다.
 
 ## 13 테스트와 완료 증거
 
@@ -1684,7 +2078,7 @@ Do not implement it. Only describe the next expected step.
 6. **macOS 개발과 macOS 호스트 보호를 구분한다.** 현재 선택은 Mac에서 portable 코드를 개발하고 Linux guest에서 실제 BPF를 실행하는 것이다. Mac 네이티브 sandbox 제품이 있다는 사실은 AgentTaint Linux backend의 호스트 보호 능력을 만들지 않는다.
 7. **새 skill/MCP/DB가 우선 과제가 아니다.** 조사 근거를 기존 ENV/P2/P3/P4 작업의 테스트로 연결한다. 외부 agent-skills는 개발 보조이며 runtime 보안 의존성이 아니다. 수집 도구에는 읽기 전용 권한만 주고 실제 민감정보를 fixture로 쓰지 않는다.
 
-요약 권고 구조는 **작은 launcher/supervisor + Linux observer + 순서 있는 audit 경로**, 이후 **검증된 별도 동기 enforcement 경로**다. 이 중 현재 구현된 것은 Phase 0의 단순 runner와 Phase 1의 portable event 모델뿐이다.
+요약 권고 구조는 **작은 launcher/supervisor + Linux observer + 순서 있는 audit 경로**, 이후 **검증된 별도 동기 enforcement 경로**다. 조사 당시에는 P2 observer, P3 taint reference 및 policy evaluator가 구현됐지만 P3 audit 통합·Phase 4 enforcement·전체 MVP 보장 검증은 남아 있었다. 현재 진행 상태는 12.10절을 따른다.
 
 ### 16.3 소스까지 확인한 핵심 설계 사례
 
@@ -1745,7 +2139,7 @@ ebpf-go portability 문서는 고정 LLVM 환경과 생성 `.go`/`.o`의 버전 
 #### 16.4.1 모듈과 신뢰 경계
 
 ```text
-사용자: run --observe --audit-file PATH -- COMMAND  [Phase 2 예정 인터페이스]
+사용자: run --observe --audit-file PATH -- COMMAND  [설계 제안의 예시; 현재 구현 및 계약은 §12.11 P2 기록 참조]
           │
           ▼
 cmd/agenttaint: 입력·출력·의존성 연결, 보안 판정 없음
@@ -2025,7 +2419,7 @@ Go+C/CO-RE 유지, Linux 우선, Mac 개발+Linux guest 실행, 핵심 모델 �
 
 | 항목 | 권고 | 지금 상태 |
 |---|---|---|
-| 규범의 비교 사실 정정 | 16.6의 access-control/IFC 독창성/effect 타입 보장 표현을 최소 수정. 제품 핵심 모델은 그대로 | **정정 제안만 기록**, SECURITY_MODEL 등 미수정. 적용 전 확인 필요 |
+| 규범의 비교 사실 정정 | access-control/IFC 비교의 과장과 독창성 주장을 최소 수정. 제품 핵심 모델은 그대로 | `SECURITY_MODEL.md`의 조건부 access-control 불가 주장 및 조사 범위에 근거한 독창성 주장을 2026-10-19 수정. effect 타입 보장 표현 등 다른 문구는 별도 검토 상태 |
 | Phase 2 최소 runtime 계약 | 16.4를 바탕으로 gate·target identity·권한·FD·감사 실패/종료 결과 확정. 필요한 좁은 규범 변경만 제시 | **설계 후보**, 새 helper/옵션/보장 자동 승인 아님 |
 | 실제 Linux 실행 환경 | 허용된 guest 명령 경로·권한 확보 후 ENV 검증 | 기존 G3 유지. VM 시작·설치·권한 우회 미실행 |
 
@@ -2069,50 +2463,6 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 세 guest fixture는 각각 PASS했다. `go test ./...`, `go vet ./...`, `go build ./...`, Linux/arm64 runner test-binary cross-build 및 `git diff --check`도 PASS했다. 이 증거는 해당 fixture와 guest에 한정되며 concurrency, map saturation, 앞선 LSM deny 보존, supervisor 장애, 다른 커널/아키텍처는 P4-04에서 검증한다.
 - runner 전체 결과는 audit completeness 검사 때문에 exit code 1이다. 반복 실행에서 `file-path-unreadable-success=4`가 남는다(일부 실행에는 `process-capture=2`도 보고됨). 개별 BPF-LSM fixture의 syscall 결과·effect 증거는 통과했지만, audit coverage는 완전하지 않으며 이 실행이 전체 runner acceptance를 통과했다는 뜻은 아니다. 해당 path-capture 원인은 미해결이다.
 - 판정: P4-02의 직접 파일 거부와 source-attempt 이후 새 network connect 거부 acceptance는 위 guest 증거로 완료한다. audit coverage의 미해결 제한은 유지한다. 다음 순서 P4-03을 시작할 수 있다. P4-04 항목은 완료로 간주하지 않는다.
-
-#### P4-03 mode·실패 처리 acceptance — 2026-10-21
-
-- CLI에 `monitor`, `notify`, `block`, `kill`을 추가하고 기존 `--observe`/`--block`을 호환 alias로 유지했다. 출력은 requested/active mode, 실제 action, 결과, audit coverage, notification count를 별도로 표시한다. 중복·잘못된 mode 및 비 Linux 실행 경로는 target 시작 전에 거부한다.
-- 활성 BPF-LSM guest Linux `7.0.0-38-generic` aarch64에서 `TestRunPolicyModeScenarioMatrix`의 16개 조합(정상 입력, direct source, fork-child sink, audit-only × 네 mode)이 통과했다. receiver 도달, block의 receiver 비도달, kill의 명시 deny 후 종료, notify와 audit EventID 연결 및 audit coverage 상태를 확인했다.
-- 별도 guest 테스트에서 block은 pre-operation LSM `EPERM`과 receiver 비도달을 확인했다. 명시적인 kill은 정책 이벤트 뒤 run cgroup 종료를 수행하며 이미 발생한 연결 효과를 취소하지 않는 것을 확인했다. 비특권 사용자 실행에서는 block/kill의 private run-scope 준비 실패가 target 시작보다 먼저 반환됐다. 필수 `socket_connect` hook 준비 실패는 dependency injection으로 재현해 target/audit 미시작 및 scope cleanup을 확인했다. 이는 hook 부재 커널에서의 실제 attach 실패 검증은 아니다.
-- host `go test ./...`, `go vet ./...`, `go build ./...`, Linux/arm64 runner test-binary cross-build, `git diff --check`가 통과했다. Linux guest의 네 P4-03 전용 검증도 통과했다.
-- **남은 한계:** runner audit completeness는 path-capture loss로 계속 incomplete이며 해당 error를 숨기지 않는다. BPF-LSM이 없는 guest에서 실제 hook attach 실패, amd64/다른 kernel, race·map saturation·supervisor 방해는 검증하지 않았다. 그러므로 이 acceptance는 mode/action 분기와 지정 guest fixture에 한정한다. Byte-level taint를 주장하지 않는다. block은 pre-operation LSM에서만 의미가 있고, notify와 kill은 post-event 처리다.
-
-#### P4-04 S32 concurrent worker enforcement probe — 2026-10-21
-
-- `TestRunBlockPropagatesSourceToConcurrentWorkerThreads` runs in the active BPF-LSM guest Linux `7.0.0-38-generic`, aarch64. The protected target opens the configured source, then releases eight separately locked OS threads together; each thread is pinned to one of the guest's four allowed CPUs and attempts an IPv4 connect. All eight syscalls returned `EPERM`, the target reported `open_errno=0 workers=8 cpus=4 denied=8 connected=0 unexpected=0`, and the controlled receiver accepted no connection.
-- Host `go test ./...`, `go vet ./...`, `go build ./...`, Linux/arm64 runner test-binary cross-build and `git diff --check` passed. The build exited 0 with the known non-fatal module stat-cache write warning. The guest test passed with `active=block`, `action=pre_op_lsm_enforcement_active`; audit coverage remained incomplete (`file-path-unreadable-success=4`) and was returned as an error independently of the enforcement result.
-- **범위 제한:** this establishes cross-thread state visibility and concurrent enforcement after a completed source open on four guest CPUs. It does not overlap the source-open hook with connect attempts, prove linearization for that simultaneous race, or test source/fork/connect event replay perturbation. amd64, map saturation, supervisor interference and other kernels remain `not_tested`. P4-04 stays in progress.
-
-#### P4-04 S33 detached descendant cleanup — 2026-10-21
-
-- `TestRunKillModeCleansScopeAfterDetachedDescendantDrainLimit` passed in the active BPF-LSM guest Linux `7.0.0-38-generic`, aarch64. A FIFO handshake confirmed the `setsid` descendant had started before its parent exited. The runner waited for the configured drain limit (5.23s), returned the descendant-drain error, killed the remaining run cgroup, removed its cgroup directory, and the descendant did not create its completion marker.
-- Host `go test ./...`, `go vet ./...`, `go build ./...`, Linux/arm64 runner test-binary cross-build and `git diff --check` passed; build exited 0 with the known non-fatal module stat-cache write warning. The guest result reported `active=kill`, `actual_action=none`, and `audit_coverage=incomplete`; scope cleanup after drain failure is a lifecycle cleanup result, not a policy-triggered kill or prevention claim.
-- **남은 한계:** this fixture covers a `setsid` descendant retained in the run cgroup and cleanup after the drain bound. It does not test supervisor process crash, cgroup controller failure, hostile capability/FD reuse, or amd64. P4-04 stays in progress.
-
-#### P4-04 S21 supervisor SIGKILL lifecycle characterization — 2026-10-21
-
-- `TestRunKillModeSupervisorCrashLeavesDescendantScopeForExternalCleanup` passed in the active BPF-LSM guest Linux `7.0.0-38-generic`, aarch64. The harness SIGKILLed the supervisor after a FIFO-independent readiness handshake confirmed a `setsid` child was running in the private run cgroup. The supervisor-owned cgroup remained populated after the crash; the test's external owner explicitly invoked `cgroup.kill` and removed the scope to prevent a guest leak.
-- This is **failure-behavior evidence, not a crash-safety acceptance**: the surviving descendant may continue after process-owned links are released. The test verifies the previously documented limitation in `docs/THREAT_MODEL.md` and the P4-01 lifecycle table; no guardian daemon or new privilege service was introduced. Crash-safe containment and complete final audit after an uncatchable supervisor death remain unsupported.
-- Host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build and `git diff --check` passed. The active guest test passed and its test-owned cgroup was explicitly cleaned. **P4-04 remains incomplete** pending the remaining adversarial cases and a product decision for supervisor-crash containment.
-
-#### P4-04 S14 enforcement process-map saturation — 2026-10-21
-
-- `TestEnforceProcessMapSaturationFailsClosed` passed in active BPF-LSM guest Linux `7.0.0-38-generic`, aarch64. It filled the live per-run enforcement process map to its runtime-reported capacity of 16,384 entries and confirmed an additional userspace insertion failed. A nonprivileged target in that run scope then attempted the configured source open and an IPv4 connect: both returned `EPERM`; the sticky kernel fault map read back `0x1`; the controlled receiver accepted no connection.
-- Host `go test ./...`, `go vet ./...`, Linux/arm64 enforce test-binary cross-build and `git diff --check` passed. The guest fixture destroyed its test-owned map/link and cgroup resources after the assertions.
-- This confirms fail-closed behavior for the enforcement process-state insertion failure on this guest/kernel. It does not characterize ring-buffer saturation, observer process-map saturation, other BPF maps, amd64, or kernels with different verifier/runtime behavior.
-
-#### P4-04 S38 target-to-supervisor control probe — 2026-10-21
-
-- `TestUnprivilegedTargetCannotSignalOrPtraceSupervisor` passed in active BPF-LSM guest Linux `7.0.0-38-generic`, aarch64. A root-owned runner subprocess launched a UID/GID 65534 target. The target's `kill(SIGTERM, parent)` and `ptrace(PTRACE_ATTACH, parent)` both returned `EPERM`; the runner subprocess remained alive and completed the run.
-- Host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build and `git diff --check` passed.
-- This covers only target signal and ptrace attempts against the runner parent on this guest. Existing P2 evidence separately checks that an unrelated high-numbered FD is not inherited; this probe does not enumerate every supervisor FD/control path. Internal-FD tampering, alternate UID/capability profiles, amd64 and other kernels remain `not_tested`. P4-04 stays in progress.
-
-#### P4-04 S32 concurrent source-open/connect race — 2026-10-21
-
-- `TestRunBlockSourceConnectRaceAcrossPinnedCPUs` ran ten times in active BPF-LSM guest Linux `7.0.0-38-generic`, aarch64. Source-open and IPv4-connect syscalls started together on separate locked OS threads pinned to CPU 0 and CPU 1. The connect was allowed in 7/10 runs and returned `EPERM` in 3/10; controlled receiver effects matched each connect result. In all ten runs, a new connect issued after source-open completion returned `EPERM`.
-- Host `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-build and `git diff --check` passed.
-- **해석 한계:** the simultaneous syscalls have no happens-before relation; this fixture does not establish that a connect whose userspace call begins after source-open begins must be denied. It documents both legal hook orderings observed under the current synchronous projection and sticky post-source state. A stricter “source intent precedes all concurrent sinks” guarantee would require a defined synchronization contract beyond this result. The guest/kernel evidence is arm64-only; P4-04 remains in progress.
 
 #### P4-04 실행 업데이트 — S36 부정 대조군 — 2026-10-21
 
@@ -2195,6 +2545,14 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 검증: host `gofmt`, `go test ./...`, `go vet ./...`, Linux/arm64 runner test-binary cross-compile, `git diff --check`; guest observer cancellation/drain 및 kill/block detached-descendant cleanup PASS.
 
 
+#### P4-04 실행 보강 — S36 receiver/양성 대조군 — 2026-10-21
+
+- 최신 Linux/arm64 runner test binary로 BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 `TestRunBlockedSourceTaintDeniesConnectWithAllowControl` PASS. 준비된 loopback receiver에서 source open 성공 후 tainted connect가 `EPERM`을 받고 receiver는 연결을 받지 않았다. 이어 non-source control은 connect 성공 및 receiver accept를 모두 확인했다. 두 run 모두 `file-path-unreadable-success=4`로 audit coverage incomplete가 반환됐지만 target effect와 audit 상태는 별도 판정됐다.
+- 같은 guest에서 `TestRunBlockDoesNotTreatUnrelatedConnectFailureAsPolicyDeny` PASS. server가 listen하지 않는 bound loopback port에 대한 일반 target connect는 `ECONNREFUSED`였고 test는 이를 AgentTaint deny로 계산하지 않았다. test assertions는 active block 상태, target exit 0, deny violation 부재를 확인했다.
+- 이 실행은 수신기 준비 여부에 따른 positive control과 unrelated connect failure의 negative control을 확인한다. `TestRunBlockDoesNotTreatUnrelatedConnectFailureAsPolicyDeny`의 상세 audit coverage branch는 test output에 기록되지 않아 `not_observed`; incomplete가 발생한 경우 error branch는 test가 검증한다. 별도 kernel/architecture 및 전체 audit completeness는 `not_tested`; S36의 이 게스트 대조군 범위만 확인했으며 P4-04 전체는 미완료다.
+- 검증: 최신 Linux/arm64 runner test-binary cross-compile 및 위 두 guest tests PASS. P4-04 S36 보강 기록에 한정.
+
+
 #### P4-04 실행 업데이트 — S34 exec 재상승·자격 증명·관리 경계 — 2026-10-21
 
 - `TestRunObservedNoNewPrivilegesBlocksSetuidTarget`를 aarch64 `ebpf-lab` guest에서 실행했다. `/var/tmp`의 root 소유 mode `04755` setuid fixture를 실제 생성했고, UID 1000 target이 exec 뒤에도 `id -u` 결과 `1000`을 유지했다. 이 test가 이전에는 Go `os.Chmod`에 Unix mode 숫자 `0o4755`를 넘겨 실제 mode가 `0755`였고, 수정 후 `os.ModeSetuid | 0o755`를 사용한다. 기존 `/tmp`가 `nosuid`인 guest에서도 caller의 `TMPDIR`이 지정한 경로를 사용할 수 있도록 `os.TempDir()`을 적용했다.
@@ -2210,14 +2568,6 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 새 `TestCLIMalformedPolicyFailsBeforeStartingTarget` PASS: 중복 top-level `sources` key가 있는 policy에서 CLI가 `active=none`, `result=policy_load_failed`로 종료했고 target marker와 audit 파일은 생성되지 않았다. invalid policy load 실패 전에 target 실행·audit 생성이 없음을 확인했다.
 - 이번 범위는 Go snapshot/parser 및 CLI preflight다. byte limit의 정확한 경계값(정확히 최대 허용 크기), 실제 target 실행 중 원본 policy 파일을 바꾸는 guest 시나리오, 다른 kernel/architecture는 `not_tested`; 이 증거를 audit completeness나 BPF 집행 효과로 일반화하지 않는다.
 - 검증: host `gofmt`, `go test -v ./internal/policy ./cmd/agenttaint`, `go test ./...`, `go vet ./...`, `git diff --check` PASS. P4-04 전체는 미완료다.
-
-
-#### P4-04 실행 보강 — S36 receiver/양성 대조군 — 2026-10-21
-
-- 최신 Linux/arm64 runner test binary로 BPF-LSM 활성 aarch64 `ebpf-lab`(`7.0.0-38-generic`)에서 `TestRunBlockedSourceTaintDeniesConnectWithAllowControl` PASS. 준비된 loopback receiver에서 source open 성공 후 tainted connect가 `EPERM`을 받고 receiver는 연결을 받지 않았다. 이어 non-source control은 connect 성공 및 receiver accept를 모두 확인했다. 두 run 모두 `file-path-unreadable-success=4`로 audit coverage incomplete가 반환됐지만 target effect와 audit 상태는 별도 판정됐다.
-- 같은 guest에서 `TestRunBlockDoesNotTreatUnrelatedConnectFailureAsPolicyDeny` PASS. server가 listen하지 않는 bound loopback port에 대한 일반 target connect는 `ECONNREFUSED`였고 test는 이를 AgentTaint deny로 계산하지 않았다. test assertions는 active block 상태, target exit 0, deny violation 부재를 확인했다.
-- 이 실행은 수신기 준비 여부에 따른 positive control과 unrelated connect failure의 negative control을 확인한다. `TestRunBlockDoesNotTreatUnrelatedConnectFailureAsPolicyDeny`의 상세 audit coverage branch는 test output에 기록되지 않아 `not_observed`; incomplete가 발생한 경우 error branch는 test가 검증한다. 별도 kernel/architecture 및 전체 audit completeness는 `not_tested`; S36의 이 게스트 대조군 범위만 확인했으며 P4-04 전체는 미완료다.
-- 검증: 최신 Linux/arm64 runner test-binary cross-compile 및 위 두 guest tests PASS. P4-04 S36 보강 기록에 한정.
 
 
 #### P4-04 실행 검증 — S14 enforcement process-map saturation — 2026-10-21
@@ -2464,3 +2814,71 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - S25 `TestRunObservedSeparatesConcurrentRuns`를 BPF-LSM guest에서 supervisor와 target이 CPU 0에 고정된 상태로 3회, CPU 1 고정으로 3회 실행했다. 여섯 번 모두 target output/FD checks, fixture event 및 서로 다른 RunID/ScopeID 검사는 통과했으나 `file-openat-path-unreadable-success`로 coverage incomplete가 되어 SKIP됐다. 각 run의 손실 수는 2 또는 4였다.
 - 따라서 S25 `openat` 경로 캡처 손실은 이 guest CPU 0/1 affinity 조건에서 CPU migration으로 설명되지 않는다. 단일 run에서도 같은 reason이 반복됐으므로 동시 실행 전용 문제도 아니다. 실패 path의 실제 문자열/호출 지점과 helper 접근 실패의 원인은 여전히 `not_tested`; S25 complete audit isolation 미완료다.
 - 검증: guest Linux/arm64 BPF-LSM S25 test CPU 0 고정 3회, CPU 1 고정 3회, 모두 incomplete-evidence SKIP.
+
+#### P4-04 진단 계측 — S25 helper 반환값과 syscall 식별 — 2026-10-21
+
+- 승인된 진단 확장으로 raw BPF ABI를 v2로 올리고, path helper read 실패 시 기존 file-open record 크기 안에 `openat`/`openat2`, signed helper 반환값, signed syscall 반환값, process identity를 담는 diagnostic record를 추가했다. 8-byte diagnostic payload는 syscall kind(1), helper result(2), syscall result(4), reserved(1)이며 정상 raw v1 record는 계속 decode한다. 진단 record는 `FileOpen`으로 정규화하거나 taint/policy 평가에 넣지 않는다.
+- runner는 진단 process identity가 현재 run의 tracked member일 때만 `file-<syscall>-path-read-helper-errno-<N>-syscall-success` 또는 `...-syscall-errno-<N>` coverage reason을 기록한다. helper 경로 읽기가 실패하면 syscall 결과와 관계없이 diagnostic record와 path-loss counter를 남기며, 진단된 누락과 같은 aggregate counter는 최종 coverage 보고에서 중복 집계하지 않는다. syscall 결과만으로 VFS lookup 이전 실패를 추론하지 않는다. 이 계측은 손실을 성공 open으로 바꾸지 않는다.
+- little/big-endian raw decoder 검사와 legacy raw v1 decode, host `go test ./...`, `go vet ./...`, host `go build ./...`, Linux/arm64 cross-build, `git diff --check` PASS. `go build`는 module stat-cache 쓰기 권한 경고를 출력했으나 종료 코드 0이었다.
+- BPFEL/BPFEB object는 LLVM 22와 cilium/ebpf v0.22.0의 제공 header로 재생성했다. 이는 BPF verifier, load/attach 또는 runtime 증거가 아니다. BPF verifier/runtime에서의 helper 반환값 관측과 S25 재실행은 `not_tested`; path capture failure의 원인과 complete audit isolation도 아직 `not_tested`. P4-04는 미완료다.
+- `TestRunObservedMmapPathReadFault` Linux/arm64 재현 fixture와 상세 진단·aggregate counter 중복 집계 방지 코드를 추가했다. 독립 검토에서 발견한 누적 BPF drop counter 반복 polling의 과대 집계는 last-seen delta로 수정하고 반복 polling 회귀 테스트를 추가했다. 또한 drop counter 조회가 불가능한 경우 coverage를 `drop-counter=unknown`으로 표시하고 후속 policy verdict를 억제하는 `TestDropCounterReadFailureSuppressesSubsequentPolicyVerdict`를 추가했다. 이 단위 검사는 source label이 붙은 상태와 complete-history deny 대조군을 확인하며, nil/unavailable sensor 경로를 사용해 BPF map lookup 오류의 커널 runtime을 재현하지는 않는다. fixture는 파일 기반 mmap 경로 페이지를 `MADV_DONTNEED`한 직후 raw `openat`을 호출하고, target의 syscall 성공 표식과 observer의 helper errno/syscall 결과 진단을 함께 확인하도록 구성했다. root/BPF 권한과 arm64 조건을 요구한다. 지원 환경에서 target open이 성공했는데 expected helper diagnostic이 없으면 skip하지 않고 실패하도록 보강했다. 지정 acceptance runner에서는 `AGENTTAINT_REQUIRE_S25_BPF=1`로 실행해 arch/root/BPF load·attach/`MADV_DONTNEED` 전제조건 불충족을 실패로 처리해야 한다. 이 env 설정이 없는 일반 host에서는 해당 환경 전제조건을 skip할 수 있다. fixture, decoder 및 품질 보고 회귀 테스트는 아직 실행하지 않았고, 새 object의 verifier/load/attach 및 guest 재현도 `not_tested`다. 이 fixture 추가만으로 S25 원인이나 P4-04 acceptance를 확정하지 않는다.
+- 정적 acceptance 리뷰에서 `TestS25MmapPathTarget`을 required mode로 단독 선택하면 경로 환경 변수가 없을 때 성공적으로 `SKIP`할 수 있는 우회가 발견되어, required mode에서는 이 경우 실패하도록 보강했다. 경로 변수를 직접 지정하면 해당 child test만으로도 통과할 수 있으므로 **acceptance 명령은 outer `TestRunObservedMmapPathReadFault`를 선택해야 하며 child test 단독 실행은 acceptance가 아니다.** 같은 리뷰에서 현재 diagnostic에는 호출별 correlation token이 없다는 점도 확인했다. 따라서 mmap fixture의 집계 reason은 target process에 `openat` path helper `-EFAULT`와 successful syscall이 함께 관측됐음을 보여줄 뿐, 그 diagnostic을 fixture의 특정 raw syscall 호출과 1:1로 결합하지 않는다. 테스트와 acceptance 문구는 이 범위를 넘어 주장하지 않아야 한다. 변경 후 재실행은 통합 검증 단계로 미뤘다.
+- Linux v7.0 source에서 `bpf_probe_read_user_str`가 `strncpy_from_user_nofault`를 호출하는 것을 확인했다([kernel implementation](https://github.com/torvalds/linux/blob/v7.0/kernel/trace/bpf_trace.c#L2507-L2544)). 따라서 `sys_enter` 시점에 아직 resident하지 않은 사용자 페이지에서 helper가 `-EFAULT`를 반환하고, 이어지는 실제 syscall은 페이지를 fault-in해 성공하는 경로가 가능한 원인이다. 새 mmap fixture는 이 메커니즘을 의도적으로 유도하지만, 기존 S25 손실의 호출 경로나 개별 원인을 확인한 것은 아니다. 이 근거만으로 helper 교체나 attach 방식 변경을 정당화하지 않으며, S25 원인과 complete audit isolation은 계속 `not_tested`다.
+- Phase 최소 지원 기준은 Linux 5.13이다. 해당 버전의 `bpf_probe_read_user_str`는 no-fault 사용자 복사를 사용한다([v5.13 kernel source](https://github.com/torvalds/linux/blob/v5.13/kernel/trace/bpf_trace.c#L166-L199)). `bpf_copy_from_user` helper 자체도 v5.13에 존재하며 일반 `copy_from_user`를 호출한다([v5.13 helper implementation](https://github.com/torvalds/linux/blob/v5.13/kernel/bpf/helpers.c#L586-L605)). 그러나 tracing helper dispatcher는 이 helper를 `prog->aux->sleepable`인 프로그램에만 제공하고([sleepable gate](https://github.com/torvalds/linux/blob/v5.13/kernel/trace/bpf_trace.c#L980-L982)), raw-tracing helper 경로도 그 dispatcher에 위임한다([raw tracing helper dispatch](https://github.com/torvalds/linux/blob/v5.13/kernel/trace/bpf_trace.c#L1325-L1337)). v5.13 verifier는 sleepable tracing을 제한된 fentry/fexit/fmod_ret target에만 허용하며 `BPF_TRACE_RAW_TP`는 이 허용 대상이 아니다([verifier attach restrictions](https://github.com/torvalds/linux/blob/v5.13/kernel/bpf/verifier.c#L12475-L12499), [RAW_TP restriction](https://github.com/torvalds/linux/blob/v5.13/kernel/bpf/verifier.c#L12539-L12574)). 따라서 현재 plain `tp_btf/sys_enter` 경로에서 helper를 사용할 수 없으며 단순 교체로는 5.13+ pathname capture completeness를 보장할 수 없다. sleepable raw tracepoint(`tp_btf.s`) 지원은 별도 2026 upstream 변경에서 추가됐다([upstream change](https://kernel.googlesource.com/pub/scm/linux/kernel/git/torvalds/linux/%2B/e85115ff37f20d5c64ffbfd911d67f3686e2472d)). 지원 하한을 유지하는 동안은 helper 진단과 incomplete coverage 표시를 보존하고, completeness 보장은 별도 kernel floor 또는 다른 path-source 설계 결정이 필요하다. 이는 5.13에서 모든 누락 원인이 이 helper 때문이라는 증거가 아니다.
+- **대안 조사 — resolved-path LSM capture, 미승인·미실행:** Linux v5.13의 BPF LSM은 `file_open`을 sleepable hook으로 분류하고([v5.13 `bpf_lsm.c`](https://github.com/torvalds/linux/blob/v5.13/kernel/bpf/bpf_lsm.c#L118-L139)), `bpf_d_path()`의 verifier 허용 조건은 sleepable LSM을 포함한다([v5.13 `bpf_trace.c`](https://github.com/torvalds/linux/blob/v5.13/kernel/trace/bpf_trace.c#L775-L831)). 따라서 `file_open(struct file *file)`에서 `file->f_path`를 고정 길이 버퍼로 렌더링하면 해당 hook에 도달하는 open의 syscall-entry user pathname no-fault 복사 경로를 피할 수 있는 후보가 된다. Linux v7.0의 `do_dentry_open()`은 경로가 `file->f_path`에 놓인 상태에서 `security_file_open()`을 호출하지만, 그 뒤 fsnotify permission·lease·filesystem `->open()`이 실패할 수 있어 LSM record 자체는 성공한 `FileOpen`이 아니라 open attempt다([v7.0 `fs/open.c`](https://github.com/torvalds/linux/blob/v7.0/fs/open.c#L836-L954)). 현재 Phase 2 completed-success 의미를 유지하려면 현재 pending `openat`/`openat2` syscall과 identity를 매칭한 뒤 성공한 syscall exit에서만 event를 내보내야 한다. `file_open`에 도달하기 전 실패한 lookup/잘못된 pointer는 이 경로로 포착할 수 없고 `bpf_d_path`의 자체 실패·절단도 별도 incomplete coverage로 다뤄야 하므로, 이는 모든 FileOpen 경로를 완전하게 만드는 대안은 아니다. 또한 `d_path`는 user가 전달한 raw path 대신 dirfd·상대경로·symlink lookup 뒤의 rendered path를 줄 수 있어 기존 exact raw-path matching 및 Phase 4 source matcher 계약을 바꾼다. 보안 의미를 보존하려면 resolved path를 기존 raw `resource.path`와 혼합하지 않고 출처가 분명한 별도 정보로 표현해야 하며, 이를 taint/policy matching에 사용하는 범위는 PRE-02 규범 결정을 요구한다. BPF-LSM 활성 설정도 필요하고, kernel/namespace 경계·rename·mount에 대한 안정 파일 identity를 보장하지 않는다. 그러므로 이 방법은 가능성 조사일 뿐 구현 승인·verifier/load/attach·runtime 증거가 아니다.
+
+**S25 결정 — 현 범위 유지, 2026-10-23 사용자 승인:** 지원 kernel floor `5.13+`와 raw syscall pathname 의미를 바꾸지 않는다. helper path capture가 불완전하면 현재처럼 `AuditCoverage=incomplete`로 표시한다. 이 선택은 수집 방식·kernel floor 재설계 승인이 아니며, S25 complete audit acceptance를 충족시키지 않는다. S25 및 P4-04의 해당 acceptance는 Linux 검증에서 누락 없는 감사 기록이 증명되기 전까지 미완료다. resolved-path LSM 값을 기존 `resource.path`에 혼합하지 않는다. 향후 재설계 제안은 별도 설계·호환성 검토와 사용자 결정이 필요하다.
+
+**지원 하한 후보의 backport 조건 — 조사, 미승인:** 2026-04-22 mainline merge는 sleepable raw/classic tracepoint runtime·verifier 변경과 `tp_btf.s`/`raw_tp.s`/`tp.s` libbpf section handler를 묶어 추가했다([mainline merge](https://kernel.googlesource.com/pub/scm/linux/kernel/git/torvalds/linux/%2B/e85115ff37f20d5c64ffbfd911d67f3686e2472d)). 하지만 2026-08 Linux 7.1.y stable 논의는 해당 stable 계열에 libbpf handler와 kernel runtime 구성요소가 빠져 있었고, 이후 불완전한 backport 조합에서 faultable tracepoint BPF 실행 문제가 보고됐다고 기록한다([7.1.y review](https://lists.openwall.net/linux-kernel/2026/08/06/1954), [follow-up](https://lkml.iu.edu/2608.2/00274.html)). 고정 의존성인 cilium/ebpf v0.22.0의 ELF section 목록에도 `tp_btf.s`/`raw_tp.s` handler가 없으며([section parser](https://github.com/cilium/ebpf/blob/v0.22.0/elf_sections.go#L40-L61)), `ProgramSpec.Flags`로 `BPF_F_SLEEPABLE`을 직접 요청할 수 있다는 사실만으로 kernel verifier·attach 지원이 성립하지 않는다([program flags](https://github.com/cilium/ebpf/blob/v0.22.0/prog.go#L139-L147)). 따라서 **설계상 추론:** 최소 버전을 단순히 7.1로 올려도 stable/backport 커널 전반의 호환성이 보장되지는 않는다. 이 경로를 채택한다면 kernel runtime, verifier, libbpf/program loader section parsing을 함께 지원하는지 실제 capability/load 확인이 필요하고, helper가 모든 사용자 주소 오류를 없애거나 S25 acceptance를 충족한다고 볼 수 없다. 이 조사는 kernel floor 변경을 승인하지 않으며 Linux guest에서 검증한 결과도 아니다.
+
+#### REL-01 사전 인벤토리 — 수용 기준 미완료 — 2026-10-21
+
+- 저장소에 `go.mod`/`go.sum`, `bpf/`의 C source/header, Linux sensor의 BPFEL/BPFEB 생성 Go·object 쌍, enforcement BPFEL 생성 Go·object가 추적된다. Go module manifest에는 `cilium/ebpf v0.22.0`, `go.yaml.in/yaml/v3 v3.0.5`, `golang.org/x/sys v0.43.0`가 고정돼 있다.
+- 현재 추적된 파일 목록에서 `LICENSE`, `NOTICE`/`COPYING`, SBOM 산출물은 확인되지 않았다. 의존성 license 판정, binary/source/object/toolchain 간 재현 가능한 대응, 배포 architecture별 재현 빌드, checksum 및 SBOM은 작성·검증되지 않았다.
+- 최신 sensor BPF object는 이번 세션에서 host LLVM 22와 cilium/ebpf v0.22.0 제공 header로 생성한 산출물이다. 이는 지원 guest에서의 verifier/load/attach, runtime 동작 또는 재현 가능한 release provenance를 입증하지 않는다. 따라서 이 인벤토리는 REL-01 완료나 배포 준비 판정이 아니며, V-01 및 지원 환경 CI 증거 후 다시 확인한다.
+
+#### TOOL-03 개발 도구 읽기 전용 인벤토리 — 일부 평가 — 2026-10-21
+
+- **03.a 사용량:** 현재 tool surface에 공식 Codex quota/usage connector가 없다. 목표 토큰 회계는 quota 잔여율이나 API 비용의 근거가 아니므로 추정하지 않았다. 로컬 usage DB 도구도 조사·활성화하지 않았다.
+- **03.b 경계:** MCP architecture graph는 `internal/core`, sensor, taint, policy, runner, enforce 사이의 호출 경계를 보여줬다. graph의 import edge 추출은 일부 실제 Go import를 누락해 증거로 단독 사용하지 않았다. source 문자열 검색으로 정적 대조한 production import 방향은 policy/taint/sensor→core, enforce→policy, runner→env/core/enforce/policy/sensor/taint였다. `internal/core`에서 Linux·macOS 전용 패키지 import는 검색되지 않았고, sensor→policy/taint/enforce 및 policy/taint→runner/env/enforce import도 발견되지 않았다. 이는 source 정적 확인이며 빌드·lint 증거가 아니다. `go-arch-lint`는 host `PATH`에서 발견되지 않았고 임시 sample/config를 만들지 않았다. 2026-10-21 공식 자료 조사에서 v1.19.0, Go 1.25+, MIT, YAML 기반 의존성 규칙을 확인했다([releases](https://github.com/fe3dback/go-arch-lint/releases), [README](https://github.com/fe3dback/go-arch-lint)). 저장소용 설정 작성과 일회성 scan은 아직 실행하지 않았다. DDD 적합성은 graph나 import 관계만으로 판정하지 않는다.
+- **03.c 정적/취약점 도구:** Makefile의 기존 검사 진입점과 비교할 후보로 Staticcheck 및 `govulncheck`를 확인했으나 host `PATH`에서 발견되지 않아 설치·실행하지 않았다. Staticcheck 공식 문서는 `go vet`/`go build`와 유사한 package-pattern CLI를 설명한다([Getting started](https://staticcheck.dev/docs/getting-started/)); 2026-10-21 조사 시점 release는 2026.2.2 / v0.8.2였다([releases](https://github.com/dominikh/go-tools/releases)). Go 공식 취약점 문서는 `govulncheck`가 source 또는 binary를 분석하며, 기본 동작은 `vuln.go.dev`에 DB 요청을 한다고 명시한다([Go vulnerability management](https://go.dev/doc/security/vuln/), [govulncheck privacy and behavior](https://github.com/golang/vuln/blob/master/cmd/govulncheck/doc.go)). 조사 당시 최신 모듈 v1.9.0은 Go 1.26.0 요구, BSD-3-Clause 코드 license, CC-BY-4.0 DB data로 확인했다. 기본 요청은 알려진 취약 모듈 경로만 포함하고 source code는 전송하지 않으며, 서비스는 timestamp/IP/request URL을 기록하고 identifiable logs를 최대 30일 보관한다고 문서화한다([v1.9.0 module](https://go.googlesource.com/vuln/+/v1.9.0/go.mod), [command docs](https://pkg.go.dev/golang.org/x/vuln@v1.9.0/cmd/govulncheck), [privacy](https://vuln.go.dev/privacy)). 도구 중복 이득, pin 및 network/DB 정책에 대한 repository 채택 평가는 남아 있다.
+- **03.d 테스트 계층:** 아래 정적 매트릭스는 core/raw decoder, taint lifetime/order, policy input/snapshot, runner loss 및 P4-04 acceptance의 named tests를 source와 대조한다. 이전 symbol 수 125개와 graph 검색의 raw match 수는 검색 방식·graph freshness에 따라 달라져 개수 주장을 제거했다. 매핑은 source에 테스트가 있음을 뜻할 뿐 coverage나 테스트 성공 증거가 아니다.
+- **03.e eBPF 도구:** 고정 `cilium/ebpf v0.22.0`/`bpf2go`와 Go 1.26을 확인했다. host에는 Go 1.26.1 darwin/arm64와 `/usr/bin/clang`이 있으며 `bpftool`, `llvm-strip`, standalone `bpf2go`, `veristat`은 `PATH`에서 발견되지 않았다. verifier/load/attach/관찰/pre-op block은 Linux guest가 현재 sandbox에서 접근되지 않아 `not_tested`다. veristat은 [libbpf의 kernel-tree mirror](https://github.com/libbpf/veristat)에서 verifier·BPF object 점검 도구로 설명되지만, AgentTaint object에 대한 구체 권한·환경 평가는 실행하지 않았고 설치·사용 여부도 정하지 않았다.
+- 전체 TOOL-03은 **미완료**다. 이 inventory는 후보 평가 일부와 테스트 계층 목록이며 도구 채택·제품 검증을 의미하지 않는다. 후보별 version/license/권한·부작용 검토와 허용된 환경의 일회성 평가가 남아 있다.
+
+#### TOOL-03.d 정적 테스트·반례 인벤토리 — source 대조 완료, 실행 미검증 — 2026-10-21
+
+| 영역·기존 source | 의도한 invariant | 대표 반례·경계 | 실행 증거 |
+|---|---|---|---|
+| Event JSON decoder: `internal/core/event_test.go`의 `FuzzDecodeEvent` 및 strict JSON negative vectors | 잘못된 입력은 거부되고 decode가 성공한 event는 marshal→decode roundtrip 의미를 유지 | unknown event, duplicate/alias fields, 누락/null·잘못된 type, 과도한 nesting; fuzz seed 실행만으로 임의 입력 범위를 주장하지 않음 | source 존재만 확인; 통합 검증 단계에서 portable tests/fuzz seed 실행 필요 |
+| Linux raw ABI decoder: `internal/sensor/linux/raw_test.go`의 `TestDecodeRawProcessEventRejectsMalformedABI`, `TestDecodePathCaptureDiagnostic`, `TestDecodePathCaptureDiagnosticRejectsInvalidErrno`, `TestDecodeLegacyRawV1Operation` | bounds/version/kind/flags/identity/diagnostic 필드를 검증하고 v1 record 호환 유지 | 짧거나 긴 record, 잘못된 errno/syscall kind, reserved bytes, legacy v1 | LE/BE fixture는 결정적 portable 검사; 추가 진단 ABI 변경은 아직 미실행 |
+| Taint identity/order: `internal/taint/engine_test.go`의 `TestEngineProcessKeySeparatesPIDReuseAndScope`, `TestEngineReplayUsesInputOrderAndDuplicateStateEventsAreIdempotent` | PID+birth+scope로 상태 분리, 입력 순서대로 state update/fork snapshot 적용 | 같은 PID의 다른 birth/scope, 역 timestamp, 중복 source/fork, fork-before-source; transport exactly-once는 보장하지 않음 | source 존재; current session execution 없음 |
+| Policy input/snapshot: `internal/policy/policy_test.go`의 `TestLoadRejectsMalformedOrUnsupportedPolicy`, `TestLoadRejectsSizeAndRuleCountLimits`, `TestLoadResolvesSourceAndFreezesSnapshot`, kernel projection tests | strict schema, bounded input/rules, immutable snapshot, unsupported kernel subset 거부 | duplicate/unknown YAML key, alias/merge, IPv6/invalid port, path expansion, over-limit, unsupported projection | source 존재; current session execution 없음 |
+| Runner reference/loss: `internal/runner/policy_pipeline_test.go`의 `TestPolicyAuditPipelineFourScenarios`, `TestPolicyAuditPipelineIncompleteAndUnsupportedFlows`; `observe_quality_test.go`의 `TestCoverageQualityDropPollingUsesOnlyNewDeltas` | four audit scenarios; incomplete history는 verdict 억제; cumulative drop polling은 delta만 합산 | duplicate event를 exactly-once로 간주하지 않음, missing/loss signal, repeated cumulative poll | source 존재; current session execution 없음 |
+| Kernel ring loss: `internal/runner/quality_linux_test.go`의 `TestKernelRingBufferDropSuppressesSubsequentPolicyVerdict` | actual ring loss는 같은 run의 history를 incomplete로 만들고 후속 verdict를 억제 | ring recovery가 과거 loss를 지우지 않음; controlled capture loss와 별개 | 과거 Linux/arm64 guest 반복 증거는 S37 기록; 현재 변경분 재실행은 통합 검증 단계 |
+| S25 concurrent isolation: `internal/runner/observe_linux_test.go`의 `TestRunObservedSeparatesConcurrentRuns`, `TestRunObservedMmapPathReadFault` | output/audit/run scope 분리; capture loss는 incomplete로 표시되며 acceptance mode에서 숨겨지지 않음 | path-loss, missing fixture event/metadata, root/BPF/MADV prerequisite failure | 기존 concurrent executions는 모두 incomplete-evidence SKIP; required mode 변경 미실행. mmap fixture도 미실행이며 historical root cause/completeness를 단독 입증하지 않음 |
+
+이 표는 requirement-to-source 안내용 정적 인벤토리다. test coverage, 현재 branch의 성공 여부, Linux verifier/load/attach를 대체하지 않으며 새 fuzz dependency나 test를 추가하지 않는다.
+
+#### P4-04 follow-up — enforcement exit-state cleanup failure — 2026-10-22
+
+- 정적 코드 리뷰에서 `enforce_process_exit`가 `enforce_processes` map entry 삭제 오류를 무시하는 것을 확인했다. BPF source를 갱신해 삭제 실패 시 기존 sticky scope fault를 설정하도록 했다. 정상 삭제와 taint 상태 의미는 바꾸지 않는다.
+- `TestEnforceProcessExitMapDeleteFailureFailsClosed`를 추가했다. test-owned process state를 종료 전에 제거해 exit hook의 `ENOENT` 경로를 만들고, sticky fault와 이후 connect의 `EPERM`을 확인하도록 구성했다. 일반 host 실행은 root/cgroup 전제조건을 skip할 수 있지만, acceptance에서는 `AGENTTAINT_REQUIRE_ENFORCE_EXIT_DELETE=1`을 설정해 해당 skip을 실패로 바꿔야 한다. 실행하지 않았다.
+- 정적 독립 리뷰에서 초기 fixture가 `New()`의 source/denied-file 필수조건을 만족하지 않고, loopback deny rule 자체가 후속 connect를 차단해 sticky fault 검증의 false positive가 될 수 있음을 찾았다. dummy source만 남겨 policy deny 없이 fault 경로를 검사하도록 수정했으며, 새 scope의 초기 fault가 0인지 확인하고 child 실행 대기 제한, acceptance required mode, bounded cgroup-empty 확인을 추가했다. 후속 리뷰에서 PID 재사용 위험이 있는 `cgroup.procs` 개별 kill fallback은 제거하고, cleanup 후에도 cgroup이 비어 있지 않으면 test process 종료까지 enforcement link를 유지하도록 보강했다. 정상 종료에서는 empty 상태를 확인한 뒤 link를 닫도록 분기를 수정했다. 수정분은 아직 실행하지 않았다.
+- 이 변경으로 `bpf/enforce.bpf.c`와 추적된 enforcement BPFEL generated object가 아직 불일치한다. guest에서 ENV-02 pinned `bpf2go`로 생성물을 갱신한 다음 verifier/load/attach 및 회귀 acceptance를 한 번에 실행해야 한다. 현재 P4-04는 미완료다.
+- 가장 최근 guest 기록은 Linux `7.0.0-38-generic` aarch64, `bpf` 활성 LSM, Go 1.26.8, clang 21.1.8, bpftool 7.7.0이다. 이 세션은 Lima guest socket/SSH 접근이 OS sandbox에 차단돼 이를 재확인하지 못했다. VM 삭제·재생성 대신 승인된 `limactl shell ebpf-lab` 접근 또는 이 guest에서 실행한 command/artifact 결과가 필요하다.
+- 재개 세션에서도 `limactl shell ebpf-lab uname -a`는 `/Users/bhshin/.lima/ebpf-lab/{ha,ssh}.sock` 연결에 `Operation not permitted`로 실패했다. 생성 진입점은 `go generate ./internal/enforce`이며, acceptance 실행은 `AGENTTAINT_REQUIRE_ENFORCE_EXIT_DELETE=1 go test -count=1 -run '^TestEnforceProcessExitMapDeleteFailureFailsClosed$' ./internal/enforce`로 prerequisite skip을 금지한다. 둘 다 게스트에서 아직 실행하지 않았다.
+- **사용자 제공 환경 갱신 — 2026-10-23:** 사용자는 현재 guest가 aarch64/Linux `7.0.0-38-generic`, 일반 UID 501 및 root UID 확인 `0`, BPF-LSM/cgroup v2 활성, Go 1.26.8 linux/arm64, clang 21.1.8의 BPF/BPFEL/BPFEB target, bpftool 7.7.0, llvm-strip 및 libbpf를 갖췄으며 안내한 명령도 성공했다고 보고했다. 이 정보로 guest 준비 부족을 현재 blocker로 기록하지 않는다. 다만 이 세션의 host-side Lima socket 오류는 여전히 assistant가 직접 guest 명령을 호출하지 못하게 하며, 사용자가 제공한 환경 정보만으로 최신 C source와 enforcement generated object의 일치, verifier/load/attach, 새 exit-delete/S25 acceptance 통과를 추정하지 않는다. 생성물 및 runtime 결과는 계속 `not_tested`다.
+
+#### P4-04 host 및 cross-build 회귀 — 2026-10-23
+
+- 변경된 Go 파일에 `gofmt`를 적용하고 `git diff --check`를 실행했다. 두 검사는 통과했다.
+- macOS arm64 host에서 `go vet ./...`, `go build ./...`, `go test -count=1 ./...`를 임시 `GOCACHE=/private/tmp/agenttaint-go-cache`로 실행해 모두 exit 0을 확인했다. 기존 사용자 module cache 경로에 stat-cache 임시 파일을 쓸 수 없다는 경고가 나왔으나 명령은 성공 종료했다. Darwin build tags 때문에 `internal/enforce/exit_delete_linux_test.go`와 Linux BPF runtime 경로는 이 결과에서 실행되지 않았다.
+- `GOOS=linux GOARCH=arm64 go build ./...`와 `GOOS=linux GOARCH=amd64 go build ./...`도 모두 exit 0이다. 두 cross-build에서도 사용자 module cache stat-cache 쓰기 경고가 있었고, 결과는 Go cross-build만 증명한다.
+- 이 검증은 `bpf/enforce.bpf.c`와 `internal/enforce/enforce_bpfel.go/.o`의 대응, BPF verifier/load/attach, Linux runtime 및 P4-04 acceptance를 증명하지 않는다. 그 항목들은 계속 `not_tested`이며 P4-04는 미완료다.
+
+#### P4-04 Linux test compile regression — 2026-10-23
+
+- Linux arm64/amd64용 `go test -c`로 `internal/enforce`, `internal/runner`, `internal/sensor/linux`의 test binary 6개를 컴파일했다. 첫 시도에서 두 runner target이 `observe_linux_test.go`의 `uintptr(unix.AT_FDCWD)` 변환 오류(`constant -100 overflows uintptr`)로 실패했다. `AT_FDCWD`를 먼저 `int` 변수에 담은 뒤 `uintptr`로 변환하도록 수정했다.
+- 수정 뒤 같은 6개 Linux test binary 컴파일이 모두 exit 0이다. 이는 Linux 전용 테스트의 Go compile 성공만 증명하며, 테스트 실행이나 BPF verifier/load/attach/runtime 증거가 아니다.
+- guest 검증 순서를 한 명령으로 재현하도록 `make linux-acceptance`를 추가했다. Linux 전용 guard → sensor/enforcement BPF 재생성 → `vet` → build → 비특권 전체 테스트 → root 전체 테스트(필수 exit-delete) → required exit-delete acceptance → arm64 required S25 outer acceptance 순이다. root suite는 기존 privileged BPF fixture가 일반 사용자 권한에서 skip되는 공백을 메우며, 전체 suite와 별도 required S25 실행을 분리해 child helper test가 잘못 `SKIP`/실패 처리되는 일을 피한다. `make -n linux-acceptance` dry-run은 명령 순서를 확인했지만 target 자체 및 guest BPF/runtime acceptance는 아직 실행하지 않았다.

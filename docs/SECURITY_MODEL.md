@@ -136,14 +136,57 @@ AGENTS.md의 "문서는 규범이다" 절차(충돌 식별 → 이유 설명 →
   eunomia-bpf/ActPlane의 `te_effect_mode()` — 훅 종류가 지원 안 하는
   effect를 rule이 요청하면 무효화하는 패턴).
 
-## Policy Model (초안)
+## Policy Model (v0.1, Phase 3)
 
-아래 첫 예시는 구현 전의 **v0.1 단일 `SECRET` label 예시**다. 현재 구현된
-policy schema가 아니다.
+v0.1은 `SECRET` 단일 label과 IPv4 network sink를 지원한다. 정책은 YAML
+snapshot으로 한 번 읽고 검증하며, run 중 파일이 바뀌어도 재로드하지 않는다.
+상대 source path는 policy 파일 디렉터리를 기준으로 해석한다. `~`, 환경변수
+치환, command substitution은 지원하지 않는다. resolved source path는 syscall
+event의 raw `resource.path`와 정확히 비교한다. relative event path는 absolute
+policy path로 자동 확장하지 않으며 dirfd, symlink, hardlink, rename 및 mount
+identity를 해석하지 않는다. 따라서 relative/alias path가 같은 파일을 가리킨다고
+추정하지 않는다. 성공한 `FileOpen` completed event는 해당 프로세스가 source를 열었다는
+근거로 `SECRET`을 부여하지만, 파일 byte를 읽었다는 증거는 아니다.
+
+## Phase 4 kernel enforcement projection
+
+Phase 4에는 두 상태 경로가 있다. `internal/taint`의 Go reference model은 위
+성공한 completed `FileOpen` 의미를 유지하고 audit·differential test의 기준으로
+남는다. 실제 pre-operation 집행은 `internal/policy`가 검증한 immutable snapshot의
+지원 subset을 `internal/enforce`가 kernel에 전달해 수행한다. BPF는 일반 policy
+parser/evaluator가 아니며 새 label 종류나 별도 policy precedence를 정의하지 않는다.
+
+Kernel projection은 `file_open`의 pre-operation source match 시 `SECRET` 상태를
+보수적으로 표시할 수 있다. 같은 hook 뒤 filesystem open 등이 실패해도 이 상태는
+유지될 수 있으며, 따라서 이후 지원 sink가 거부될 수 있다. 이것은 **source open
+시도에 대한 집행 상태**이고 successful-open audit 사실이 아니다. Audit event와
+Go reference model은 실패한 open을 성공으로 바꾸지 않는다. 어느 경로도 파일 byte를
+읽었다는 증거를 제공하지 않는다.
+
+Kernel state는 run/scope와 process birth identity로 분리하고, 지원된 fork 전파와
+sink 판단은 해당 pre-operation hook 안에서 동기 처리해야 한다. source state 갱신,
+child propagation 또는 sink lookup을 안전하게 처리할 수 없으면 해당 operation을
+허용 상태로 간주하지 않는다. 지원 hook, map 초기화, rule subset, scope 또는 권한이
+준비되지 않으면 `block` 요청은 target 시작 전에 실패한다. Ring-buffer/audit 손실은
+kernel enforcement state와 별개다. Concurrent source/sink의 실제 순서와 map failure
+동작은 커널 integration test로 확인하기 전까지 보장하지 않는다.
+
+Fork tracepoint는 관측 이벤트이므로 callback에서 fork syscall 자체를 취소할 수
+없다. 지원되는 fork 경로에서 child state 갱신이 실패하면, kernel state에 지속되는
+scope-level error가 모든 후속 scoped sink를 거부하도록 해야 한다. 이 error state를
+유지할 bounded map 경로가 준비되지 않거나 자체 갱신에 실패할 수 있으면 fork를
+포함하는 enforcement profile을 지원하지 않는다. 미등록 process identity는 clean으로
+추정하지 않는다. Linux v7.0의 일반 `kernel_clone()`은 fork tracepoint 뒤에
+`wake_up_new_task()`를 호출하지만, 이것은 모든 task 생성 경로나 map 갱신 성공의
+보장이 아니다. 실제 지원 경로는 고정 kernel source와 integration test로 한정한다.
+
+이 projection의 구현·검증 없는 상태는 차단 기능을 뜻하지 않는다. 실제 block 주장은
+지원 Linux kernel에서 hook load/attach 및 syscall 결과, effect 부재와 allow 대조군을
+함께 확인한 시나리오에 한정한다.
 
 ```yaml
 sources:
-  - path: ".env"
+  - path: /workspace/fixtures/secret.txt
     label: SECRET
 
 rules:
@@ -151,7 +194,11 @@ rules:
     when:
       process_has: SECRET
     sink:
-      network: external
+      network:
+        # Explicit IPv4 CIDRs; there is no built-in public/private classifier.
+        external:
+          - 203.0.113.0/24
+        ports: [443]
     action: deny
 ```
 
@@ -161,7 +208,7 @@ rules:
 
 ```yaml
 sources:
-  - path: "~/.ssh/id_rsa"
+  - path: /home/alice/.ssh/id_rsa
     label: PRIVATE_KEY
 
 rules:
@@ -171,9 +218,16 @@ rules:
     action: deny
 ```
 
-`action`은 초기엔 `allow` / `audit` / `deny` 세 가지만 지원한다.
+`action`은 `allow` / `audit` / `deny` 세 가지만 지원한다. `external`은
+자동 분류가 아니라 정책에 명시한 IPv4 CIDR 집합이다. RFC1918·loopback·기타
+주소를 자동으로 신뢰하지 않는다. 여러 rule이 매치하면 `deny > audit > allow`,
+동일 action에서는 rule 이름의 사전순으로 하나를 선택한다. no-match 기본값은
+`allow`이며 이 기본값은 rule 누락이 허용으로 이어질 수 있음을 뜻한다. Phase 3의
+`deny`는 policy verdict/audit일 뿐 실제 연결을 차단하지 않는다.
+`ports`가 있으면 나열한 1~65535 포트에만 매치하며, 생략하면 해당 CIDR의 모든
+포트에 매치한다.
 
-## Event Schema (초안)
+## Event Schema
 
 `session_id`는 `internal/core`가 정의하는 `SessionID`(POSIX 세션 ID를
 감싸는 named type — `prompts/01-core-event-model.md` "식별자 타입" 절
@@ -181,19 +235,32 @@ rules:
 대해 이미 갖고 있는 세션 식별자이며, 애플리케이션이 별도로 발급하는
 run 식별자가 아니다.
 
+Phase 3의 `policy_violation`은 raw connect 이벤트 바로 뒤에 추가하는 파생
+audit record다. 공통 schema v1 metadata와 원본 process identity를 보존한다.
+`operation_result`는 관측된 connect syscall 결과이며 `decision`은 `audit` 또는
+`deny` 정책 verdict다. 둘은 서로 다른 사실이고, `deny`도 syscall을 막지 않는다.
+`allow`는 별도 파생 record를 만들지 않으며 원본 이벤트는 계속 기록한다.
+
 ```json
 {
   "event": "policy_violation",
+  "schema_version": 1,
+  "event_id": "derived-event-id",
+  "run_id": "run-id",
+  "timestamp": "2026-10-19T00:00:00Z",
   "session_id": "4021",
-  "process": { "pid": 19342, "comm": "python" },
+  "observation_stage": "completed",
+  "operation_result": "success",
+  "process": { "pid": 19342, "birth_id": "birth-id", "scope_id": "scope-id", "ppid": 1, "pgid": 19342, "comm": "python" },
   "labels": ["SECRET"],
-  "source": { "type": "file", "path": "/workspace/.env" },
-  "sink": { "type": "network", "address": "1.2.3.4", "port": 443 },
+  "source": { "path": "/workspace/.env" },
+  "sink": { "address": "1.2.3.4", "port": 443 },
   "decision": "deny",
   "policy": "prevent-secret-egress"
 }
 ```
 
-이 스키마를 먼저 고정해두면 Linux(eBPF) 백엔드든 향후 다른 플랫폼
-백엔드든 동일한 이벤트 모델로 수렴시킬 수 있다. 실제 구현이 이 스키마를
-사용하기 시작하면 이 섹션은 별도 `POLICY.md`/`EVENT_SCHEMA.md`로 분리한다.
+`source.path`는 관측된 raw path 중 사전순 첫 provenance이며 파일 객체의
+정체성을 보장하지 않는다. operation은 derived event가 만들어지기 전에 이미
+시도되거나 완료됐을 수 있다. 이 record는 감사를 위한 것이며 prevention 증거가
+아니다.

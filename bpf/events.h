@@ -2,10 +2,11 @@
 #define AGENTTAINT_BPF_EVENTS_H
 
 #define AGENTTAINT_RAW_MAGIC 0x41544745U
-#define AGENTTAINT_RAW_VERSION 1U
+#define AGENTTAINT_RAW_VERSION 2U
 #define AGENTTAINT_COMM_LEN 16U
 #define AGENTTAINT_EXEC_PATH_LEN 256U
 #define AGENTTAINT_PENDING_PATH_CAPTURE_FAILED (1U << 7)
+#define AGENTTAINT_PATH_CAPTURE_FAILED (1U << 4)
 
 enum agenttaint_raw_kind {
 	AGENTTAINT_PROCESS_FORK = 1,
@@ -108,8 +109,11 @@ struct agenttaint_pending_file_open {
 	__u8 flags;
 	__u8 access;
 	__u8 syscall_kind;
-	__u8 reserved[5];
+	__s32 path_read_result;
 };
+
+_Static_assert(sizeof(struct agenttaint_pending_file_open) == 320,
+	       "pending file-open map ABI");
 
 enum agenttaint_file_syscall_kind {
 	AGENTTAINT_FILE_SYSCALL_OPENAT = 1,

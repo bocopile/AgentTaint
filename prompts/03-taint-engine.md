@@ -13,7 +13,7 @@ Propagation → Sink → Decision을 구현한다. 이 Phase가 끝나면 AgentT
 
 ```
 Sensitive File (SOURCE, 정책에 지정)
-       │ open/read   (Phase 2 이벤트)
+       │ successful FileOpen   (Phase 2 이벤트)
        ▼
 Process Label 부여        ── internal/taint
        │ fork/exec       (Phase 2 이벤트)
@@ -29,9 +29,14 @@ internal/policy 평가 → Violation 이벤트 (DECISION: audit)
 
 ## In Scope
 
-- `internal/taint`: 프로세스별 label 상태 저장(메모리 내 map: pid →
-  label set), `FileOpen` 이벤트로 label 부여, `ProcessFork`/`ProcessExec`
-  이벤트로 부모→자식 label 전파, 프로세스 종료 시 정리.
+- `internal/taint`: `core.ProcessKey`(PID + birth identity + observation
+  scope)를 key로 한 메모리 내 label 상태를 저장한다. PID만으로 keying하지
+  않는다. 정책에서 지정한 source 경로의 성공한 completed `FileOpen`에만
+  `SECRET` label을 부여한다. 이는 파일 open 성공과 접근 의도를 뜻하며
+  실제 byte를 읽었다는 증거가 아니다. 실패·attempt 이벤트에는 label을
+  부여하지 않는다. `ProcessFork`는 fork 시점 부모 label snapshot을 자식의
+  `ProcessKey`에 복사하고, `ProcessExec`는 같은 `ProcessKey` 상태를 유지하며,
+  `ProcessExit`는 해당 key만 정리한다.
 - `internal/policy`: `docs/SECURITY_MODEL.md`의 Policy Model(YAML)을
   파싱하고, `NetworkConnect` 이벤트 + 현재 프로세스의 label을 보고
   `allow`/`audit`/`deny` 중 판정 (이 Phase에서 `deny`는 판정만 하고
@@ -52,8 +57,10 @@ internal/policy 평가 → Violation 이벤트 (DECISION: audit)
 
 `internal/taint/engine.go`, `internal/policy/model.go`,
 `internal/policy/parser.go`, `internal/policy/evaluator.go`,
-`policies/example.yaml`, `examples/normal/`, `examples/sensitive-read/`,
-`examples/subprocess-exfil/` (Acceptance Criteria에서 쓰는 재현 스크립트).
+`internal/runner/policy_pipeline.go`, `policies/example.yaml`, and automated
+synthetic/runtime integration tests. Reproduction executables must be created
+inside a test's temporary directory and removed during cleanup; do not add
+persistent shell scripts or other scripts to the repository.
 
 ## Technical Requirements
 
@@ -81,21 +88,23 @@ python normal.py → external connect → decision: allow, violation 없음
 
 **TEST 2 — 직접 유출**
 ```
-process reads secret.txt → external connect → decision: deny (audit only), violation 발생
+process successfully opens secret.txt → external connect → decision: deny (audit only), violation 발생
 ```
 
 **TEST 3 — 서브프로세스 유출 (label propagation 검증)**
 ```
-parent reads secret.txt → fork → child connects → decision: deny, violation 발생
+parent successfully opens secret.txt → fork → child connects → decision: deny, violation 발생
 ```
 
 **TEST 4 — 지정한 정상 흐름 회귀 검증**
 ```
-parent reads normal.txt → fork → child connects → decision: allow, violation 없음
+parent successfully opens normal.txt → fork → child connects → decision: allow, violation 없음
 ```
 
-이 4개는 `test/integration/`에 자동화된 테스트로 존재해야 하며, 각각
-`examples/`의 스크립트를 사용한다. "대충 구현했다"고 넘어갈 수 없도록
+이 4개는 자동화 테스트로 존재해야 한다. 합성 event replay는
+`internal/runner/policy_pipeline_test.go`, 실제 Linux 관측은 root가 필요한
+`TestRunObservedPolicyAuditPipeline`으로 검증한다. Linux test는 fixture를
+임시 디렉터리에 생성하고 정리한다. "대충 구현했다"고 넘어갈 수 없도록
 TEST 3(전파)과 TEST 4의 지정된 정상 흐름을 특히 엄격하게 검증한다.
 TEST 4 한 건의 통과를 일반적인 오탐 부재 증거로 확대하지 않는다.
 

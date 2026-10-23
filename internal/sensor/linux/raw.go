@@ -13,25 +13,30 @@ import (
 )
 
 const (
-	rawMagic                uint32 = 0x41544745
-	rawVersion              uint16 = 1
-	rawHeaderSize                  = 24
-	rawProcessSize                 = 48
-	rawExecPathSize                = 256
-	rawForkSize                    = rawHeaderSize + 2*rawProcessSize
-	rawExecSize                    = rawHeaderSize + rawProcessSize + rawExecPathSize
-	rawExitSize                    = rawHeaderSize + rawProcessSize
-	rawFileOpenSize                = rawHeaderSize + rawProcessSize + rawExecPathSize + 8
-	rawNetworkConnectSize          = rawHeaderSize + rawProcessSize + 8
-	rawKindFork             byte   = 1
-	rawKindExec             byte   = 2
-	rawKindExit             byte   = 3
-	rawKindFileOpen         byte   = 4
-	rawKindNetworkConnect   byte   = 5
-	rawFlagPathTruncated           = 1
-	rawFlagPathRelative            = 2
-	rawFlagOperationFailed         = 4
-	rawFlagOperationUnknown        = 8
+	rawMagic                 uint32 = 0x41544745
+	rawVersion               uint16 = 2
+	rawHeaderSize                   = 24
+	rawProcessSize                  = 48
+	rawExecPathSize                 = 256
+	rawForkSize                     = rawHeaderSize + 2*rawProcessSize
+	rawExecSize                     = rawHeaderSize + rawProcessSize + rawExecPathSize
+	rawExitSize                     = rawHeaderSize + rawProcessSize
+	rawFileOpenSize                 = rawHeaderSize + rawProcessSize + rawExecPathSize + 8
+	rawNetworkConnectSize           = rawHeaderSize + rawProcessSize + 8
+	rawKindFork              byte   = 1
+	rawKindExec              byte   = 2
+	rawKindExit              byte   = 3
+	rawKindFileOpen          byte   = 4
+	rawKindNetworkConnect    byte   = 5
+	rawFlagPathTruncated            = 1
+	rawFlagPathRelative             = 2
+	rawFlagOperationFailed          = 4
+	rawFlagOperationUnknown         = 8
+	rawFlagPathCaptureFailed        = 16
+	rawVersionV1             uint16 = 1
+	rawFileSyscallOpenat     uint8  = 1
+	rawFileSyscallOpenat2    uint8  = 2
+	rawMaxLinuxErrno         int32  = 4095
 )
 
 // RawProcessEvent is the decoded, versioned ring-buffer ABI. MonotonicNS orders
@@ -62,6 +67,41 @@ type RawProcess struct {
 	Comm      string
 }
 
+// PathCaptureError reports a failed BPF user-string helper read. The record is
+// diagnostic metadata, not a FileOpen event, because no reliable path exists.
+type PathCaptureError struct {
+	Process       RawProcess
+	SyscallKind   uint8
+	HelperResult  int32
+	SyscallResult int32
+}
+
+func (e *PathCaptureError) Error() string {
+	return fmt.Sprintf("raw file path capture: %s helper returned %d, syscall returned %d for pid %d", e.SyscallName(), e.HelperResult, e.SyscallResult, e.Process.PID)
+}
+
+func (e *PathCaptureError) SyscallName() string {
+	switch e.SyscallKind {
+	case rawFileSyscallOpenat:
+		return "openat"
+	case rawFileSyscallOpenat2:
+		return "openat2"
+	default:
+		return "unknown syscall"
+	}
+}
+
+func (e *PathCaptureError) QualityReason() string {
+	syscallResult := "syscall-success"
+	if e.SyscallResult < 0 {
+		syscallResult = fmt.Sprintf("syscall-errno-%d", -e.SyscallResult)
+	}
+	if e.HelperResult < 0 {
+		return fmt.Sprintf("file-%s-path-read-helper-errno-%d-%s", e.SyscallName(), -e.HelperResult, syscallResult)
+	}
+	return fmt.Sprintf("file-%s-path-read-helper-result-%d-%s", e.SyscallName(), e.HelperResult, syscallResult)
+}
+
 // DecodeRawProcessEvent validates and decodes one native-endian process record.
 // The byte order is identified from the magic value, so bpfel and bpfeb objects
 // use the same decoder without guessing from the userspace architecture.
@@ -78,7 +118,7 @@ func DecodeRawEvent(data []byte) (RawProcessEvent, error) {
 	length := int(order.Uint16(data[6:8]))
 	monotonicNS := order.Uint64(data[8:16])
 	kind, flags := data[16], data[17]
-	if version != rawVersion {
+	if version != rawVersion && version != rawVersionV1 {
 		return RawProcessEvent{}, fmt.Errorf("raw process event: unsupported version %d", version)
 	}
 	if monotonicNS == 0 {
@@ -122,20 +162,32 @@ func DecodeRawEvent(data []byte) (RawProcessEvent, error) {
 		event.OperationResult = core.ResultSuccess
 		event.Process, err = decodeRawProcess(order, data[rawHeaderSize:])
 	case rawKindFileOpen:
-		const allowed = byte(rawFlagPathTruncated | rawFlagPathRelative | rawFlagOperationFailed | rawFlagOperationUnknown)
+		const allowed = byte(rawFlagPathTruncated | rawFlagPathRelative | rawFlagOperationFailed | rawFlagOperationUnknown | rawFlagPathCaptureFailed)
 		if length != rawFileOpenSize || flags&^allowed != 0 || flags&rawFlagOperationFailed != 0 && flags&rawFlagOperationUnknown != 0 {
 			return RawProcessEvent{}, errors.New("raw process event: invalid file-open size or flags")
+		}
+		pathCaptureFailed := flags&rawFlagPathCaptureFailed != 0
+		if pathCaptureFailed && (version != rawVersion || flags != rawFlagPathCaptureFailed) {
+			return RawProcessEvent{}, errors.New("raw process event: invalid path-capture diagnostic version or flags")
 		}
 		event.Kind = core.FileOpen
 		event.PathTruncated = flags&rawFlagPathTruncated != 0
 		event.PathRelative = flags&rawFlagPathRelative != 0
 		event.OperationResult = operationResult(flags)
 		event.Process, err = decodeRawProcess(order, data[rawHeaderSize:rawHeaderSize+rawProcessSize])
-		if err == nil {
-			event.Path, err = decodeRawText(data[rawHeaderSize+rawProcessSize:rawHeaderSize+rawProcessSize+rawExecPathSize], "file path")
+		pathOffset := rawHeaderSize + rawProcessSize
+		if err == nil && !pathCaptureFailed {
+			event.Path, err = decodeRawText(data[pathOffset:pathOffset+rawExecPathSize], "file path")
+		} else if err == nil {
+			for _, value := range data[pathOffset : pathOffset+rawExecPathSize] {
+				if value != 0 {
+					err = errors.New("raw process event: nonzero diagnostic path padding")
+					break
+				}
+			}
 		}
-		accessOffset := rawHeaderSize + rawProcessSize + rawExecPathSize
-		if err == nil {
+		accessOffset := pathOffset + rawExecPathSize
+		if err == nil && !pathCaptureFailed {
 			switch data[accessOffset] {
 			case 0:
 				event.Access = core.AccessUnknown
@@ -149,7 +201,17 @@ func DecodeRawEvent(data []byte) (RawProcessEvent, error) {
 				err = errors.New("raw process event: unknown file access mode")
 			}
 		}
-		if err == nil {
+		if err == nil && pathCaptureFailed {
+			syscallKind := data[accessOffset]
+			helperResult := int32(int16(order.Uint16(data[accessOffset+1 : accessOffset+3])))
+			syscallResult := int32(order.Uint32(data[accessOffset+3 : accessOffset+7]))
+			if helperResult >= 0 || helperResult < -rawMaxLinuxErrno || syscallKind != rawFileSyscallOpenat && syscallKind != rawFileSyscallOpenat2 || syscallResult < -rawMaxLinuxErrno || data[accessOffset+7] != 0 {
+				err = errors.New("raw process event: invalid path-capture diagnostic payload")
+			} else {
+				return RawProcessEvent{}, &PathCaptureError{Process: event.Process, SyscallKind: syscallKind, HelperResult: helperResult, SyscallResult: syscallResult}
+			}
+		}
+		if err == nil && !pathCaptureFailed {
 			for _, value := range data[accessOffset+1:] {
 				if value != 0 {
 					err = errors.New("raw process event: nonzero file-open padding")

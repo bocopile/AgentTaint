@@ -129,6 +129,7 @@ func TestKernelRingBufferDropSuppressesSubsequentPolicyVerdict(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read baseline BPF drop counters: %v", err)
 	}
+	lastSeen := baseline
 
 	writeCommand("source")
 	for {
@@ -160,9 +161,6 @@ func TestKernelRingBufferDropSuppressesSubsequentPolicyVerdict(t *testing.T) {
 	writeCommand("flood")
 	readLine("flood-done")
 	quality := &coverageQuality{}
-	if err := pollBPFDropCounts(sensor, baseline, quality); err != nil {
-		t.Fatalf("poll BPF drop counters after flood: %v", err)
-	}
 	current, err := sensor.DropCounts()
 	if err != nil {
 		t.Fatal(err)
@@ -170,12 +168,9 @@ func TestKernelRingBufferDropSuppressesSubsequentPolicyVerdict(t *testing.T) {
 	if current[2] <= baseline[2] {
 		t.Fatalf("file ring reserve drops did not increase: baseline=%d current=%d", baseline[2], current[2])
 	}
-	incomplete, detail := quality.report()
-	if !incomplete || detail == "" {
-		t.Fatalf("actual kernel loss was not recorded as incomplete coverage: incomplete=%t detail=%q", incomplete, detail)
+	if incomplete, detail := quality.report(); incomplete || detail != "" {
+		t.Fatalf("raw counter inspection unexpectedly recorded loss into quality: incomplete=%t detail=%q", incomplete, detail)
 	}
-	t.Logf("drop causes after the controlled file flood: %s", detail)
-	processor.MarkIncomplete(detail)
 
 	// The ring is deliberately left unread during the flood. Free its bounded
 	// capacity before requesting a connect event from the same target.
@@ -185,6 +180,7 @@ func TestKernelRingBufferDropSuppressesSubsequentPolicyVerdict(t *testing.T) {
 		}
 	}
 	writeCommand("connect")
+	var dropDetail string
 	for {
 		raw, err := sensor.Read()
 		if err != nil {
@@ -197,9 +193,19 @@ func TestKernelRingBufferDropSuppressesSubsequentPolicyVerdict(t *testing.T) {
 		if err != nil {
 			t.Fatalf("normalize post-loss connect event: %v", err)
 		}
-		got, err := processor.Process(event)
-		if err != nil {
-			t.Fatalf("process post-loss connect event: %v", err)
+		connect, ok := event.(*core.NetworkConnectEvent)
+		if !ok || connect.ObservationStage != core.StageCompleted {
+			t.Fatalf("post-loss sink is not a completed network connect: %#v", event)
+		}
+		got := processPolicyAuditEvent(sensor, &lastSeen, quality, processor, event)
+		incomplete, detail := quality.report()
+		if !incomplete || !strings.Contains(detail, "file-ring-reserve=") {
+			t.Fatalf("pre-sink drop polling did not report the actual file ring loss: incomplete=%t detail=%q", incomplete, detail)
+		}
+		dropDetail = detail
+		t.Logf("drop causes observed before the delivered sink: %s", detail)
+		if processor.engine.Complete() {
+			t.Fatal("processor remained complete after pre-sink loss was recorded")
 		}
 		if violation(t, got) != nil {
 			t.Fatalf("incomplete actual kernel history produced a policy verdict: %#v", got)
@@ -213,8 +219,11 @@ func TestKernelRingBufferDropSuppressesSubsequentPolicyVerdict(t *testing.T) {
 	if err := <-accepted; err != nil {
 		t.Fatalf("receiver did not accept post-loss connection: %v", err)
 	}
-	if incomplete, got := quality.report(); !incomplete || got != detail {
-		t.Fatalf("processing after recovery cleared or changed actual kernel loss: incomplete=%t detail=%q want=%q", incomplete, got, detail)
+	if incomplete, got := quality.report(); !incomplete || got != dropDetail {
+		t.Fatalf("processing after recovery cleared or changed actual kernel loss: incomplete=%t detail=%q want=%q", incomplete, got, dropDetail)
+	}
+	if processor.engine.Complete() {
+		t.Fatal("processor history became complete after processing the post-loss sink")
 	}
 }
 
@@ -336,11 +345,12 @@ func TestKernelRingBufferDropRemainsStickyAfterRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read baseline BPF drop counters: %v", err)
 	}
+	lastSeen := baseline
 	writeCommand("flood")
 	readLine("flood-done")
 
 	quality := &coverageQuality{}
-	if err := pollBPFDropCounts(sensor, baseline, quality); err != nil {
+	if err := pollBPFDropCounts(sensor, &lastSeen, quality); err != nil {
 		t.Fatalf("poll BPF drop counters after flood: %v", err)
 	}
 	current, err := sensor.DropCounts()
@@ -380,7 +390,7 @@ func TestKernelRingBufferDropRemainsStickyAfterRecovery(t *testing.T) {
 		}
 	}
 	readLine("marker-done")
-	if err := pollBPFDropCounts(sensor, current, quality); err != nil {
+	if err := pollBPFDropCounts(sensor, &lastSeen, quality); err != nil {
 		t.Fatalf("poll BPF counters after marker recovery: %v", err)
 	}
 	recovered, err := sensor.DropCounts()
@@ -397,7 +407,7 @@ func TestKernelRingBufferDropRemainsStickyAfterRecovery(t *testing.T) {
 		t.Fatalf("wait for target continuation: %v", err)
 	}
 
-	if err := pollBPFDropCounts(sensor, recovered, quality); err != nil {
+	if err := pollBPFDropCounts(sensor, &lastSeen, quality); err != nil {
 		t.Fatalf("poll BPF counters after ring recovery: %v", err)
 	}
 	after, err := sensor.DropCounts()

@@ -12,17 +12,20 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/bocopile/AgentTaint/internal/core"
 	"github.com/bocopile/AgentTaint/internal/enforce"
 	"github.com/bocopile/AgentTaint/internal/env"
 	"github.com/bocopile/AgentTaint/internal/policy"
+	linuxsensor "github.com/bocopile/AgentTaint/internal/sensor/linux"
 	"golang.org/x/sys/unix"
 )
 
@@ -92,8 +95,12 @@ func TestObserveHelperClosesControlFDBeforeTargetExec(t *testing.T) {
 }
 
 func TestRunObservedSeparatesConcurrentRuns(t *testing.T) {
+	requireBPF := s25RequiredBPFMode(t)
+	if requireBPF && (runtime.GOOS != "linux" || runtime.GOARCH != "arm64") {
+		t.Fatalf("required S25 concurrent-run fixture requires Linux/arm64, got %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
 	if os.Geteuid() != 0 {
-		t.Skip("requires root privileges to load and attach eBPF programs")
+		s25SkipUnlessRequired(t, requireBPF, "requires root privileges to load and attach eBPF programs")
 	}
 	root, err := os.MkdirTemp("/tmp", "agenttaint-observed-")
 	if err != nil {
@@ -206,6 +213,9 @@ func TestRunObservedSeparatesConcurrentRuns(t *testing.T) {
 				context = event.Process
 				runID = event.RunID
 				if event.Resource.Path == fixture {
+					if event.OperationResult != core.ResultSuccess {
+						t.Fatalf("run %d synthetic file-open event was not successful: result=%s", got.index, event.OperationResult)
+					}
 					foundFixture = true
 				}
 				if event.Resource.Path == other {
@@ -245,7 +255,199 @@ func TestRunObservedSeparatesConcurrentRuns(t *testing.T) {
 	}
 	missingRunMetadata := seenRunIDs[0] == "" || seenRunIDs[1] == "" || seenScopes[0] == "" || seenScopes[1] == ""
 	if auditIncomplete || missingFixtureEvent || missingRunMetadata {
-		t.Skipf("target output and descriptor checks passed, but complete run-isolation audit evidence is unavailable: audit_incomplete=%t audit_details=%q fixture_event_missing=%t run_metadata_missing=%t distinct_run_ids=%t distinct_scopes=%t", auditIncomplete, auditIncompleteDetails, missingFixtureEvent, missingRunMetadata, seenRunIDs[0] != "" && seenRunIDs[1] != "" && seenRunIDs[0] != seenRunIDs[1], seenScopes[0] != "" && seenScopes[1] != "" && seenScopes[0] != seenScopes[1])
+		reason := fmt.Sprintf("target output and descriptor checks passed, but complete run-isolation audit evidence is unavailable: audit_incomplete=%t audit_details=%q fixture_event_missing=%t run_metadata_missing=%t distinct_run_ids=%t distinct_scopes=%t", auditIncomplete, auditIncompleteDetails, missingFixtureEvent, missingRunMetadata, seenRunIDs[0] != "" && seenRunIDs[1] != "" && seenRunIDs[0] != seenRunIDs[1], seenScopes[0] != "" && seenScopes[1] != "" && seenScopes[0] != seenScopes[1])
+		s25SkipUnlessRequired(t, requireBPF, reason)
+	}
+}
+
+const (
+	s25RequireBPFEnv = "AGENTTAINT_REQUIRE_S25_BPF"
+	s25MmapPathEnv   = "AGENTTAINT_S25_MMAP_PATH"
+	s25OpenSuccess   = "S25_OPEN_SUCCEEDED"
+	s25MadviseSkip   = "S25_MADVISE_UNAVAILABLE"
+	s25PathTestName  = "TestS25MmapPathTarget"
+)
+
+func s25RequiredBPFMode(t *testing.T) bool {
+	t.Helper()
+	value := os.Getenv(s25RequireBPFEnv)
+	if value != "" && value != "1" {
+		t.Fatalf("%s must be empty or 1, got %q", s25RequireBPFEnv, value)
+	}
+	return value == "1"
+}
+
+func s25SkipUnlessRequired(t *testing.T, required bool, reason string) {
+	t.Helper()
+	if required {
+		t.Fatalf("required S25 BPF fixture prerequisite failed: %s", reason)
+	}
+	t.Skip(reason)
+}
+
+// TestRunObservedMmapPathReadFault creates a file-backed pathname page in the
+// target and drops its user mapping before one raw openat. On kernels where the
+// BPF no-fault helper reports -EFAULT while the syscall faults the page back in,
+// the target's success marker and the observer's diagnostic must agree.
+func TestRunObservedMmapPathReadFault(t *testing.T) {
+	requireBPF := s25RequiredBPFMode(t)
+	if runtime.GOOS != "linux" || runtime.GOARCH != "arm64" {
+		s25SkipUnlessRequired(t, requireBPF, fmt.Sprintf("S25 observer requires Linux/arm64, got %s/%s", runtime.GOOS, runtime.GOARCH))
+	}
+	if os.Geteuid() != 0 {
+		s25SkipUnlessRequired(t, requireBPF, "root privileges are required to load and attach eBPF programs")
+	}
+
+	probe, err := linuxsensor.New(uint64(time.Now().UnixNano()))
+	if err != nil {
+		s25SkipUnlessRequired(t, requireBPF, fmt.Sprintf("BPF observer load/attach unavailable: %v", err))
+	}
+	if err := probe.Close(); err != nil {
+		t.Fatalf("BPF observer could not close after capability probe: %v", err)
+	}
+
+	root, err := os.MkdirTemp("/tmp", "agenttaint-s25-mmap-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	targetPath := filepath.Join(root, "synthetic-target")
+	if err := os.WriteFile(targetPath, []byte("synthetic S25 target\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	backingPath := filepath.Join(root, "pathname-page")
+	page := make([]byte, os.Getpagesize())
+	copy(page, targetPath)
+	if err := os.WriteFile(backingPath, page, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(backingPath, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(s25MmapPathEnv, backingPath)
+
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	executableCopy := filepath.Join(root, "runner.test")
+	sourceBinary, err := os.Open(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sourceBinary.Close()
+	targetBinary, err := os.OpenFile(executableCopy, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(targetBinary, sourceBinary); err != nil {
+		_ = targetBinary.Close()
+		t.Fatalf("copy runner test binary into target-readable directory: %v", err)
+	}
+	if err := targetBinary.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(executableCopy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{executableCopy, "-test.run=^" + s25PathTestName + "$"}
+	identity := &TargetIdentity{UID: uint32(os.Geteuid()), GID: uint32(os.Getegid())}
+	if os.Geteuid() == 0 {
+		identity = &TargetIdentity{UID: 65534, GID: 65534}
+	}
+	var stdout, stderr bytes.Buffer
+	auditPath := filepath.Join(root, "audit.jsonl")
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	code, runErr := RunObserved(ctx, env.Resolver{}, executableCopy, args, nil, &stdout, &stderr, auditPath, identity)
+	if strings.Contains(stdout.String(), s25MadviseSkip) {
+		s25SkipUnlessRequired(t, requireBPF, fmt.Sprintf("kernel/filesystem does not support the mmap discard prerequisite: stdout=%q", stdout.String()))
+	}
+	if !strings.Contains(stdout.String(), s25OpenSuccess) {
+		t.Fatalf("target did not report successful raw openat: runner_code=%d err=%v stdout=%q stderr=%q", code, runErr, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "PASS") {
+		t.Fatalf("target test process did not exit successfully: runner_code=%d err=%v stdout=%q stderr=%q", code, runErr, stdout.String(), stderr.String())
+	}
+	if runErr == nil {
+		t.Fatal("target openat succeeded, but RunObserved reported complete audit coverage without the expected no-fault helper diagnostic")
+	}
+	if !strings.Contains(runErr.Error(), "audit coverage is incomplete:") {
+		t.Fatalf("RunObserved failed outside the expected diagnostic coverage report: code=%d err=%v stdout=%q stderr=%q", code, runErr, stdout.String(), stderr.String())
+	}
+	if code != 1 {
+		t.Fatalf("RunObserved did not report incomplete coverage with its runner status: code=%d err=%v", code, runErr)
+	}
+	want := "file-openat-path-read-helper-errno-14-syscall-success="
+	foundDiagnostic := false
+	for _, line := range strings.Split(runErr.Error(), "\n") {
+		const prefix = "audit coverage is incomplete: "
+		index := strings.Index(line, prefix)
+		if index < 0 {
+			continue
+		}
+		for _, reason := range strings.Split(strings.TrimSpace(line[index+len(prefix):]), ", ") {
+			if strings.HasPrefix(reason, want) {
+				count, parseErr := strconv.ParseUint(strings.TrimPrefix(reason, want), 10, 64)
+				foundDiagnostic = parseErr == nil && count > 0
+			}
+		}
+	}
+	if !foundDiagnostic {
+		t.Fatalf("target openat succeeded, but this kernel produced no matching -EFAULT/syscall-success diagnostic: got %v", runErr)
+	}
+}
+
+func TestS25MmapPathTarget(t *testing.T) {
+	t.Helper()
+	requireBPF := s25RequiredBPFMode(t)
+	backingPath := os.Getenv(s25MmapPathEnv)
+	if backingPath == "" {
+		if requireBPF {
+			t.Fatal("required S25 mmap target path is missing; select TestRunObservedMmapPathReadFault")
+		}
+		t.Skip("S25 mmap target is only run as a subprocess of the BPF observer fixture")
+	}
+	fd, err := unix.Open(backingPath, unix.O_RDONLY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		t.Fatalf("open synthetic pathname backing file: %v", err)
+	}
+	defer unix.Close(fd)
+
+	pathname, err := unix.Mmap(fd, 0, os.Getpagesize(), unix.PROT_READ, unix.MAP_PRIVATE)
+	if err != nil {
+		t.Fatalf("map synthetic pathname backing file: %v", err)
+	}
+	defer unix.Munmap(pathname)
+	if err := unix.Madvise(pathname, unix.MADV_DONTNEED); err != nil {
+		_, _ = fmt.Fprintln(os.Stdout, s25MadviseSkip)
+		t.Skipf("MADV_DONTNEED on file-backed pathname mapping: %v", err)
+	}
+
+	// Do not read pathname after MADV_DONTNEED: the raw syscall must be the
+	// first user-space access that can fault the file-backed page back in.
+	dirfd := int(unix.AT_FDCWD)
+	result, _, errno := unix.RawSyscall6(
+		unix.SYS_OPENAT,
+		uintptr(dirfd),
+		uintptr(unsafe.Pointer(&pathname[0])),
+		uintptr(unix.O_RDONLY|unix.O_CLOEXEC),
+		0,
+		0,
+		0,
+	)
+	runtime.KeepAlive(pathname)
+	if errno != 0 || int64(result) < 0 {
+		t.Fatalf("raw openat failed after page discard: result=%d errno=%v", int64(result), errno)
+	}
+	if err := unix.Close(int(result)); err != nil {
+		t.Fatalf("close raw openat result: %v", err)
+	}
+	if _, err := fmt.Fprintln(os.Stdout, s25OpenSuccess); err != nil {
+		t.Fatalf("report raw openat success: %v", err)
 	}
 }
 

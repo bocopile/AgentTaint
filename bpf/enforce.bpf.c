@@ -354,7 +354,8 @@ int BPF_PROG(enforce_process_exit, struct task_struct *task, bool group_dead)
 		fail_scope();
 		return 0;
 	}
-	bpf_map_delete_elem(&enforce_processes, &key);
+	if (bpf_map_delete_elem(&enforce_processes, &key) < 0)
+		fail_scope();
 	return 0;
 }
 

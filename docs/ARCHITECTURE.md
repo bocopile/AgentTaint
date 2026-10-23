@@ -31,7 +31,7 @@ AgentTaint/
 │
 ├── cmd/
 │   └── agenttaint/
-│       └── main.go               # CLI: doctor / run / report 서브커맨드
+│       └── main.go               # CLI: doctor / run 서브커맨드
 │
 ├── internal/
 │   ├── core/                     # 플랫폼 독립. Linux/macOS 패키지를 import 금지
@@ -41,20 +41,24 @@ AgentTaint/
 │   │   └── label.go              #   Label 타입 (SECRET 등)
 │   │
 │   ├── sensor/
-│   │   ├── linux/                # v0.1 구현 대상 — eBPF 로드/attach, core.Event로 정규화
-│   │   │   └── sensor.go
+│   │   ├── linux/                # Linux eBPF observer와 raw event decode/normalization
+│   │   │   ├── doc.go, sensor.go, raw.go
+│   │   │   ├── process_bpfel.go / process_bpfel.o  [생성]
+│   │   │   └── process_bpfeb.go / process_bpfeb.o  [생성]
 │   │   └── darwin/                # Phase 5+ 자리만 확보. v0.1은 미구현 (VM 우회)
 │   │
-│   ├── taint/                    # Label propagation (Source→Label→Propagation)
+│   ├── taint/                    # Canonical Go reference propagation (Source→Label→Propagation)
 │   │   └── engine.go
 │   │
 │   ├── policy/                   # 정책 파싱·평가 (Sink→Decision)
 │   │   ├── model.go
 │   │   ├── parser.go
-│   │   └── evaluator.go
+│   │   ├── evaluator.go
+│   │   └── kernel.go             # 제한된 enforcement projection 준비
 │   │
-│   ├── enforce/                  # Decision → 실제 조치 (audit/monitor/notify/block/kill)
-│   │   └── enforce.go
+│   ├── enforce/                  # Go policy snapshot → bounded kernel projection / lifecycle
+│   │   ├── doc.go, enforce_linux.go, enforce_unsupported.go
+│   │   └── enforce_bpfel.go / enforce_bpfel.o  [생성]
 │   │
 │   ├── web/                      # Phase 9(로컬 웹 대시보드) 전까지 자리만 확보 — 미구현
 │   │   └── doc.go
@@ -69,6 +73,7 @@ AgentTaint/
 │   ├── process.bpf.c             # tracepoint: fork/exec/exit
 │   ├── file.bpf.c                # LSM/tracepoint: file open
 │   ├── network.bpf.c             # LSM: socket connect
+│   ├── enforce.bpf.c              # 제한된 pre-operation enforcement
 │   ├── maps.h
 │   ├── events.h
 │   └── vmlinux.h                 # 생성물, 직접 작성하지 않음
@@ -93,6 +98,14 @@ AgentTaint/
 ├── prompts/                      # Phase별 AI 작업 지시 (00-bootstrap.md ...)
 │   └── README.md
 │
+├── .codex/                        # Codex 프로젝트 전용 agent 정의만
+│   └── agents/*.toml
+│
+├── .agents/skills/                # AgentTaint 프로젝트 전용 재사용 절차
+│   └── <skill>/
+│       ├── SKILL.md
+│       └── references/             # 필요할 때만 추가하는 정적 참고자료
+│
 └── docs/
     ├── ARCHITECTURE.md           # 이 문서
     ├── THREAT_MODEL.md
@@ -107,15 +120,25 @@ Phase 0에서는 위 `Makefile`과 `.github/workflows/ci.yml`을 빌드·정적 
 portable 테스트 진입점으로 생성할 수 있다. 이 허용은 새 제품 패키지,
 privileged BPF CI, 스킬 설치 경로 또는 미래 Phase 구현을 허용하지 않는다.
 
+Codex 프로젝트 설정은 아래 범위만 저장소에 둘 수 있다. `.codex/agents/*.toml`은
+프로젝트 agent 역할 정의, `.agents/skills/<skill>/SKILL.md`와 해당 skill의
+`references/`는 재사용 절차와 정적 참고자료다. 이 허용은 agent 지침을 OS 수준의
+권한 격리로 간주하거나, 전역 설정·MCP·hook·실행 스크립트·플러그인·외부 skill
+복사본·추가 경로를 허용하지 않는다. 새 경로가 더 필요하면 이 문서의 허용 범위를
+먼저 검토한다. 저장소 agent는 현재 작업의 Phase·파일 범위·보안 의미를 따라야 하며,
+검토 역할의 “읽기 전용” 지침만으로 실제 파일 권한이 제한된다고 주장하지 않는다.
+
 Phase 2에는 위 `bpf/`의 C·헤더 및 생성 `vmlinux.h`,
 `internal/sensor/linux/sensor.go`와 같은 패키지 안의 실제 `bpf2go` 생성
 Go·embed object(`.go`/`.o`) 쌍, 기존 `test/fixtures/`·`test/integration/`의
-해당 Phase fixture·테스트를 허용한다. 생성 파일의 정확한 basename·
-architecture/endian suffix와 입력·생성 명령은 ENV-02에서 고정 버전
-generator를 확인하여 **생성 전에 기록**한다. 이름·API를 추측하지 않는다.
+해당 Phase fixture·테스트를 허용한다. 현재 sensor/enforcement 생성 ident,
+architecture/endian suffix와 입력·생성 명령은 `docs/IMPLEMENTATION_MASTER_PLAN.md`
+ENV-02 기록에 대조한다. generator ident·입력·출력 경로를 바꾸기 전에는 실제
+명령과 생성물을 확인해 그 기록부터 갱신한다. 이름·API를 추측하지 않는다.
 기존 `Makefile`의 빌드·생성·검증 진입점과 기존 `.github/workflows/ci.yml`의
 비특권 portable 검사 수정도 허용한다. 새 패키지·스킬 설치 경로·별도 workflow나
-privileged CI는 이 허용에 포함하지 않는다.
+privileged CI는 이 허용에 포함하지 않는다. 위에서 명시한 `.codex/agents/`와
+`.agents/skills/`만 Codex 프로젝트 설정 경로 예외이며, Phase 구현 경로를 넓히지 않는다.
 
 ## 컴포넌트 구조 (개념도)
 
@@ -151,6 +174,28 @@ privileged CI는 이 허용에 포함하지 않는다.
   형태와 그 위의 `internal/taint`/`internal/policy`는 플랫폼 독립적이다.
 - **`internal/policy`**는 `internal/core`의 Event만 소비한다. 어떤 센서가
   이벤트를 만들었는지 몰라도 동작해야 한다 (AGENTS.md 규칙 1, 2).
+- Phase 4 enforcement는 이 Go reference/audit 경로와 별도인 제한된 kernel
+  projection을 사용한다. `internal/policy`가 canonical snapshot을 검증하고
+  `internal/enforce`가 지원 subset을 고정 ABI로 준비한다. BPF는 run scope,
+  source matcher, 단일 `SECRET` 상태, 허용된 IPv4 CIDR/port 결정을 위한 bounded
+  state만 보유한다. 일반 정책 parser/evaluator는 커널에 두지 않는다.
+- Go reference는 성공한 completed `FileOpen` 이벤트에만 label을 준다. 동기
+  `file_open` 집행 hook은 해당 source 접근 시도에서 보수적으로 kernel state를
+  표시할 수 있으므로, 나중의 open 실패 뒤에도 kernel state는 tainted일 수 있다.
+  이 집행 projection은 Go audit 결과를 덮어쓰거나 성공한 open으로 재기록하지
+  않는다. PID 생애, fork/thread 전파, 동시 source/sink 순서, map 실패 동작은
+  Phase 4 acceptance tests로 검증하기 전까지 지원 보장으로 표현하지 않는다.
+- 초기 block profile의 run membership은 observer의 singleton `process_scope`를
+  재사용하지 않는다. 전용 cgroup v2 scope에 target과 descendants를 두고,
+  cgroup ID와 run별 preallocated sticky fault state를 동기 hook에서 확인하는 설계다.
+  Target은 cgroup control files를 수정할 수 없어야 한다. 필요한 cgroup 권한/격리와
+  BPF helper·hook 조합이 준비되지 않으면 block launch를 거부한다. supervisor 비정상
+  종료 시 link 소멸과 남은 descendant를 안전하게 정리하는 보장은 아직 없으며,
+  이를 검증하기 전 해당 장애 경로의 보호를 주장하지 않는다.
+- 모든 필수 hook attach, scope/policy initialization, map capacity 및 지원 subset
+  검사가 target 시작 전에 성공해야 한다. 필수 capability나 상태 갱신을 보장할 수
+  없으면 block 요청은 실패한다. 이벤트 ring-buffer 손실은 집행 state와 별도로
+  보고하며, audit event 처리가 kernel decision을 지연시키지 않는다.
 
 ## `agenttaint run -- <COMMAND>` 가 보안 경계다
 
@@ -230,24 +275,44 @@ codex
   진단·선택 경로·**Phase 0에는 감시와 차단이 없다는 안내**는 stderr로 보낸다.
   target stdout을 AgentTaint 출력으로 오염시키지 않으며 PATH를 수정하지 않는다.
 
-### Phase 2 확장 계약 — 구현 전 승인된 범위
+### Phase 2 확장 계약 — 구현 및 검증 범위
 
-아래는 Phase 2의 구현 계약이며 현재 CLI에 구현됐다는 뜻이 아니다.
-Phase 0의 기본 `doctor`·무보호 `run` 동작은 그대로 유지한다.
+아래는 Phase 2의 구현 계약이다. 구현·guest 검증 범위와 남은 한계는
+`docs/IMPLEMENTATION_MASTER_PLAN.md` 12.10절에 기록한다. Phase 0의 기본
+`doctor`·무보호 `run` 동작은 그대로 유지한다.
 
 - 관찰 실행은 대상 stdin/stdout/stderr를 보존한다. `run --observe`에는
-  별도 감사 파일을 명시하는 `--audit-file PATH`를 필수로 하는 최소 인터페이스를
-  사용한다. 두 옵션은 아직 미구현이다. 정규화한 core event를 파일에 JSON Lines로
+  정책 snapshot을 지정하는 `--policy PATH`와 별도 감사 파일을 명시하는
+  `--audit-file PATH`가 필수다. 정책은 target 시작 전에 로드한다. 정규화한
+  core event와 audit/deny 판정의 derived `policy_violation`을 파일에 JSON Lines로
   기록하며 대상 stdout/stderr로 감사 이벤트를 보내거나 실패 시 우회 출력하지 않는다.
+  Phase 3 `deny`는 post-event verdict이고 실제 operation을 차단하지 않는다.
   AgentTaint 자체의 짧은 오류 진단과 감사 이벤트 스트림은 구분한다.
 - 감사 파일은 새 일반 파일로 배타 생성하고 기존 파일 덮어쓰기·append·symlink
   추적·FIFO/장치 사용을 거부한다. 생성 mode는 `0600`이며 실제 소유자·실효 권한과
   부모 경로의 안전성을 확인한다. 검사와 생성 사이의 교체 경합, 대상과의 권한 경계,
-  저장 공간 부족·쓰기 실패·크기 상한 도달을 테스트한다. 크기 상한과 실행 중 실패 시
-  lifecycle은 P2-03/04 구현 전에 확정한다. 초기 파일 준비 실패 시 target을
-  시작하지 않고, 실행 중 손실을 정상·완전한 감사 기록으로 표시하지 않는다.
+  저장 공간 부족·쓰기 실패·크기 상한 도달의 동작은 검증 대상이다. 현재 writer는
+  JSONL을 최대 64 MiB로 제한하고 marshal/write/short-write·close 오류를 sticky
+  quality failure로 기록해 run을 incomplete/error로 반환한다. 초기 준비 실패면
+  target을 시작하지 않고 새 audit 파일을 정리한다. target이 시작된 뒤 발생한 audit
+  오류는 자동 kill이나 stdout/stderr fallback을 일으키지 않으며, 이미 기록된 부분
+  파일은 보존된다. 디스크 오류와 64 MiB 경계 failure-injection 검증은 아직
+  `not_tested`이며 정상·완전한 audit으로 표시하지 않는다.
   이미 발생한 target의 효과는 되돌릴 수 없으며, 감사 오류를 이유로 Phase 2에
   자동 보안 kill/차단을 추가하지 않는다.
+- root supervisor는 `--run-as UID:GID`로 비특권 target identity를 명시해야 한다.
+  UID 또는 GID가 0이면 거부한다. root supervisor가 지정한 target은 supplementary
+  groups를 비우며, 비root supervisor target은 기존 groups를 상속한다. real/effective/
+  saved IDs와 capability가 target exec 전에 검증된다. `no_new_privs`를 target
+  exec 전에 적용한다. 비root supervisor는 자기 effective UID/GID로만 실행할 수
+  있다. 현재 인터페이스는 추가 application FD 전달을 지원하지 않으며 FD 0~2만
+  target에 전달한다. helper의 readiness와 정확한 one-time launch permit가 확인되기
+  전에는 target을 exec하지 않는다.
+- 관찰 target의 Ctrl-C/SIGTERM 취소는 target process group에 전달된다. root target이
+  끝나도 관측된 자손이 남으면 observer를 유지한다. 5초 drain 한도를 넘긴 자손은
+  coverage를 incomplete로 표시하지만 자동 종료하지 않으며, 관측된 생애가 끝날 때까지
+  감시를 유지한다. 이미 setsid로 분리된 자손에게 process-group 취소가 전달된다는
+  보장은 없다.
 - 기본 `doctor`와 AI CLI 탐지는 계속 외부 파일을 실행하지 않는다. Phase 2에는
   사용자가 명시적으로 선택한 **별도 toolchain probe**만 subprocess 실행을 허용한다
   (후보 옵션 `doctor --probe-toolchain`, 아직 미구현). 신뢰를 확인한 compiler/

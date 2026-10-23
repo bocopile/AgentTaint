@@ -3,6 +3,7 @@ package linux
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -41,6 +42,64 @@ func TestDecodeAndNormalizeProcessEvents(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDecodePathCaptureDiagnostic(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		order binary.ByteOrder
+	}{
+		{name: "little endian", order: binary.LittleEndian},
+		{name: "big endian", order: binary.BigEndian},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := validOperationRecord(tc.order, rawKindFileOpen)
+			pathOffset := rawHeaderSize + rawProcessSize
+			clear(data[pathOffset : pathOffset+rawExecPathSize])
+			data[17] = rawFlagPathCaptureFailed
+			accessOffset := pathOffset + rawExecPathSize
+			data[accessOffset] = rawFileSyscallOpenat
+			tc.order.PutUint16(data[accessOffset+1:accessOffset+3], 0xfff2)
+			tc.order.PutUint32(data[accessOffset+3:accessOffset+7], 3)
+
+			_, err := DecodeRawEvent(data)
+			var captureErr *PathCaptureError
+			if !errors.As(err, &captureErr) {
+				t.Fatalf("DecodeRawEvent error = %v, want PathCaptureError", err)
+			}
+			if captureErr.Process.PID != 101 || captureErr.SyscallKind != rawFileSyscallOpenat || captureErr.HelperResult != -14 || captureErr.SyscallResult != 3 {
+				t.Fatalf("decoded diagnostic = %+v", captureErr)
+			}
+			if captureErr.QualityReason() != "file-openat-path-read-helper-errno-14-syscall-success" {
+				t.Fatalf("quality reason = %q", captureErr.QualityReason())
+			}
+		})
+	}
+}
+
+func TestDecodePathCaptureDiagnosticRejectsInvalidErrno(t *testing.T) {
+	for _, result := range []uint16{0xf000, 0x0000, 0x0001} { // -4096, zero, and a positive helper result
+		data := validOperationRecord(binary.LittleEndian, rawKindFileOpen)
+		pathOffset := rawHeaderSize + rawProcessSize
+		clear(data[pathOffset : pathOffset+rawExecPathSize])
+		data[17] = rawFlagPathCaptureFailed
+		accessOffset := pathOffset + rawExecPathSize
+		data[accessOffset] = rawFileSyscallOpenat
+		binary.LittleEndian.PutUint16(data[accessOffset+1:accessOffset+3], result)
+		binary.LittleEndian.PutUint32(data[accessOffset+3:accessOffset+7], 0)
+
+		if _, err := DecodeRawEvent(data); err == nil {
+			t.Fatalf("DecodeRawEvent accepted helper result %#x", result)
+		}
+	}
+}
+
+func TestDecodeLegacyRawV1Operation(t *testing.T) {
+	data := validOperationRecord(binary.LittleEndian, rawKindFileOpen)
+	binary.LittleEndian.PutUint16(data[4:6], rawVersionV1)
+	if _, err := DecodeRawEvent(data); err != nil {
+		t.Fatalf("DecodeRawEvent rejected legacy v1 record: %v", err)
 	}
 }
 

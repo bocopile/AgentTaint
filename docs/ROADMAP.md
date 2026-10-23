@@ -13,15 +13,15 @@
 - [x] **Phase 0 — Bootstrap** · [prompts/00-bootstrap.md](../prompts/00-bootstrap.md)
       Go 모듈 골격, `doctor`(읽기 전용 진단), `run`(명시적 실행)
       — 로컬 수용 검증 완료(macOS arm64). Linux amd64/arm64는 cross-build만 통과; 원격 CI 미실행.
-      실제 감시·차단은 없음. 검증·인계 기록은 [IMPLEMENTATION_MASTER_PLAN.md](./IMPLEMENTATION_MASTER_PLAN.md)의 12.10절 참고.
+      당시 Phase 0 산출물은 감시·차단을 제공하지 않았다. 이후 Phase 구현을 포함한 현재 상태는 [IMPLEMENTATION_MASTER_PLAN.md](./IMPLEMENTATION_MASTER_PLAN.md)의 12.10절을 참고.
 - [x] **Phase 1 — Core Event Model** · [prompts/01-core-event-model.md](../prompts/01-core-event-model.md)
       플랫폼 독립 Event 타입 (`internal/core`)
       — 7종 raw event·식별자·strict JSON codec 및 macOS arm64 독립 검증 완료.
-      Linux cross-build만 통과; 센서·라벨·정책·차단과 원격 CI 실행은 없음.
-- [ ] **Phase 2 — Linux Observer** · [prompts/02-linux-observer.md](../prompts/02-linux-observer.md)
+      당시 Phase 1 산출물은 센서·라벨·정책·차단을 포함하지 않았다. 이후 Phase 구현을 포함한 현재 상태는 [IMPLEMENTATION_MASTER_PLAN.md](./IMPLEMENTATION_MASTER_PLAN.md)의 12.10절을 참고.
+- [x] **Phase 2 — Linux Observer** · [prompts/02-linux-observer.md](../prompts/02-linux-observer.md)
       eBPF로 fork/exec/exit, file open, network connect 관찰
-- [ ] **Phase 3 — Taint Engine** · [prompts/03-taint-engine.md](../prompts/03-taint-engine.md)
-      Source→Label→Propagation→Sink→Decision 최초 구현 (audit only) — AgentTaint MVP
+- [x] **Phase 3 — Taint Engine** · [prompts/03-taint-engine.md](../prompts/03-taint-engine.md)
+      Taint/policy audit integration과 네 Linux guest runtime scenario 검증 완료. 테스트가 disposable fixture를 만들며 저장소에 재현 스크립트는 추가하지 않는다. audit only이며 block 없음.
 - [ ] **Phase 4 — Linux Enforcement** · [prompts/04-linux-enforcement.md](../prompts/04-linux-enforcement.md)
       BPF-LSM 기반 block, 지원되지 않는 block 요청의 시작 전 실패, 명시적 monitor/notify/kill mode
 

@@ -43,7 +43,9 @@ bpf/network.bpf.c ──┘                                    │
   compiler/LLVM/bpftool에 고정 버전 조회 인자만 전달한다. 후보 옵션은
   `doctor --probe-toolchain`이며 정확한 입력 인터페이스는 구현 전에 기록한다.
 
-위 옵션들은 **아직 미구현인 Phase 2 인터페이스**다. 감사 파일의 각 줄은
+`run --observe --audit-file` 인터페이스는 P2-03/04에서 구현했다. 그 guest 검증과
+미검증 범위는 단일 구현 명세 `docs/IMPLEMENTATION_MASTER_PLAN.md`의 12.10절을 따른다.
+`doctor --probe-toolchain`은 **아직 미구현인 opt-in 인터페이스**다. 감사 파일의 각 줄은
 Phase 1의 `internal/core` schema 1과 `DecodeEvent` 계약을 따른다.
 `event` discriminator, 중첩 `process`의 PID·birth/scope identity,
 POSIX `session_id`의 10진 문자열, 관측 stage/result와 각 payload를 보존한다.
@@ -73,8 +75,10 @@ POSIX `session_id`의 10진 문자열, 관측 stage/result와 각 payload를 보
 같은 Linux sensor 패키지 안의 실제 bpf2go 생성 `.go`/`.o` 쌍,
 기존 `test/fixtures`·`test/integration`, CLI·runner·env의 기존 파일과
 패키지 테스트, 기존 Makefile·portable CI 수정은 관련 ARCHITECTURE 계약을 따른다.
-ENV-02에서 고정 generator의 정확한 basename·suffix·생성 명령을 확인하여
-생성 전에 기록한다. 새 패키지·스킬 경로·privileged CI는 자동 허용하지 않는다.
+ENV-02에는 현재 고정 generator의 ident, basename·suffix, 생성 경로와 명령이
+기록되어 있다. 향후 generator ident, 파일명·경로, 입력 또는 생성 명령을 바꾸기
+전에는 해당 기록을 갱신하고 확인한다. 새 패키지·스킬 경로·privileged CI는
+자동 허용하지 않는다.
 
 ## Technical Requirements
 
@@ -85,9 +89,19 @@ ENV-02에서 고정 generator의 정확한 basename·suffix·생성 명령을 �
   복사만 하고, 해석은 `internal/sensor/linux`(유저스페이스)에서 한다.
 - 감사 파일은 새 일반 파일을 `0600`으로 배타 생성한다. 기존 파일 덮어쓰기/
   append, symlink 추적, FIFO/장치를 거부하고 소유자·실효 권한·부모 경로와
-  교체 경합을 검증한다. 크기 상한과 실행 중 쓰기 실패 lifecycle은 구현 전에
-  확정한다. 초기 준비 실패는 target 시작 전에 실패하며 실행 중 손실은 표시한다.
-  이미 발생한 효과는 되돌릴 수 없다. 감사 실패에 자동 보안 kill/차단을 추가하지 않는다.
+  교체 경합을 검증한다. 현재 writer는 JSONL을 최대 64 MiB로 제한하고
+  marshal/write/short-write·close 오류를 sticky quality failure로 기록해 run을
+  incomplete/error로 반환한다. 초기 준비 실패는 target 시작 전에 실패하고 새 audit
+  파일을 정리한다. target 시작 뒤 audit 실패가 나면 자동 kill/차단이나
+  stdout/stderr fallback을 추가하지 않으며, 부분 audit 파일은 보존한다. 디스크
+  오류와 64 MiB 경계 failure-injection은 `not_tested`; 이미 발생한 효과는 되돌릴 수 없다.
+- root supervisor는 `--run-as UID:GID`를 요구하며 root UID/GID를 거부한다.
+  supplementary groups를 비운다. 비root supervisor는 자신의 effective UID/GID와
+  기존 supplementary groups를 target에 상속한다. helper는 target의
+  real/effective/saved IDs·capabilities를 확인하고 `no_new_privs`를 적용한 뒤에만
+  target exec를 허용한다. 추가 application FD는 전달하지 않는다.
+  이 launch protocol은 supervisor의 준비 ACK 후 target 허가를 보내며, 잘못된 응답·EOF·
+  timeout·부모 종료에서는 target을 실행하지 않는다.
 - Toolchain probe는 신뢰된 명시적 절대 경로만 사용한다. 도구별 고정 인자,
   timeout·출력 크기 상한과 신뢰/권한 기준을 먼저 기록한다. PATH/프로젝트
   fallback, shell, 권한 상승, 설치, mount, 모듈/BPF load/attach는 금지한다.
@@ -105,8 +119,9 @@ ENV-02에서 고정 generator의 정확한 basename·suffix·생성 명령을 �
 ## Acceptance Criteria
 
 - 커널 5.15+ Linux 테스트 profile에서 통제된 synthetic 파일을 여는 fixture를
-  `run --observe --audit-file PATH -- <fixture>`로 실행하면 `file_open`이
-  감사 파일에 기록된다. 이 명령 형태는 구현 후 수용 시험용이며 현재 실행 불가다.
+  `run --observe --policy POLICY_PATH --audit-file AUDIT_PATH -- <fixture>`로 실행하면 `file_open`이
+  감사 파일에 기록된다. 이 명령 형태는 수용 시험 계약이다. 실행 환경과 최신
+  실행 증거는 `docs/IMPLEMENTATION_MASTER_PLAN.md` 12.10절을 참조한다.
 - readiness가 확인된 로컬 IPv4 수신 fixture에 target 및 그 자식이 연결하면
   `network_connect`가 감사 파일에 기록된다. 공용 인터넷·실제 자격증명에
   의존하지 않고, target의 JSON/binary stdout·stderr·stdin은 별도로 검증한다.

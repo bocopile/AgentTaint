@@ -70,9 +70,10 @@ func (w *auditWriter) write(event core.Event) error {
 }
 
 type coverageQuality struct {
-	mu      sync.Mutex
-	counts  map[string]uint64
-	unknown bool
+	mu                  sync.Mutex
+	counts              map[string]uint64
+	pathCaptureOverlaps map[string]uint64
+	unknown             bool
 }
 
 func (q *coverageQuality) lose(reason string) {
@@ -86,6 +87,19 @@ func (q *coverageQuality) loseN(reason string, count uint64) {
 		q.counts = make(map[string]uint64)
 	}
 	q.counts[reason] += count
+}
+
+func (q *coverageQuality) losePathCapture(diagnosticReason, aggregateReason string) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.counts == nil {
+		q.counts = make(map[string]uint64)
+	}
+	if q.pathCaptureOverlaps == nil {
+		q.pathCaptureOverlaps = make(map[string]uint64)
+	}
+	q.counts[diagnosticReason]++
+	q.pathCaptureOverlaps[aggregateReason]++
 }
 
 func (q *coverageQuality) loseUnknown() {
@@ -102,6 +116,12 @@ func (q *coverageQuality) report() (bool, string) {
 	}
 	parts := make([]string, 0, len(q.counts)+1)
 	for reason, count := range q.counts {
+		if overlap := q.pathCaptureOverlaps[reason]; overlap > 0 {
+			if overlap >= count {
+				continue
+			}
+			count -= overlap
+		}
 		parts = append(parts, fmt.Sprintf("%s=%d", reason, count))
 	}
 	if q.unknown {
@@ -211,6 +231,7 @@ func runProtectedPlatformWithDependencies(ctx context.Context, path string, args
 	}
 
 	quality := &coverageQuality{}
+	lastDropCounts := baselineDrops
 	var processor *policyAuditProcessor
 	if snapshot != nil {
 		processor, err = newPolicyAuditProcessor(snapshot)
@@ -294,7 +315,7 @@ func runProtectedPlatformWithDependencies(ctx context.Context, path string, args
 	actions := &modeActions{}
 	consumeDone := make(chan error, 1)
 	go func() {
-		consumeDone <- consumeRunEvents(sensor, uint32(cmd.Process.Pid), runID, baselineDrops, queue, quality, waitDone, eventReaderReady, processor, scope, mode, stderr, actions)
+		consumeDone <- consumeRunEvents(sensor, uint32(cmd.Process.Pid), runID, &lastDropCounts, queue, quality, waitDone, eventReaderReady, processor, scope, mode, stderr, actions)
 	}()
 	select {
 	case <-eventReaderReady:
@@ -332,7 +353,7 @@ func runProtectedPlatformWithDependencies(ctx context.Context, path string, args
 	close(queue)
 	<-writerDone
 	for i := 0; i < 10; i++ {
-		if err := pollBPFDropCounts(sensor, baselineDrops, quality); err == nil {
+		if err := pollBPFDropCounts(sensor, &lastDropCounts, quality); err == nil {
 			break
 		}
 		if i == 9 {
@@ -412,13 +433,13 @@ func runProtectedPlatformWithDependencies(ctx context.Context, path string, args
 	return code, nil
 }
 
-func consumeRunEvents(sensor *linux.Sensor, rootPID uint32, runID core.RunID, baseline linux.DropCounts, queue chan<- core.Event, quality *coverageQuality, waitDone <-chan struct{}, readerReady chan<- struct{}, processor *policyAuditProcessor, scope *runCgroup, mode PolicyMode, stderr io.Writer, actions *modeActions) error {
+func consumeRunEvents(sensor *linux.Sensor, rootPID uint32, runID core.RunID, lastDropCounts *linux.DropCounts, queue chan<- core.Event, quality *coverageQuality, waitDone <-chan struct{}, readerReady chan<- struct{}, processor *policyAuditProcessor, scope *runCgroup, mode PolicyMode, stderr io.Writer, actions *modeActions) error {
 	members := make(map[core.ProcessKey]struct{})
 	var rootKey core.ProcessKey
 	rootSeen, rootExited, targetDone := false, false, false
 	readySent := false
 	var rootGraceUntil, childGraceUntil time.Time
-	checkDrops := func() { _ = pollBPFDropCounts(sensor, baseline, quality) }
+	checkDrops := func() { _ = pollBPFDropCounts(sensor, lastDropCounts, quality) }
 	for {
 		if err := sensor.SetReadDeadline(time.Now().Add(readHealthInterval)); err != nil {
 			return fmt.Errorf("set observer read deadline: %w", err)
@@ -429,6 +450,19 @@ func consumeRunEvents(sensor *linux.Sensor, rootPID uint32, runID core.RunID, ba
 		}
 		raw, err := sensor.Read()
 		if err != nil {
+			var pathCaptureErr *linux.PathCaptureError
+			if errors.As(err, &pathCaptureErr) {
+				if _, member := members[processKey(pathCaptureErr.Process)]; member {
+					aggregateReason := fmt.Sprintf("file-%s-path-unreadable-", pathCaptureErr.SyscallName())
+					if pathCaptureErr.SyscallResult >= 0 {
+						aggregateReason += "success"
+					} else {
+						aggregateReason += "other-error"
+					}
+					quality.losePathCapture(pathCaptureErr.QualityReason(), aggregateReason)
+				}
+				continue
+			}
 			var decodeErr *linux.DecodeError
 			if errors.As(err, &decodeErr) {
 				quality.lose("raw-decode")
@@ -518,18 +552,7 @@ func consumeRunEvents(sensor *linux.Sensor, rootPID uint32, runID core.RunID, ba
 			quality.lose("event-normalization")
 			continue
 		}
-		auditEvents := []core.Event{event}
-		if processor != nil {
-			incomplete, detail := quality.report()
-			if incomplete {
-				processor.MarkIncomplete(detail)
-			}
-			var processErr error
-			auditEvents, processErr = processor.Process(event)
-			if processErr != nil {
-				quality.lose("policy-audit-processing")
-			}
-		}
+		auditEvents := processPolicyAuditEvent(sensor, lastDropCounts, quality, processor, event)
 		for _, auditEvent := range auditEvents {
 			_ = enqueueAudit(queue, auditEvent, quality)
 			record, ok := policyViolation(auditEvent)
@@ -796,19 +819,57 @@ func processKey(process linux.RawProcess) core.ProcessKey {
 	}
 }
 
-func pollBPFDropCounts(sensor *linux.Sensor, baseline linux.DropCounts, quality *coverageQuality) error {
+func pollBPFDropCounts(sensor *linux.Sensor, lastSeen *linux.DropCounts, quality *coverageQuality) error {
 	current, err := sensor.DropCounts()
 	if err != nil {
 		quality.loseUnknown()
 		return err
 	}
+	recordBPFDropDeltas(lastSeen, current, quality)
+	return nil
+}
+
+func pollDropsBeforeCompletedSink(sensor *linux.Sensor, lastSeen *linux.DropCounts, quality *coverageQuality, event core.Event) {
+	connect, ok := networkConnect(event)
+	if !ok || connect.ObservationStage != core.StageCompleted {
+		return
+	}
+	_ = pollBPFDropCounts(sensor, lastSeen, quality)
+}
+
+func processPolicyAuditEvent(sensor *linux.Sensor, lastSeen *linux.DropCounts, quality *coverageQuality, processor *policyAuditProcessor, event core.Event) []core.Event {
+	if processor == nil {
+		return []core.Event{event}
+	}
+	// Refresh kernel loss counters before evaluating a sink so a continuous
+	// event stream cannot leave the processor on a stale complete-history
+	// snapshot between read-deadline polls.
+	pollDropsBeforeCompletedSink(sensor, lastSeen, quality, event)
+	if incomplete, detail := quality.report(); incomplete {
+		processor.MarkIncomplete(detail)
+	}
+	auditEvents, err := processor.Process(event)
+	if err != nil {
+		quality.lose("policy-audit-processing")
+	}
+	return auditEvents
+}
+
+func recordBPFDropDeltas(lastSeen *linux.DropCounts, current linux.DropCounts, quality *coverageQuality) {
 	reasons := [...]string{"process-ring-reserve", "process-capture", "file-ring-reserve", "file-capture", "network-ring-reserve", "network-capture", "file-syscall-args", "file-process", "file-pending-map", "file-openat-path-unreadable-success", "file-openat-path-unreadable-other-error", "file-openat2-path-unreadable-success", "file-openat2-path-unreadable-other-error"}
 	for index, count := range current {
-		if count > baseline[index] {
-			quality.loseN(reasons[index], count-baseline[index])
+		if count < lastSeen[index] {
+			// A per-run cumulative counter should never decrease. Treat a reset as
+			// unknown coverage, then resume counting from the observed value.
+			quality.loseUnknown()
+			lastSeen[index] = count
+			continue
+		}
+		if count > lastSeen[index] {
+			quality.loseN(reasons[index], count-lastSeen[index])
+			lastSeen[index] = count
 		}
 	}
-	return nil
 }
 
 func randomBytes(size int) ([]byte, error) {

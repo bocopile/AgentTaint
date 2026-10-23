@@ -62,13 +62,22 @@ Source -> Label -> Propagation -> Sink -> Decision
    `depguard` 규칙)로 강제한다.
 2. Linux(및 향후 macOS) 센서는 `internal/core`에 정의된 정규화된 Event만
    내보낸다. 센서 코드 안에 정책 로직을 두지 않는다.
-3. Taint propagation(라벨 전파)은 하나의 패키지(`internal/taint`)에만
-   존재한다. 센서나 CLI에 흩어놓지 않는다.
-4. Policy 평가는 하나의 패키지(`internal/policy`)에만 존재한다.
+3. Taint의 규범적 reference 의미와 관찰/audit 전파는 하나의 패키지
+   (`internal/taint`)가 소유한다. Phase 4의 실제 pre-operation 집행에 필요한
+   제한된 BPF kernel-state projection만 예외로 허용한다. projection은 성공한
+   `FileOpen` 의미를 변경하지 않으며, 승인된 source `file_open` 시도를 보수적으로
+   집행 상태에 반영할 수 있다. 새 label 의미나 일반 전파 엔진을 BPF·센서·CLI에
+   복제하지 않는다.
+4. Policy parsing, validation, canonical snapshot 및 일반 평가는 하나의 패키지
+   (`internal/policy`)가 소유한다. Phase 4는 Go가 검증·컴파일한 snapshot 중 명시된
+   제한 subset만 kernel에 전달할 수 있다. BPF 안에서 YAML parsing, rule 우선순위
+   결정 또는 일반 policy evaluator를 구현하지 않는다.
 5. CLI(`cmd/agenttaint`)는 보안 판단(allow/audit/deny)을 직접 내리지
    않는다. policy/taint 패키지를 호출만 한다.
 6. eBPF(C) 코드는 최소한으로 유지한다. 복잡한 파싱·정책 준비는 유저스페이스
-   Go 코드에서 한다 — 커널 안에서 정규식/문자열 처리 금지.
+   Go 코드에서 한다. 승인된 Phase 4 subset에 한해 bounded state update와
+   pre-operation sink decision을 허용하며, 커널 안에서 YAML parsing·정규식·일반
+   정책 평가를 하지 않는다.
 
 ## eBPF 절대 규칙
 

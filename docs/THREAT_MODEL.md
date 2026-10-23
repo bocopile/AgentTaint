@@ -57,9 +57,18 @@ Compromised MCP Server / Dependency
   연결을 시도하는 것 (information-flow 기준 차단/감사)
 - 지정된 민감 파일에 대한 직접 접근 자체 차단 (access-control 기준)
 
+위 항목은 Phase 4에서 요청한 block profile, 필수 BPF-LSM hook의 실제 attach,
+kernel state 초기화 및 해당 scenario의 syscall/effect 검증이 성공한 환경에만
+해당한다. 구현 전이나 미검증 환경에서는 AgentTaint가 해당 effect를 차단한다고
+주장하지 않는다. Go audit/reference model은 성공한 `FileOpen` 완료 event에서만
+`SECRET`을 부여한다. 동기 enforcement projection은 source `file_open` 시도에서
+보수적으로 label을 표시할 수 있으므로, 이후 source open이 실패해도 뒤따르는
+지원 sink를 거부할 수 있다. 이는 성공한 open이나 파일 byte read의 증거가 아니다.
+
 **못 막는 것 (v0.1 명시적 한계)**
 - 커널/eBPF 자체를 우회하는 권한 상승 공격 (예: 컨테이너 탈출, 커널 익스플로잇)
 - AgentTaint가 설치되지 않은 별도 머신/프로세스로의 유출
+- supervisor가 비정상 종료된 뒤 남은 target descendant의 enforcement 지속성은 아직 보장하지 않는다. kernel link/cgroup lifecycle 검증 전에는 이 장애를 block 보장 범위로 표현하지 않는다.
 - 은닉 채널 유출 (DNS 터널링, 타이밍 사이드채널 등) — 향후 과제
 - 정적 링크된 TLS 라이브러리를 쓰는 바이너리의 페이로드 내용 검사 (v0.1은
   파일/프로세스/네트워크 연결의 존재 여부만 보며, TLS 페이로드 자체는 보지
