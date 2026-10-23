@@ -130,6 +130,123 @@ Decision)이 완성되기 전에는 Kubernetes 관련 기능을 구현하지 않
 **절대 스코프를 조용히 늘리지 않는다.** 현재 Phase의 "Out of Scope"에
 있는 것은 다음 Phase를 기다린다.
 
+## Git / Worktree 작업 규칙
+
+작업 기준은 항상 최신 `main`이다. `main` checkout은 기준선과 최종 통합에만
+사용하고, 제품·문서 변경은 별도 branch와 worktree에서 수행한다. worktree는
+같은 `.git` 저장소를 공유하므로 파일 작업은 격리하지만 권한·보안 경계는 아니다.
+
+### 시작과 worktree 준비
+
+1. 시작 시 저장소 루트, `git status --short --branch`, 현재 branch/HEAD,
+   `git worktree list`를 확인한다. 기존 dirty 변경은 소유자를 식별할 때까지
+   보존하고 stage·stash·reset·checkout으로 덮지 않는다.
+2. `main` worktree가 clean일 때만 `git fetch origin` 후
+   `git switch main` / `git pull --ff-only origin main`으로 최신 기준선을 맞춘다.
+   dirty `main`을 자동 정리하지 않는다. clean baseline을 만들 수 없으면
+   변경 작업을 시작하지 말고 충돌 상태를 보고한다.
+3. 각 작업은 저장소 루트의 무시 경로 `.worktrees/<task-id>`에 고유 worktree를
+   만들고, branch 이름은 `codex/<phase>-<task-id>-<slug>` 형식을 쓴다.
+   새 worktree와 branch의 출발점은 2단계에서 동기화한 local `main`의 기록된
+   commit이다.
+
+```sh
+git fetch origin
+git worktree add -b codex/<phase>-<task-id>-<slug> \
+  .worktrees/<task-id> main
+```
+
+이미 같은 branch나 worktree가 있으면 `-B`, 강제 교체, 제거를 하지 않는다.
+기존 작업을 확인해 이어가거나 새 고유 ID를 사용한다.
+
+### 동시 작업과 통합
+
+- 병렬 writer마다 전용 worktree와 branch, task ID, 기준 commit, 명시적 파일
+  소유 범위를 부여한다. 한 worktree에 둘 이상의 writer를 배정하지 않으며,
+  동시에 같은 파일을 수정하지 않는다.
+- Orchestrator는 병렬 작업 전에 worktree를 순차적으로 만들고, 의존성이 없는
+  카드만 동시에 시작한다. 선행 카드 결과에 의존하는 카드는 선행 변경이 통합된
+  뒤 시작한다.
+- 병렬 task branch는 같은 `main` 기준 commit에서 만든다. 별도의
+  `codex/<phase>-integration` worktree/branch도 같은 기준에서 만들고, 완료된
+  task branch를 이 통합 branch에 순서대로 merge한다. 충돌 해결과 전체 변경 검토는
+  통합 worktree에서 수행한다.
+- 작업자는 완료 시 branch/HEAD, 변경 파일, 작업 단위 commit, 실행한 검사와
+  미검증 항목을 보고한다. 통합 담당자는 각 변경과 기준선을 대조하고, 다른
+  작업자의 파일을 임의로 되돌리거나 덮어쓰지 않는다.
+
+### 검증, main merge, push
+
+- 사용자가 테스트를 한 번에 수행하라고 지정한 경우 task별 전체 테스트를 중복
+  실행하지 않는다. 모든 task branch를 통합 branch에 모은 뒤, 그 branch의 정확한
+  HEAD에서 정해진 검증 묶음을 한 번 실행한다. Linux/BPF 검증은 guest에서도 같은
+  commit과 source 상태인지 확인한다.
+- 필수 검증, 독립 검토, diff 확인이 모두 통과하기 전에는 통합 branch를 `main`에
+  merge하지 않는다. 실패·skip·환경 차단이 있으면 이를 성공으로 취급하지 않고
+  `main`은 그대로 둔다. 수정은 작업 branch 또는 통합 branch에서 하고, 영향받은
+  검증을 다시 실행한다.
+- 검증이 통과하면 `main`이 여전히 통합 branch의 조상인지 확인한 뒤 main worktree에서
+  `git merge --ff-only codex/<phase>-integration`으로 통합한다. 통합 중 main이
+  전진해 fast-forward할 수 없으면 최신 main 기준 worktree를 다시 만들고 변경을
+  재통합·재검증한다. force push나 무단 rebase로 이력을 덮지 않는다.
+- task 단위 커밋은 해당 worktree에서 관련 경로만 stage하고 staged diff를 검토해
+  conventional commit으로 남긴다. 전체 테스트가 batch gate로 정해졌으면 테스트
+  전 task branch 커밋은 허용하지만, green 검증 전 main merge는 금지한다.
+- push는 원격 저장소 변경이다. 사용자가 해당 branch 또는 batch의 push를 명시적으로
+  요청한 경우에만 수행한다. 테스트 전에는 작업 branch만 push할 수 있고, `main` push는
+  통합 테스트 통과와 main 반영 요청이 모두 확인된 뒤 수행한다. `main`을 직접 작업
+  branch로 사용하지 않으며 force push, PR 생성, 원격 merge는 별도 요청 없이 하지 않는다.
+- merge 완료 후 clean하고 merge된 작업의 worktree만 일반 `git worktree remove`로
+  정리한다. dirty worktree, 미merge branch, 기존 사용자 작업은 정리하지 않는다.
+
+### Codex 권한 요건
+
+`git add`, `git commit`, `git worktree add/remove`는 저장소 파일뿐 아니라 `.git`
+metadata를 쓴다. OS 파일 mode가 쓰기 가능이어도 Codex sandbox가 `.git`을 read-only로
+지정하면 `index.lock` 생성 등이 `Operation not permitted`로 실패한다. `chmod`,
+`sudo`, guest VM의 root 계정은 host Codex sandbox 경계를 바꾸지 않는다.
+
+로컬 Codex 세션에서는 앱의 permission control에서 다음 범위만 갖는 사용자 지정
+profile을 선택한다. 자세한 profile 동작은 [Codex permission profiles](https://developers.openai.com/codex/permissions)를
+참고한다. `:workspace`의 보호 규칙은 `.git` read-only를 기본으로 할 수
+있으므로 저장소 `.git` 및 `.worktrees` 쓰기를 명시적으로 허용해야 한다. 외부 push가
+필요한 세션에만 GitHub network allowlist를 추가한다. 예시 설정은 사용자 Codex 설정에
+적용하며 저장소에 자격증명이나 사용자 설정 파일을 추가하지 않는다.
+
+```toml
+default_permissions = "agenttaint-git"
+
+# 기존 [features] 테이블이 있으면 새 테이블을 중복 선언하지 말고 이 값을 합친다.
+[features]
+network_proxy = true
+
+[permissions.agenttaint-git]
+extends = ":workspace"
+
+[permissions.agenttaint-git.filesystem.":workspace_roots"]
+"." = "write"
+".git" = "write"
+".worktrees" = "write"
+
+[permissions.agenttaint-git.network]
+enabled = true
+
+[permissions.agenttaint-git.network.domains]
+"github.com" = "allow"
+"api.github.com" = "allow"
+```
+
+Codex 권한 profile은 legacy `sandbox_mode` 설정과 함께 쓰지 않는다. 사용자/조직의
+관리 정책이 더 제한적이면 이를 우회하지 않는다. 승인 요청이 가능한 환경에서는
+사용자 검토를 켜고, `git push`는 요청된 branch와 목적지를 확인한 뒤 실행한다.
+현재 세션이 `.git` 쓰기나 네트워크를 허용하지 않으면 그 세션 안에서 우회하지 말고
+권한 profile을 선택한 새 로컬 세션에서 작업을 이어간다.
+
+Lima guest 실행은 별도 권한 범위다. Git 전용 profile에 `~/.lima` 전체나 모든
+Unix socket을 추가하지 않는다. guest acceptance가 필요할 때에만 실제 오류에 나온
+정확한 hostagent/SSH socket을 별도 profile에 추가하고, localhost/vsock 경로를
+확인한다. VM 재생성이나 guest root 권한 변경을 host sandbox 해결책으로 취급하지 않는다.
+
 ## 문서는 규범이다 (Docs Are Normative)
 
 `docs/ARCHITECTURE.md`와 `docs/SECURITY_MODEL.md`는 설계의 source of

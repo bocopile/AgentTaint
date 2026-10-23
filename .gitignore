@@ -1,4 +1,5 @@
 .idea/**
+.worktrees/
 
 # THREAT_MODEL.md의 보호 대상 1순위 — 실수 커밋 방지
 .env
