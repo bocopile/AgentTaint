@@ -57,6 +57,7 @@ static __always_inline int network_current_process(struct agenttaint_raw_process
 	if (!task)
 		return -1;
 	__u32 tid = BPF_CORE_READ(task, pid);
+	__u32 tgid = BPF_CORE_READ(task, tgid);
 	__u64 *known = bpf_map_lookup_elem(&process_births, &tid);
 	__u64 birth_id = 0;
 	if (known) {
@@ -69,6 +70,8 @@ static __always_inline int network_current_process(struct agenttaint_raw_process
 	__u32 zero = 0;
 	__u32 *enabled = bpf_map_lookup_elem(&process_tracking_enabled, &zero);
 	__u64 *scope = enabled && *enabled ? bpf_map_lookup_elem(&tracked_processes, &tid) : 0;
+	if (enabled && *enabled && !scope && tgid != tid)
+		scope = bpf_map_lookup_elem(&tracked_processes, &tgid);
 	if (enabled && *enabled && !scope)
 		return -2;
 	if (!scope) {
