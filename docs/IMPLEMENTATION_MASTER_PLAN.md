@@ -4,7 +4,7 @@
 
 최초 분석 기준: `bocopile/AgentTaint`의 `5cc919dadb0a86ea5ec00c794ed07918ccc42d9a`
 
-상태: **2026-10-21 기준, 37개 상위 작업과 실행 카드를 순서대로 진행 중이다. Phase 0/1, P2-01~P2-04, P3-01~P3-03, P4-01~P4-03은 각 기록 범위에서 완료했다. P4-02 guest enforcement와 P4-03의 16개 mode/scenario 조합은 통과했으며 runner audit completeness는 path-capture loss로 미완료다. CI-02는 승인된 workflow 범위가 없어 미완료다. 현재 제품 작업은 P4-04이며, S25 path-capture 진단과 집계 수정은 구현했지만 새 회귀 검증 및 guest verifier/runtime 증거가 없어 P4-04는 미완료다. 최신 증거와 남은 항목은 12.10~12.12절을 따른다.**
+상태: **2026-10-24 기준, 기존 작업 목록을 순서대로 진행 중이다. Phase 0/1, P2-01~P2-04, P3-01~P3-03, P4-01~P4-03은 각 기록 범위에서 완료했다. P4-02 guest enforcement와 P4-03의 16개 mode/scenario 조합은 통과했으나 P4-04 Linux acceptance는 root runner의 path-capture 손실과 process lifecycle 테스트 실패로 미완료다. raw syscall pathname 의미와 Linux 5.13+ 하한을 유지하고 capture 손실을 incomplete로 처리한다는 D07 결정을 보존한다. process observer의 TID/TGID lookup 문제는 별도 P2 후속으로 추적한다. 대시보드는 최초 계획에 포함된 Phase 9/F9이며, 현재는 스텁이고 이벤트 저장·조회 설계와 선행 Phase 완료 전에는 착수하지 않는다. CI-01/02도 미완료다. 최신 증거와 순서는 12.10~12.12절을 따른다.**
 
 이 문서는 제품 철학 분석, macOS 사용 가능성, `addyosmani/agent-skills` 도입 검토, 아키텍처, 언어, 디렉터리, 작업 목록, 검증 기준과 사용자 결정 사항을 한 곳에 모은다. 다른 AI가 새로운 세션에서 읽고 현재 작업을 식별할 수 있도록 작성했다. 최초 분석 당시에는 제품 코드·Go 모듈이 없었다. **현재 실행 상태는 12.10절 기록이 기준이며, 2절의 환경·저장소 조사는 최초 분석 시점의 snapshot이다.**
 
@@ -977,6 +977,7 @@ AgentTaint/
 | [x] | P4-02 | 지원 source·network pre-op 집행 | P4-01 | 별도 direct-file deny 및 source-attempt→network deny guest fixtures에서 실제 EPERM, receiver 비도달, allow 대조군과 Go reference 차이를 검증 (2026-10-21; runner audit coverage limitation은 12.10 최신 업데이트) |
 | [x] | P4-03 | modes·지원 불가 처리·health·로그 | P4-02 | monitor/notify/block/kill 16개 scenario 조합, 상태·audit loss 및 fail-before-start 검증 (2026-10-21; 제한은 P4-03 실행 기록) |
 | [ ] | P4-04 | adversarial·장애·아키텍처별 검증 | P4-03, D07 | 지원 범위에 대한 증거 |
+| [ ] | P2-FU-01 | process observer parent TID/TGID lifecycle lookup 보완 | P4-04 guest 실패 증거, Phase 2 범위 확인 | fork/exec/exit lifecycle key 조회 및 Linux guest 회귀 증거; P4 파일 범위 밖 별도 후속 |
 | [ ] | V-01 | Linux MVP 최종 보장 감사 | P4-04 | claim→test 표·Required Final Report |
 | [ ] | DOC-01 | 사용자 안내·운영·문제 해결 문서 | 해당 구현 완료, 최종판은 V-01 | 설치·모드·지원 범위·진단·복구 안내 |
 | [ ] | REL-01 | 재현 배포 산출물·의존성 검토 | V-01, 지원 환경의 CI 증거 | binary/BPF/source 대응·checksum·SBOM·라이선스 기록 |
@@ -986,12 +987,23 @@ AgentTaint/
 | [ ] | F6 | rich flow·다중 라벨 상세화 | 선행 Phase 완료 | pipe/file/IPC 전파 설계 |
 | [ ] | F7 | Kubernetes 범위 상세화 | 로컬 IFC 완성·선행 Phase 완료 | cgroup/pod attribution 계획 |
 | [ ] | F8 | 설명·피드백 인터페이스 상세화 | 선행 Phase 완료 | 읽기 중심 MCP/hook 계약 |
-| [ ] | F9 | 로컬 웹 뷰어 상세화 | 이벤트 저장·조회 계약 및 선행 완료 | 단일 바이너리 뷰어 계획 |
+| [ ] | F9 | Phase 9 로컬 웹 대시보드 상세화 및 구현 | Phase 0~8 선행 완료, 이벤트 저장·조회 계약, 별도 Phase prompt 승인 | 이벤트/정책 위반 로그를 보는 단일 바이너리 로컬 브라우저 뷰어; 현재는 스텁이며 UI·서버·저장소는 미구현 |
 | [ ] | F10 | payload metadata 확장 필요성 판단 | 실제 필요성·별도 승인 | 구현 여부 결정; 자동 착수 안 함 |
 
 **설계 입력과 선행 조건의 구분:** E01~E09는 독립적인 실행 작업이 아니라 담당 작업에서 구체화할 설계 계약이다. E07을 확정하기 위해 ENV-02를 수행하고, E04를 검증하기 위해 P4-01을 수행한다. 표의 E 참조를 “이미 구현 완료돼야 설계 착수 가능”으로 해석하지 않는다. 다만 그 설계를 사용하는 후속 코드 작업에는 규범 정합성과 검증된 계약이 필요하다.
 
 **최소 진행 경로:** 관련 PRE 정합성 정리 → P0 → P1 → P2 → P3 → P4 → V-01. ENV-01/02는 P2 전에 준비하고, TOOL-01/02는 개발 보조 경로다. 외부 스킬·메모리 서버의 설치 실패가 portable P0/P1의 필수 의존성이 되지 않게 한다. 단계 사이의 기존 완료 보고·범위 확인은 생략하지 않는다.
+
+**2026-10-24 현재 순차 실행 항목:**
+
+1. **P2-FU-01 — process lifecycle lookup 후속:** P4-04 guest에서 `on_process_fork`의 parent TID 조회와 `TrackProcess`가 등록하는 process ID/TGID 사이 불일치가 관측됐다. 이 수정은 `bpf/process.bpf.c`를 포함하므로 P4-04 branch에 섞지 않고 별도 Phase 2 follow-up으로 수행한다. 변경 뒤 Linux guest에서 lifecycle 테스트를 필수 검증한다.
+2. **P4-04 — audit path-capture acceptance:** raw pathname 의미와 Linux 5.13+ 지원 하한은 D07에서 유지하기로 결정했다. no-fault helper가 경로를 읽지 못한 상태에서 성공 syscall이 관측되면 `AuditCoverage=incomplete`로 남고 policy verdict를 억제한다. 이를 complete audit으로 재해석하거나 resolved path를 `resource.path`에 섞지 않는다. 이 조건에서 P4-04 acceptance를 만족하는 증거/수용 기준은 아직 해결되지 않았으므로, 임의로 의미를 바꾸지 말고 결과를 `blocked`/미완료로 기록한다.
+3. **P4-04 통합 재검증:** P2-FU-01 결과를 반영한 정확한 통합 HEAD에서 Linux acceptance를 다시 실행한다. path-capture acceptance가 여전히 실패하면 통과로 처리하지 않고 P4-04를 열어 둔다.
+4. **CI-01/CI-02:** portable 원격 CI와 격리 Linux BPF job은 각각 승인된 workflow 범위 및 guest/runtime 검증과 연결해 진행한다.
+5. **V-01 → DOC-01 → REL-01 → REL-02 → F5/REL-03:** Linux MVP 검증 이후 지원 보장 감사, 사용자/운영 문서, 산출물 검토, 배포 결정과 제한된 시범 사용을 순서대로 수행한다.
+6. **Phase 5~8:** Linux MVP 이후 macOS observer → rich flow → Kubernetes → agent feedback 순으로 상세화·구현한다. 각 단계의 선행 계약과 승인 범위를 먼저 확인한다.
+7. **F9 / Phase 9 대시보드:** Phase 0~8 완료 후 이벤트/정책 결과의 저장·조회 계약을 설계하고 별도 Phase prompt를 상세화한 뒤, 같은 바이너리의 로컬 브라우저 뷰어를 구현한다. 클라우드/SaaS는 현재 계획에 포함하지 않는다.
+8. **F10 / Phase 10:** payload-aware LLM sink는 조건부 항목으로 유지하며 실제 필요성과 별도 승인이 있기 전에는 착수하지 않는다.
 
 ### 12.2 문서 정합성 준비 작업
 
