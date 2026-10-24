@@ -65,8 +65,13 @@ func TestCoverageQualityDropPollingUsesOnlyNewDeltas(t *testing.T) {
 	current[0] = 5
 	recordBPFDropDeltas(&lastSeen, current, quality)
 	_, detail = quality.report()
-	if !strings.Contains(detail, "process-ring-reserve=3") {
+	if !strings.Contains(detail, "process-ring-reserve=5") {
 		t.Fatalf("report did not accumulate only new process drops: %s", detail)
+	}
+	recordBPFDropDeltas(&lastSeen, current, quality)
+	_, detail = quality.report()
+	if strings.Contains(detail, "process-ring-reserve=10") || !strings.Contains(detail, "process-ring-reserve=5") {
+		t.Fatalf("repeated polling changed the accumulated process drops: %s", detail)
 	}
 
 	current[0] = 4

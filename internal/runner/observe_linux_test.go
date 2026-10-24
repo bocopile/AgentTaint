@@ -769,12 +769,6 @@ func TestRunPolicyModeScenarioMatrix(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer listener.Close()
-	port := listener.Addr().(*net.TCPAddr).Port
 	identity := &TargetIdentity{UID: 65534, GID: 65534}
 	type scenario struct {
 		name       string
@@ -791,6 +785,12 @@ func TestRunPolicyModeScenarioMatrix(t *testing.T) {
 	for _, scenario := range scenarios {
 		for _, mode := range modes {
 			t.Run(string(mode)+"/"+scenario.name, func(t *testing.T) {
+				listener, err := net.Listen("tcp4", "127.0.0.1:0")
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer listener.Close()
+				port := listener.Addr().(*net.TCPAddr).Port
 				action := "deny"
 				if scenario.name == "audit-only" {
 					action = "audit"
@@ -812,7 +812,7 @@ func TestRunPolicyModeScenarioMatrix(t *testing.T) {
 					sink = "if " + connect + "; then printf connected; else printf connect_failed; fi"
 				}
 				script := filepath.Join(root, string(mode)+"-"+scenario.name+".sh")
-				scriptBody := "#!/bin/bash\nset +e\nexec 3<" + shellQuote(scenario.source) + "\n" + sink + "\nsleep 0.2\nprintf survived\n"
+				scriptBody := "#!/bin/bash\nset +e\nif exec 3<" + shellQuote(scenario.source) + "; then printf source_opened; else printf source_open_failed; fi\n" + sink + "\nsleep 0.2\nprintf survived\n"
 				if scenario.name == "audit-only" {
 					scriptBody = strings.Replace(scriptBody, "printf survived", "printf audited", 1)
 				}
@@ -821,9 +821,22 @@ func TestRunPolicyModeScenarioMatrix(t *testing.T) {
 				}
 				var stdout, stderr bytes.Buffer
 				auditPath := filepath.Join(root, string(mode)+"-"+scenario.name+".jsonl")
+				auditSummary := func() string {
+					data, _ := os.ReadFile(auditPath)
+					var lines []string
+					for _, line := range bytes.Split(data, []byte{'\n'}) {
+						if bytes.Contains(line, []byte(secret)) || bytes.Contains(line, []byte(`"event":"network_connect"`)) || bytes.Contains(line, []byte(`"event":"policy_violation"`)) {
+							lines = append(lines, string(line))
+						}
+					}
+					return strings.Join(lines, "\n")
+				}
 				code, status, runErr := RunWithPolicyMode(context.Background(), env.Resolver{}, script, []string{script}, nil, &stdout, &stderr, auditPath, snapshot, identity, mode)
 				if status.RequestedMode != mode || status.ActiveMode != mode {
 					t.Fatalf("mode status does not report the active run: code=%d status=%+v stderr=%q err=%v", code, status, stderr.String(), runErr)
+				}
+				if !strings.Contains(stdout.String(), "source_opened") {
+					t.Fatalf("scenario source open did not succeed: code=%d status=%+v stdout=%q stderr=%q err=%v", code, status, stdout.String(), stderr.String(), runErr)
 				}
 				if status.AuditCoverage == "incomplete" {
 					if runErr == nil || !strings.Contains(runErr.Error(), "audit coverage is incomplete") {
@@ -837,20 +850,22 @@ func TestRunPolicyModeScenarioMatrix(t *testing.T) {
 				blocked := mode == ModeBlock && denied
 				killed := mode == ModeKill && denied
 				connected := !blocked
+				// Post-event kill may run before the target resumes to print after
+				// connect; receiver Accept below verifies the completed effect.
 				if blocked {
 					if scenario.forkedSink {
 						if !strings.Contains(stdout.String(), "child_connect_failed") {
 							t.Fatalf("fork child connect was not rejected: stdout=%q stderr=%q", stdout.String(), stderr.String())
 						}
 					} else if !strings.Contains(stdout.String(), "connect_failed") {
-						t.Fatalf("direct connect was not rejected: stdout=%q stderr=%q", stdout.String(), stderr.String())
+						t.Fatalf("direct connect was not rejected: code=%d status=%+v stdout=%q stderr=%q err=%v", code, status, stdout.String(), stderr.String(), runErr)
 					}
-				} else if !strings.Contains(stdout.String(), "connected") {
-					t.Fatalf("expected target connection to complete: stdout=%q stderr=%q", stdout.String(), stderr.String())
+				} else if mode != ModeKill && !strings.Contains(stdout.String(), "connected") {
+					t.Fatalf("expected target connection to complete: code=%d status=%+v stdout=%q stderr=%q err=%v", code, status, stdout.String(), stderr.String(), runErr)
 				}
 				continued := strings.Contains(stdout.String(), "survived") || strings.Contains(stdout.String(), "audited")
 				if killed == continued {
-					t.Fatalf("kill result does not match the target's post-event continuation: status=%+v stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+					t.Fatalf("kill result does not match the target's post-event continuation: code=%d status=%+v stdout=%q stderr=%q err=%v relevant_audit=%s", code, status, stdout.String(), stderr.String(), runErr, auditSummary())
 				}
 				if scenario.name == "audit-only" && !strings.Contains(stdout.String(), "audited") {
 					t.Fatalf("audit-only policy changed target continuation: stdout=%q", stdout.String())
@@ -866,7 +881,7 @@ func TestRunPolicyModeScenarioMatrix(t *testing.T) {
 						expectedNotifications = 1
 					}
 					if status.Notifications != expectedNotifications {
-						t.Fatalf("notify count=%d, want %d: stderr=%q", status.Notifications, expectedNotifications, stderr.String())
+						t.Fatalf("notify count=%d, want %d: code=%d status=%+v stdout=%q stderr=%q err=%v relevant_audit=%s", status.Notifications, expectedNotifications, code, status, stdout.String(), stderr.String(), runErr, auditSummary())
 					}
 					if expectedNotifications == 1 && (!strings.Contains(status.ActualAction, "notification") || !strings.Contains(stderr.String(), "audit_event_id=")) {
 						t.Fatalf("notify did not reference an audit event: status=%+v stderr=%q", status, stderr.String())
@@ -896,7 +911,7 @@ func TestRunPolicyModeScenarioMatrix(t *testing.T) {
 				} else {
 					if acceptErr == nil {
 						_ = conn.Close()
-						t.Fatal("block mode allowed a denied connection to reach the receiver")
+						t.Fatalf("block mode allowed a denied connection to reach the receiver: code=%d status=%+v stdout=%q stderr=%q err=%v relevant_audit=%s", code, status, stdout.String(), stderr.String(), runErr, auditSummary())
 					}
 					if timeout, ok := acceptErr.(net.Error); !ok || !timeout.Timeout() {
 						t.Fatalf("receiver block check returned %v", acceptErr)
@@ -998,6 +1013,9 @@ func TestRunBlockHookPreparationFailureDoesNotStartTarget(t *testing.T) {
 }
 
 func TestRunObservedKeepsBinaryStreamsSeparateFromAudit(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to load the Linux observer")
+	}
 	root, err := os.MkdirTemp("/tmp", "agenttaint-binary-streams-")
 	if err != nil {
 		t.Fatal(err)
