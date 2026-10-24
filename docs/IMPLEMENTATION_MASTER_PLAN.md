@@ -977,7 +977,7 @@ AgentTaint/
 | [x] | P4-02 | 지원 source·network pre-op 집행 | P4-01 | 별도 direct-file deny 및 source-attempt→network deny guest fixtures에서 실제 EPERM, receiver 비도달, allow 대조군과 Go reference 차이를 검증 (2026-10-21; runner audit coverage limitation은 12.10 최신 업데이트) |
 | [x] | P4-03 | modes·지원 불가 처리·health·로그 | P4-02 | monitor/notify/block/kill 16개 scenario 조합, 상태·audit loss 및 fail-before-start 검증 (2026-10-21; 제한은 P4-03 실행 기록) |
 | [ ] | P4-04 | adversarial·장애·아키텍처별 검증 | P4-03, D07 | 지원 범위에 대한 증거 |
-| [ ] | P2-FU-01 | process observer parent TID/TGID lifecycle lookup 보완 | P4-04 guest 실패 증거, Phase 2 범위 확인 | fork/exec/exit lifecycle key 조회 및 Linux guest 회귀 증거; P4 파일 범위 밖 별도 후속 |
+| [x] | P2-FU-01 | process observer parent TID/TGID lifecycle lookup 보완 | P4-04 guest 실패 증거, Phase 2 범위 확인 | `on_process_fork` parent TID miss 시 tracked TGID fallback; aarch64 guest lifecycle test와 CPU 1 고정 sensor package 통과 (2026-10-24; 비고정/CPU 0 network observer timeout은 별도 미해결) |
 | [ ] | V-01 | Linux MVP 최종 보장 감사 | P4-04 | claim→test 표·Required Final Report |
 | [ ] | DOC-01 | 사용자 안내·운영·문제 해결 문서 | 해당 구현 완료, 최종판은 V-01 | 설치·모드·지원 범위·진단·복구 안내 |
 | [ ] | REL-01 | 재현 배포 산출물·의존성 검토 | V-01, 지원 환경의 CI 증거 | binary/BPF/source 대응·checksum·SBOM·라이선스 기록 |
@@ -996,9 +996,9 @@ AgentTaint/
 
 **2026-10-24 현재 순차 실행 항목:**
 
-1. **P2-FU-01 — process lifecycle lookup 후속:** P4-04 guest에서 `on_process_fork`의 parent TID 조회와 `TrackProcess`가 등록하는 process ID/TGID 사이 불일치가 관측됐다. 이 수정은 `bpf/process.bpf.c`를 포함하므로 P4-04 branch에 섞지 않고 별도 Phase 2 follow-up으로 수행한다. 변경 뒤 Linux guest에서 lifecycle 테스트를 필수 검증한다.
-2. **P4-04 — audit path-capture acceptance:** raw pathname 의미와 Linux 5.13+ 지원 하한은 D07에서 유지하기로 결정했다. no-fault helper가 경로를 읽지 못한 상태에서 성공 syscall이 관측되면 `AuditCoverage=incomplete`로 남고 policy verdict를 억제한다. 이를 complete audit으로 재해석하거나 resolved path를 `resource.path`에 섞지 않는다. 이 조건에서 P4-04 acceptance를 만족하는 증거/수용 기준은 아직 해결되지 않았으므로, 임의로 의미를 바꾸지 말고 결과를 `blocked`/미완료로 기록한다.
-3. **P4-04 통합 재검증:** P2-FU-01 결과를 반영한 정확한 통합 HEAD에서 Linux acceptance를 다시 실행한다. path-capture acceptance가 여전히 실패하면 통과로 처리하지 않고 P4-04를 열어 둔다.
+1. **P2-FU-01 — process lifecycle lookup 후속: 완료.** `20cdee1`에서 `on_process_fork`가 parent TID map lookup miss 시 parent TGID를 조회한다. guest `TestProcessObserverThreadLifecycle` 및 CPU 1 affinity의 전체 sensor package는 PASS했다. 무고정 전체 package와 CPU 0의 `TestFileAndConnectObserver`는 network event timeout으로 FAIL했고, CPU 1 단독 network observer는 PASS했다. 이 affinity 차이는 별도 P2 runtime 신뢰성 이슈로 기록한다.
+2. **P4-04 — audit path-capture acceptance: 미해결.** raw pathname 의미와 Linux 5.13+ 지원 하한은 D07에서 유지하기로 결정했다. no-fault helper가 경로를 읽지 못한 상태에서 성공 syscall이 관측되면 `AuditCoverage=incomplete`로 남고 policy verdict를 억제한다. 이를 complete audit으로 재해석하거나 resolved path를 `resource.path`에 섞지 않는다. 현 규약과 수용 기준을 동시에 만족할 구현 경로가 확인되지 않아 P4-04는 `blocked`/미완료다.
+3. **P4-04 통합 재검증: 실행 완료, 실패.** P2-FU-01 및 P4-04 acceptance fixture를 포함한 통합 HEAD에서 BPF generate, `go vet ./...`, `go build ./...`, 비특권 `go test -count=1 ./...`는 PASS했다. root runner suite의 `TestRunObservedPolicyAuditPipeline`, `TestRunPolicyModesNotifyAndKillAfterPolicyEvent`, `TestRunPolicyModeScenarioMatrix`가 `file-openat-path-read-helper-errno-14-syscall-errno-6` 및 `...-syscall-success`로 coverage incomplete되어 FAIL했다. notify/kill은 fail-closed로 억제됐다. 세부 로그와 제약은 문서 끝의 2026-10-24 최신 기록에 있다.
 4. **CI-01/CI-02:** portable 원격 CI와 격리 Linux BPF job은 각각 승인된 workflow 범위 및 guest/runtime 검증과 연결해 진행한다.
 5. **V-01 → DOC-01 → REL-01 → REL-02 → F5/REL-03:** Linux MVP 검증 이후 지원 보장 감사, 사용자/운영 문서, 산출물 검토, 배포 결정과 제한된 시범 사용을 순서대로 수행한다.
 6. **Phase 5~8:** Linux MVP 이후 macOS observer → rich flow → Kubernetes → agent feedback 순으로 상세화·구현한다. 각 단계의 선행 계약과 승인 범위를 먼저 확인한다.
@@ -2904,3 +2904,10 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 같은 guest의 `TestFileAndConnectObserver` 단독 실행은 CPU 0 및 CPU 1 affinity에서 각각 PASS했다. 앞선 root package suite에서는 해당 테스트 timeout이 한 차례 있었으므로, 이를 안정적 회귀 통과나 전 CPU 보장으로 일반화하지 않는다.
 - `AGENTTAINT_REQUIRE_ENFORCE_EXIT_DELETE=1`의 `TestEnforceProcessExitMapDeleteFailureFailsClosed`와 `AGENTTAINT_REQUIRE_S25_BPF=1`의 `TestRunObservedMmapPathReadFault|TestRunObservedSeparatesConcurrentRuns`는 각각 PASS했다. kill-mode marker assertion 수정 후 guest `gofmt -d`는 빈 출력, 비특권 `go test -count=1 ./internal/runner`는 PASS했다. 임시 진단 변경을 복원한 baseline BPF source에서 BPF generate도 성공했고, root mode matrix는 같은 audit path-capture incompleteness로 계속 FAIL했다. 전체 root runner/sensor acceptance가 실패했으므로 P4-04는 미완료다.
 - 현재 남은 일은 audit path capture의 정확한 의미를 보존하면서 no-fault 읽기 손실을 다룰 수 있는 설계를 확정하고, P4 허용 범위에서 재검증하는 것이다. process lifecycle TID/TGID fallback은 Phase 2 follow-up으로 분리한다. 이번 게스트 검증은 aarch64만 포함하며 amd64 Linux runtime은 `not_tested`다. 당시 세션에서는 host 작업 branch의 `.git`이 permission profile상 읽기 전용이어서 그 변경을 commit/push하지 않았다.
+
+#### P2-FU-01 및 P4-04 통합 재검증 — 2026-10-24
+
+- P2-FU-01은 별도 branch에서 `bpf/process.bpf.c`의 `on_process_fork`를 수정했다. scoped tracking 중 parent TID map lookup이 실패하면 parent TGID를 조회한다. `TrackProcess`가 process ID/TGID를 등록하고, worker thread가 fork를 수행할 때 TID key가 없을 수 있는 불일치를 보완한다. 기존 `TestProcessObserverThreadLifecycle`의 `exit`/`exec` subtest가 해당 regression fixture다.
+- 이 commit `20cdee1`의 guest 복사본에서 `go generate ./internal/sensor/linux`와 root `go test -count=1 -run '^TestProcessObserverThreadLifecycle$' ./internal/sensor/linux`는 PASS했다. root 전체 sensor package는 무고정 CPU와 CPU 0에서 `TestFileAndConnectObserver`가 event timeout으로 FAIL했지만, CPU 1 고정의 해당 테스트 및 전체 `go test -count=1 ./internal/sensor/linux`는 PASS했다. 따라서 P2-FU-01의 lifecycle 회귀는 검증했으나 network observer의 CPU별 안정성을 일반화하지 않는다.
+- P2-FU-01과 P4-04 acceptance fixture를 포함한 통합 HEAD `b5bd907`에서 `make BUILD_DIR=.build-integration linux-acceptance`를 실행했다. sensor/enforcement BPF generate, `go vet ./...`, `go build ./...`, 비특권 `go test -count=1 ./...`는 PASS했다. root runner acceptance는 `TestRunObservedPolicyAuditPipeline`, `TestRunPolicyModesNotifyAndKillAfterPolicyEvent`, `TestRunPolicyModeScenarioMatrix`에서 `file-openat-path-read-helper-errno-14-syscall-errno-6` 및 `...-syscall-success`로 coverage incomplete되어 FAIL했다. monitor/notify/kill 관련 일부 scenario는 후속 audit verdict/action이 억제됐다. Make target은 runner 단계에서 멈춰 root sensor package, required exit-delete와 S25 outer acceptance는 이 통합 실행에서 `not_tested`다.
+- 이 결과는 D07의 raw syscall pathname 의미 및 Linux 5.13+ 지원 하한을 유지하는 기존 결정과 일치한다. 그러나 P4-04가 요구하는 완전 감사 기록 수용 기준은 충족하지 못한다. 불완전 상태를 정상 완료로 바꾸거나 resolved path를 기존 `resource.path`에 섞지 않았다. P4-04는 계속 미완료이며, acceptance 기준 또는 경로 수집 계약을 바꿀지는 별도 결정 전까지 보류한다.
