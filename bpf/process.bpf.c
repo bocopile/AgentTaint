@@ -85,10 +85,13 @@ SEC("tp_btf/sched_process_fork")
 int BPF_PROG(on_process_fork, struct task_struct *parent, struct task_struct *child)
 {
 	__u32 parent_tid = BPF_CORE_READ(parent, pid);
+	__u32 parent_tgid = BPF_CORE_READ(parent, tgid);
 	__u32 child_tid = BPF_CORE_READ(child, pid);
 	__u32 child_tgid = BPF_CORE_READ(child, tgid);
 	bool scoped = tracking_enabled();
 	__u64 *parent_scope = scoped ? bpf_map_lookup_elem(&tracked_processes, &parent_tid) : 0;
+	if (scoped && !parent_scope && parent_tgid != parent_tid)
+		parent_scope = bpf_map_lookup_elem(&tracked_processes, &parent_tgid);
 	if (scoped && !parent_scope)
 		return 0;
 	__u64 scope_id = scoped ? *parent_scope : current_scope();
@@ -99,25 +102,25 @@ int BPF_PROG(on_process_fork, struct task_struct *parent, struct task_struct *ch
 	}
 
 	__u64 child_birth = parent_birth;
-	if (child_tgid != BPF_CORE_READ(parent, tgid))
+	if (child_tgid != parent_tgid)
 		child_birth = BPF_CORE_READ(child, start_boottime);
 	if (!child_birth || bpf_map_update_elem(&process_births, &child_tid, &child_birth, BPF_ANY) < 0) {
 		count_drop(AGENTTAINT_DROP_PROCESS_CAPTURE);
 		return 0;
 	}
-	if (child_tgid != BPF_CORE_READ(parent, tgid) &&
+	if (child_tgid != parent_tgid &&
 	    bpf_map_update_elem(&process_births, &child_tgid, &child_birth, BPF_ANY) < 0) {
 		count_drop(AGENTTAINT_DROP_PROCESS_CAPTURE);
 		return 0;
 	}
 	if (scoped && (bpf_map_update_elem(&tracked_processes, &child_tid, &scope_id, BPF_ANY) < 0 ||
-	    (child_tgid != BPF_CORE_READ(parent, tgid) &&
+	    (child_tgid != parent_tgid &&
 	     bpf_map_update_elem(&tracked_processes, &child_tgid, &scope_id, BPF_ANY) < 0))) {
 		count_drop(AGENTTAINT_DROP_PROCESS_CAPTURE);
 		return 0;
 	}
 	/* Thread creation shares the process identity and is not a core fork event. */
-	if (child_tgid == BPF_CORE_READ(parent, tgid))
+	if (child_tgid == parent_tgid)
 		return 0;
 
 	struct agenttaint_raw_fork *event = bpf_ringbuf_reserve(&process_events, sizeof(*event), 0);
