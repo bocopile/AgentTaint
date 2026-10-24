@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 480" role="img" aria-labelledby="title desc">
+  <title id="title">AgentTaint information flow</title>
+  <desc id="desc">A sensitive file is associated with a process-level SECRET label, propagated to child processes, checked at a new IPv4 connection sink, and handled by policy.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#52657a"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #1d2939; }
+      .title { font-size: 25px; font-weight: 700; }
+      .label { font-size: 15px; font-weight: 700; letter-spacing: 1px; }
+      .body { font-size: 16px; }
+      .small { font-size: 13px; fill: #475467; }
+      .arrow { stroke: #52657a; stroke-width: 3; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1120" height="480" rx="22" fill="#f7f9fc"/>
+  <text x="40" y="48" class="title">민감 파일에서 정책 판단까지</text>
+  <text x="40" y="75" class="small">AgentTaint는 프롬프트가 아니라 실행 중 관찰한 OS event를 연결합니다.</text>
+
+  <g transform="translate(38 122)">
+    <rect width="190" height="145" rx="16" fill="#fff3e8" stroke="#f4a261" stroke-width="2"/>
+    <text x="18" y="31" class="label" fill="#9a3412">SOURCE</text>
+    <text x="18" y="68" class="body" font-weight="700">민감 파일</text>
+    <text x="18" y="96" class="small">예: /workspace/.env</text>
+    <text x="18" y="120" class="small">정책에 경로를 지정</text>
+  </g>
+  <line x1="234" y1="195" x2="270" y2="195" class="arrow"/>
+
+  <g transform="translate(280 122)">
+    <rect width="190" height="145" rx="16" fill="#eef4ff" stroke="#7aa2f7" stroke-width="2"/>
+    <text x="18" y="31" class="label" fill="#1d4ed8">LABEL</text>
+    <text x="18" y="68" class="body" font-weight="700">프로세스 표시</text>
+    <text x="18" y="96" class="small">SECRET</text>
+    <text x="18" y="120" class="small">성공한 open은 감사 근거</text>
+  </g>
+  <line x1="476" y1="195" x2="512" y2="195" class="arrow"/>
+
+  <g transform="translate(522 122)">
+    <rect width="190" height="145" rx="16" fill="#f1edff" stroke="#a78bfa" stroke-width="2"/>
+    <text x="18" y="31" class="label" fill="#6d28d9">PROPAGATION</text>
+    <text x="18" y="68" class="body" font-weight="700">자식 프로세스</text>
+    <text x="18" y="96" class="small">fork / exec 계보</text>
+    <text x="18" y="120" class="small">지원 범위에서 label 전달</text>
+  </g>
+  <line x1="718" y1="195" x2="754" y2="195" class="arrow"/>
+
+  <g transform="translate(764 122)">
+    <rect width="150" height="145" rx="16" fill="#e8f7f1" stroke="#58b995" stroke-width="2"/>
+    <text x="18" y="31" class="label" fill="#087443">SINK</text>
+    <text x="18" y="68" class="body" font-weight="700">새 연결</text>
+    <text x="18" y="96" class="small">IPv4 connect</text>
+    <text x="18" y="120" class="small">현재 지원 범위</text>
+  </g>
+  <line x1="920" y1="195" x2="956" y2="195" class="arrow"/>
+
+  <g transform="translate(966 122)">
+    <rect width="145" height="145" rx="16" fill="#fff0f0" stroke="#f28b82" stroke-width="2"/>
+    <text x="16" y="31" class="label" fill="#b42318">DECISION</text>
+    <text x="16" y="68" class="body" font-weight="700">정책 mode</text>
+    <text x="16" y="96" class="small">기록·알림·</text>
+    <text x="16" y="118" class="small">차단·사후 종료</text>
+  </g>
+
+  <rect x="40" y="310" width="1040" height="126" rx="16" fill="#ffffff" stroke="#d0d5dd" stroke-width="1.5"/>
+  <circle cx="72" cy="348" r="10" fill="#f4a261"/>
+  <text x="96" y="354" class="body" font-weight="700">중요한 구분: 접근 label은 파일 byte를 추적하지 않습니다.</text>
+  <text x="72" y="385" class="small">Go 감사/reference 모델은 성공한 FileOpen으로 label을 기록합니다.</text>
+  <text x="72" y="410" class="small">Kernel 집행 projection은 file_open 시도에서 상태를 둘 수 있습니다. 둘은 별개이며 파일 byte를 읽었다는 증거가 아닙니다.</text>
+</svg>

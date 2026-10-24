@@ -219,6 +219,7 @@ Byte-level taint tracking을 주장하지 않으며, 사후 감지·kill을 사�
 ## Docs
 
 - [AGENTS.md](./AGENTS.md) — AI 코딩 에이전트가 항상 지켜야 하는 규칙 (프로젝트 헌법)
+- [docs/PROJECT_OVERVIEW.md](./docs/PROJECT_OVERVIEW.md) — 처음 읽는 사람을 위한 프로젝트 개요와 그림
 - [docs/THREAT_MODEL.md](./docs/THREAT_MODEL.md) — 보호 대상, 공격자 모델, non-goals
 - [docs/SECURITY_MODEL.md](./docs/SECURITY_MODEL.md) — taint 모델, 정책/event schema v1
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) — 기술 스택, 디렉터리 구조, doctor/run 역할 분리
