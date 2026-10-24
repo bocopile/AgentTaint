@@ -36,16 +36,18 @@ check:
 	go test ./...
 
 # Run from the supported Linux guest after syncing the current source tree.
-# Regenerate BPF artifacts before running the full suite, then run required
-# Linux acceptance fixtures separately so helper subprocess tests remain usable.
+# Keep test directories trusted and execute the root runner suite from a
+# traversable test binary path so target-identity helpers can re-exec it.
 linux-acceptance:
-	@test "$$(go env GOOS)" = linux || { echo "linux-acceptance must run in a Linux guest" >&2; exit 1; }
+	@umask 022; test "$$(go env GOOS)" = linux || { echo "linux-acceptance must run in a Linux guest" >&2; exit 1; }
 	go generate ./internal/sensor/linux ./internal/enforce
 	go vet ./...
 	go build ./...
-	go test -count=1 ./...
-	sudo env GOMODCACHE="$$(go env GOMODCACHE)" GOCACHE=/tmp/agenttaint-linux-acceptance-root-cache AGENTTAINT_REQUIRE_ENFORCE_EXIT_DELETE=1 go test -count=1 ./...
+	umask 022; go test -count=1 ./...
+	umask 022; mkdir -p "$(BUILD_DIR)"; go test -c -o "$(BUILD_DIR)/linux-acceptance-runner.test" ./internal/runner
+	sudo env GOMODCACHE="$$(go env GOMODCACHE)" GOCACHE=/tmp/agenttaint-linux-acceptance-root-cache AGENTTAINT_REQUIRE_ENFORCE_EXIT_DELETE=1 sh -lc 'umask 022; exec "./$(BUILD_DIR)/linux-acceptance-runner.test" -test.count=1'
+	sudo env GOMODCACHE="$$(go env GOMODCACHE)" GOCACHE=/tmp/agenttaint-linux-acceptance-root-cache AGENTTAINT_REQUIRE_ENFORCE_EXIT_DELETE=1 sh -lc 'packages=$$(go list ./... | sed "/^github.com\/bocopile\/AgentTaint\/internal\/runner$$/d"); exec go test -count=1 $$packages'
 	sudo env GOMODCACHE="$$(go env GOMODCACHE)" GOCACHE=/tmp/agenttaint-linux-acceptance-root-cache AGENTTAINT_REQUIRE_ENFORCE_EXIT_DELETE=1 go test -count=1 -run '^TestEnforceProcessExitMapDeleteFailureFailsClosed$$' ./internal/enforce
 	@if [ "$$(go env GOARCH)" = arm64 ]; then \
-		sudo env GOMODCACHE="$$(go env GOMODCACHE)" GOCACHE=/tmp/agenttaint-linux-acceptance-root-cache AGENTTAINT_REQUIRE_S25_BPF=1 go test -count=1 -run '^(TestRunObservedMmapPathReadFault|TestRunObservedSeparatesConcurrentRuns)$$' ./internal/runner; \
+		sudo env GOMODCACHE="$$(go env GOMODCACHE)" GOCACHE=/tmp/agenttaint-linux-acceptance-root-cache AGENTTAINT_REQUIRE_S25_BPF=1 sh -lc 'umask 022; exec "./$(BUILD_DIR)/linux-acceptance-runner.test" -test.count=1 -test.run="^(TestRunObservedMmapPathReadFault|TestRunObservedSeparatesConcurrentRuns)$$"'; \
 	fi
