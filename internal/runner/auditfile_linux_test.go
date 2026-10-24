@@ -10,8 +10,17 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func TestCreateAuditFileExclusive0600(t *testing.T) {
+func trustedAuditTempDir(t *testing.T) string {
+	t.Helper()
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestCreateAuditFileExclusive0600(t *testing.T) {
+	dir := trustedAuditTempDir(t)
 	path := filepath.Join(dir, "audit.jsonl")
 	audit, err := createAuditFile(path)
 	if err != nil {
@@ -40,7 +49,7 @@ func TestCreateAuditFileExclusive0600(t *testing.T) {
 }
 
 func TestCreateAuditFileRejectsUnsafePaths(t *testing.T) {
-	root := t.TempDir()
+	root := trustedAuditTempDir(t)
 	real := filepath.Join(root, "real")
 	if err := os.Mkdir(real, 0o700); err != nil {
 		t.Fatal(err)
@@ -78,7 +87,7 @@ func TestCreateAuditFileRejectsUnsafePaths(t *testing.T) {
 }
 
 func TestAuditDiscardDoesNotRemoveReplacement(t *testing.T) {
-	dir := t.TempDir()
+	dir := trustedAuditTempDir(t)
 	path := filepath.Join(dir, "audit.jsonl")
 	audit, err := createAuditFile(path)
 	if err != nil {
