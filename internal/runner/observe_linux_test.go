@@ -488,7 +488,7 @@ func TestRunObservedPolicyAuditPipeline(t *testing.T) {
 		}
 	}()
 	identity := &TargetIdentity{UID: 65534, GID: 65534}
-	run := func(name, action, body string) []*core.PolicyViolationEvent {
+	run := func(name, action, body string) ([]*core.PolicyViolationEvent, bool) {
 		t.Helper()
 		policyPath := filepath.Join(root, name+".yaml")
 		policyText := "sources:\n  - path: " + secret + "\n    label: SECRET\nrules:\n  - name: " + name + "\n    when: {process_has: SECRET}\n    sink: {network: {external: [127.0.0.0/8]}}\n    action: " + action + "\n"
@@ -506,13 +506,17 @@ func TestRunObservedPolicyAuditPipeline(t *testing.T) {
 		}
 		auditPath := filepath.Join(root, name+".jsonl")
 		code, err := RunObservedWithPolicy(context.Background(), env.Resolver{}, script, []string{script}, nil, io.Discard, io.Discard, auditPath, snapshot, identity)
-		if err != nil || code != 0 {
+		incomplete := err != nil && strings.Contains(err.Error(), "audit coverage is incomplete")
+		if (incomplete && code != 1) || (!incomplete && (err != nil || code != 0)) {
 			t.Fatalf("%s run: code=%d err=%v", name, code, err)
 		}
 		data, err := os.ReadFile(auditPath)
 		if err != nil {
 			t.Fatal(err)
 		}
+		// Under D07, a missing raw pathname keeps the run incomplete. A
+		// completed audit requires the corresponding policy event; incomplete
+		// history may omit that verdict but must never be reported as complete.
 		var violations []*core.PolicyViolationEvent
 		for _, line := range bytes.Split(bytes.TrimSpace(data), []byte{'\n'}) {
 			if len(line) == 0 {
@@ -526,22 +530,31 @@ func TestRunObservedPolicyAuditPipeline(t *testing.T) {
 				violations = append(violations, violation)
 			}
 		}
-		return violations
+		if incomplete {
+			t.Logf("%s run reported incomplete audit coverage; policy verdict is unavailable", name)
+		}
+		return violations, incomplete
+	}
+	assertPolicyEvent := func(name string, got []*core.PolicyViolationEvent, incomplete bool, decision string) {
+		t.Helper()
+		if incomplete && len(got) == 0 {
+			return
+		}
+		if len(got) != 1 || got[0].Decision != decision || got[0].OperationResult != core.ResultSuccess {
+			t.Fatalf("%s policy event = %#v, want one successful %s event", name, got, decision)
+		}
 	}
 
 	connect := "exec 4<>/dev/tcp/127.0.0.1/" + fmt.Sprint(port)
-	if got := run("normal", "deny", "exec 3<"+shellQuote(normal)+"\n/bin/bash -c "+shellQuote(connect)); len(got) != 0 {
+	if got, _ := run("normal", "deny", "exec 3<"+shellQuote(normal)+"\n/bin/bash -c "+shellQuote(connect)); len(got) != 0 {
 		t.Fatalf("normal source flow was tainted: %#v", got)
 	}
-	if got := run("sensitive-read", "deny", "exec 3<"+shellQuote(secret)+"\n"+connect); len(got) != 1 || got[0].Decision != "deny" || got[0].OperationResult != core.ResultSuccess {
-		t.Fatalf("direct deny did not preserve successful operation: %#v", got)
-	}
-	if got := run("subprocess-exfil", "deny", "exec 3<"+shellQuote(secret)+"\n/bin/bash -c "+shellQuote(connect)); len(got) != 1 || got[0].Decision != "deny" || got[0].OperationResult != core.ResultSuccess {
-		t.Fatalf("child sink was not audited: %#v", got)
-	}
-	if got := run("audit-only", "audit", "exec 3<"+shellQuote(secret)+"\n"+connect); len(got) != 1 || got[0].Decision != "audit" || got[0].OperationResult != core.ResultSuccess {
-		t.Fatalf("audit-only flow changed operation result: %#v", got)
-	}
+	got, incomplete := run("sensitive-read", "deny", "exec 3<"+shellQuote(secret)+"\n"+connect)
+	assertPolicyEvent("direct deny", got, incomplete, "deny")
+	got, incomplete = run("subprocess-exfil", "deny", "exec 3<"+shellQuote(secret)+"\n/bin/bash -c "+shellQuote(connect))
+	assertPolicyEvent("child sink", got, incomplete, "deny")
+	got, incomplete = run("audit-only", "audit", "exec 3<"+shellQuote(secret)+"\n"+connect)
+	assertPolicyEvent("audit-only", got, incomplete, "audit")
 	for i := 0; i < 4; i++ {
 		select {
 		case <-accepted:
@@ -637,20 +650,6 @@ func TestRunPolicyModesNotifyAndKillAfterPolicyEvent(t *testing.T) {
 		} else if status.AuditCoverage != "complete" || runErr != nil {
 			t.Fatalf("%s mode returned unexpected coverage/result: status=%+v err=%v", mode, status, runErr)
 		}
-		switch mode {
-		case ModeMonitor:
-			if status.ActualAction != "observe_only" || status.Notifications != 0 || !strings.Contains(stdout.String(), "survived") {
-				t.Fatalf("monitor changed the target or reported an action: status=%+v stdout=%q stderr=%q", status, stdout.String(), stderr.String())
-			}
-		case ModeNotify:
-			if status.ActualAction != "post_event_notification" || status.Notifications != 1 || !strings.Contains(stderr.String(), "audit_event_id=") || !strings.Contains(stdout.String(), "survived") {
-				t.Fatalf("notify did not report its linked post-event action: status=%+v stdout=%q stderr=%q", status, stdout.String(), stderr.String())
-			}
-		case ModeKill:
-			if status.ActualAction != "post_event_kill" || status.Result != "cgroup_killed_after_policy_event" || strings.Contains(stdout.String(), "survived") {
-				t.Fatalf("kill did not terminate the run after the policy event: status=%+v stdout=%q stderr=%q", status, stdout.String(), stderr.String())
-			}
-		}
 		data, err := os.ReadFile(filepath.Join(root, string(mode)+".jsonl"))
 		if err != nil {
 			t.Fatal(err)
@@ -671,8 +670,30 @@ func TestRunPolicyModesNotifyAndKillAfterPolicyEvent(t *testing.T) {
 				}
 			}
 		}
-		if !foundDeny {
+		if !foundDeny && status.AuditCoverage != "incomplete" {
 			t.Fatalf("%s mode lacks a successful post-event deny record", mode)
+		}
+		switch mode {
+		case ModeMonitor:
+			if status.ActualAction != "observe_only" || status.Notifications != 0 || !strings.Contains(stdout.String(), "survived") {
+				t.Fatalf("monitor changed the target or reported an action: status=%+v stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+			}
+		case ModeNotify:
+			if foundDeny {
+				if status.ActualAction != "post_event_notification" || status.Notifications != 1 || !strings.Contains(stderr.String(), "audit_event_id=") || !strings.Contains(stdout.String(), "survived") {
+					t.Fatalf("notify did not report its linked post-event action: status=%+v stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+				}
+			} else if status.ActualAction != "none" || status.Notifications != 0 || !strings.Contains(stdout.String(), "survived") {
+				t.Fatalf("notify acted without a complete-history deny record: status=%+v stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+			}
+		case ModeKill:
+			if foundDeny {
+				if status.ActualAction != "post_event_kill" || status.Result != "cgroup_killed_after_policy_event" || strings.Contains(stdout.String(), "survived") {
+					t.Fatalf("kill did not terminate the run after the policy event: status=%+v stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+				}
+			} else if status.ActualAction != "none" || !strings.Contains(stdout.String(), "survived") {
+				t.Fatalf("kill acted without a successful post-event deny record: status=%+v stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+			}
 		}
 		select {
 		case acceptErr := <-accepted:
@@ -846,9 +867,32 @@ func TestRunPolicyModeScenarioMatrix(t *testing.T) {
 					t.Fatalf("unexpected audit coverage result: status=%+v err=%v", status, runErr)
 				}
 				tainted := scenario.name != "normal"
+				data, err := os.ReadFile(auditPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var foundDecision, foundDeny bool
+				for _, line := range bytes.Split(bytes.TrimSpace(data), []byte{'\n'}) {
+					if len(line) == 0 {
+						continue
+					}
+					event, err := core.DecodeEvent(line)
+					if err != nil {
+						t.Fatalf("%s invalid audit event %s: %v", mode, line, err)
+					}
+					if violation, ok := event.(*core.PolicyViolationEvent); ok && violation.OperationResult == core.ResultSuccess {
+						foundDecision = true
+						if violation.Decision == "deny" {
+							foundDeny = true
+						}
+					}
+				}
+				if status.AuditCoverage == "complete" && mode != ModeBlock && foundDecision != tainted {
+					t.Fatalf("complete audit has policy decision=%t, want tainted=%t: status=%+v audit=%s", foundDecision, tainted, status, auditSummary())
+				}
 				denied := tainted && action == "deny"
 				blocked := mode == ModeBlock && denied
-				killed := mode == ModeKill && denied
+				killed := mode == ModeKill && foundDeny
 				connected := !blocked
 				// Post-event kill may run before the target resumes to print after
 				// connect; receiver Accept below verifies the completed effect.
@@ -877,7 +921,7 @@ func TestRunPolicyModeScenarioMatrix(t *testing.T) {
 					}
 				case ModeNotify:
 					expectedNotifications := uint64(0)
-					if tainted {
+					if foundDecision {
 						expectedNotifications = 1
 					}
 					if status.Notifications != expectedNotifications {
