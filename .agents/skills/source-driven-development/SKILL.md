@@ -16,5 +16,5 @@ Project rules and normative security documents take precedence. For security
 semantics, use `agenttaint-security-semantics-review`; the upstream skill's
 `security-and-hardening` dependency is not vendored.
 
-Upstream reference: [`UPSTREAM.md`](UPSTREAM.md) at commit
+Upstream reference: [`references/upstream/UPSTREAM.md`](references/upstream/UPSTREAM.md) at commit
 [`9d0c60d`](https://github.com/addyosmani/agent-skills/blob/9d0c60d406b454a78ccc0a175b19932047aa4dac/skills/source-driven-development/SKILL.md).
