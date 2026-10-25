@@ -6,7 +6,7 @@ system을 목표로 한다. **현재 구현은 Linux eBPF 관측, Phase 3 audit-
 taint/policy 평가, 제한된 Phase 4 BPF-LSM 사전 집행을 포함한다. 차단 증거는
 지정된 Linux guest와 fixture에 한정되며 P4-04 전체 검증은 진행 중이다.**
 
-> **Status: 🚧 제한된 Linux MVP — observer·taint·policy와 일부 BPF-LSM block 시나리오를 guest에서 검증; S25 동시 실행 audit completeness와 P4-04는 미완료. 최종 보장 감사(V-01)와 사용자 문서 확정(DOC-01)도 대기 중**
+> **Status: 🚧 제한된 Linux MVP — observer·taint·policy와 일부 BPF-LSM block 시나리오를 aarch64 guest에서 검증; S25 mmap path-capture 및 concurrent-run no-loss fixtures는 Linux 7.0.0-28에서 통과했다. 다른 kernel/architecture의 P4-04 검증, 최종 보장 감사(V-01), 사용자 문서 확정(DOC-01)은 남아 있다.**
 > 진행 단계는 [docs/ROADMAP.md](./docs/ROADMAP.md), AI 코딩 에이전트가
 > 따르는 규칙은 [AGENTS.md](./AGENTS.md), Phase별 작업 지시는
 > [prompts/](./prompts/) 참고. 스택은 **Go + C/CO-RE(cilium/ebpf)**로
