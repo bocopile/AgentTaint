@@ -954,7 +954,7 @@ AgentTaint/
 |---|---|---|---|---|
 | [x] | DOC-00 | 2026-10-25 현재 상태·잔여 작업·Git 전략 snapshot 통합 | INT-00 변경 소유권 분류 | 12.14절 기준선·의존성 목록을 integration에 반영하고 문서 diff 검토·`git diff --check` 완료 (integration `9a510f4`) |
 | [x] | PRE-01 | 문서·Phase·예시 불일치 정리안 적용 | 문서 수정 요청 | Phase 2 probe 상태 정합성, Phase 0/1 Roadmap snapshot links, SECRET/PRIVATE_KEY 예시 확인; 92개 local file links와 19개 internal anchors 해소 확인; integration `aff15f2` 이후 `git diff --check` 통과 |
-| [ ] | PRE-02 | 채택 기본안·허용 경로를 구체화해 규범에 반영 | 4절 기본안, 관련 E 설계 | 보장 표·정합적인 구조·현재 작업 범위; G1/G2/G4 및 D05 문서 계약 반영, 구현 증거는 별도 카드 |
+| [x] | PRE-02 | 채택 기본안·허용 경로를 구체화해 규범에 반영 | 4절 기본안, 관련 E 설계 | G1/G2/G4·D05 계약을 ARCHITECTURE/SECURITY/THREAT/Phase 4와 대조; normative conflict 없음. disk/cap failure-injection 및 current integration acceptance는 별도 검증에서 `not_tested` 유지 |
 | [ ] | TOOL-01 | 선택한 외부 스킬 세 개와 reference 도입 | D06 기본안, E01 | source SHA·reference 검증·discovery 증거 |
 | [ ] | TOOL-02 | 전용 preflight·docs·semantics 스킬 | E01 | 세 개의 좁은 검증 절차 |
 | [ ] | TOOL-03 | 서브에이전트 역할·인계·후속 검증 절차 | TOOL-02, 해당 Phase 진입 | 역할별 변경 경계·검증 증거·세션 인계 |
@@ -1414,7 +1414,7 @@ go test -race -count=1 ./...
 | ID / 현재 상태 | 실행할 일·주요 파일 또는 대상 | 선행·완료 기준·금지 |
 |---|---|---|
 | PRE-01 / 완료 (2026-10-25) | `docs/`, `prompts/`의 status·Phase·example·link consistency를 대조했다. Phase 2 probe 상태를 Architecture/Roadmap/prompt에 맞추고 Phase 0/1 current-status links를 최신 snapshot으로 갱신했다. | 92개 local file links와 19개 internal anchor targets가 해소됨. pinned version references, Phase prompt headings/Roadmap labels, SECRET/PRIVATE_KEY 분리 및 SUBORCHESTRATOR의 dated host facts/least-permission 안내를 확인했다. 리뷰 범위의 보안 의미 변경은 없음; link checker는 문서 정적 확인이며 사용자 runtime/test acceptance가 아님 |
-| PRE-02 / 일부 진행 | E01/E08/E09와 D05에 따른 문서 충돌별 최소 변경안 작성. 감사 출력 분리·생성 파일 위치·Linux 실행 권한 계약을 규범 문서와 대조한다. | 감사 파일의 64 MiB 상한·sticky write failure 처리, bpf2go ident/경로, observer READY/EOF/permit, block 미지원 시 fail-before-start 및 명시 kill 계약이 문서화돼 있다. G4 executable/arguments/timeout/output cap/trust 기준도 기록되고 P2-FU-03에 구현됐다. 남은 일은 잔여 전체 계약 대조와 disk/cap-boundary failure-injection을 `not_tested`로 유지하는 것. 규범 충돌은 AGENTS 절차에 따르고, 후속 Phase의 포괄 승인은 추정하지 않음 |
+| PRE-02 / 완료 (2026-10-25, 문서 계약 범위) | E01/E08/E09와 D05의 audit output, generated-file path, Linux launch/mode 계약을 normative docs와 대조했다. | 64 MiB cap·sticky audit failure, bpf2go ident/path, READY/EOF/one-time permit, unsupported block fail-before-start·explicit kill 정합성을 확인했다. G4 input/timeout/output/trust 계약은 문서화돼 있고 P2-FU-03에 구현됐다. Disk/cap failure-injection과 current integration runtime acceptance는 `not_tested`; 이번 카드 완료는 코드 수용 검증이 아니다. |
 | TOOL-01 / 미착수·선택 | 8절의 고정 upstream 세 스킬과 필요한 references를 프로젝트 범위에 도입. provenance·원본 SHA·변경점·host discovery·제거 대상 기록 | E01/설치 경로 쓰기 권한 필요. 스킬 설치 실패는 제품 개발을 차단하지 않음. 전역 설정·전체 팩·hook을 함께 설치하지 않음 |
 | TOOL-02 / 작성 완료·행동 검증 미완료 | 9.1절의 preflight/docs-contract/security-semantics 세 절차부터 skill-creator로 작성. phase-closeout, Linux verifier, replay, adversarial 절차는 해당 Phase에 도달할 때 추가 | 세 skill 파일은 `.agents/skills/`에 있다. 정상/범위 위반/증거 없음 프롬프트 평가와 discovery 확인이 남아 있다. 승인된 경로만 사용하고, 스킬의 답변을 실제 kernel 시험으로 대체하지 않음 |
 | TOOL-03 / 일부 구현·평가 | 9.2절의 implementer/reviewer/verifier 역할, 파일 소유권, 인계 필드, 중단·재개 절차 정리. 필요할 때만 eBPF/adversarial 담당 추가 | 8개 role 정의가 `.codex/agents/`에 있고 TOOL-03.a~e 인벤토리를 시작했다. 별도 파일 소유권을 나눈 병렬 조사·리뷰에 사용했다. 자동 발견, 완전한 handoff 절차와 역할별 동작 검증은 남아 있다. 서로 다른 에이전트가 같은 파일을 동시 수정하지 않고, 별도 orchestration 서버는 추가하지 않음 |
@@ -3040,7 +3040,7 @@ Do not implement it. arm64 MVP의 다음 작업은 CI-01/02 원격·격리 검�
 | 순서 / ID | 상태·작업 / 완료 조건 | 선행·의존 | Git 단위와 통합 순서 |
 |---|---|---|---|
 | 0 / INT-00 — 완료 | dirty P4 acceptance worktree의 5개 파일을 integration과 읽기 전용 대조했다. 3개 파일은 integration과 동일하고, plan은 stale이며, runner acceptance test 변경은 별도 review가 필요하다. | 완료; 기존 변경 모두 보존 | 비교 결과만 이 절에 기록했다. dirty worktree에 branch/commit을 만들거나 수정하지 않았다. |
-| 1 / PRE-01 완료, PRE-02 pending | PRE-01에서 Phase 2 probe 구현 상태가 Architecture·Roadmap·Phase 2 prompt에 일치하도록 갱신했다. PRE-02는 status/version/link/example 전수 대조와 최소 규범 문서 정합성 검토를 계속한다. 보안 의미 충돌은 승인 전 중단한다. | INT-00/DOC-00 완료. 현재 master-plan snapshot도 감사 범위에 포함 | 각 독립 문서 단위마다 `codex/docs-<task-id>-<slug>` / `.worktrees/<task-id>`를 사용한다. 추가 문서 변경은 기존 integration에 바로 쓰지 않고 전용 task branch/worktree를 거친다. |
+| 1 / PRE-01·PRE-02 완료 | PRE-01의 status/link/example 감사와 PRE-02의 G1/G2/G4/D05 문서 계약 대조를 끝냈다. 실제 kernel/runtime 및 failure-injection evidence는 해당 acceptance batch에 남긴다. | 문서 정합성 완료. audit disk/cap failure-injection과 P2-FU-03 current HEAD acceptance는 별도 미검증 | PRE-01/PRE-02 task commits를 integration에 순서대로 반영했다. 후속 문서 수정은 새 task branch/worktree에서 한다. |
 | 2 / INT-01 | P2-FU-03와 현재 코드 통합 acceptance를 완료한다. fixture 포함 doctor probe, portable suite, Go vet/build, Linux arm64 `make linux-acceptance`, 독립 diff/security review를 정확한 통합 HEAD에서 실행하고 결과를 기록한다. | INT-00 ownership 분류와 DOC-00/PRE 문서 작업 완료. 이 시점에 코드·문서 batch를 고정 | 기존 `codex/phase4-integration-20261024`를 통합 대상으로 이어간다. 이미 task commit은 통합돼 있으므로 재커밋하지 않는다. acceptance 전 push 금지. 실패 수정은 전용 새 worktree/task branch에서 만들고 통합 후 영향 검사를 재실행한다. |
 | 3 / TOOL-01~03, MCP-01 | 사용자가 요청한 토큰 절감 검토를 포함해 도구 후보를 조사하고, 압축 품질·비용·보안 경계·라이선스를 실제 근거로 평가한다. 필요한 최소 도구만 별도 승인 및 안전 설계 뒤 도입한다. MCP 추가는 현재 codebase-memory MCP가 못 채우는 요구가 입증될 때만 완료로 본다. | PRE 감사와 도구 요구 정의. 외부 도구 설치나 자동 호출 정책 변경은 별도 승인 필요 | 카드마다 전용 branch/worktree를 쓰고, 조사 문서와 구현을 분리한다. 도입 후보가 없으면 증거를 남기고 `not_needed`로 닫는다. |
 | 4 / CI-01 | 저장소의 portable 검사·재현성 원격 검증 계약을 정리하고 지정 원격 job에서 통과시킨다. | TOOL 및 현재 acceptance 계약 정리 | `codex/ci-ci01-<slug>` / `.worktrees/ci-ci01`; workflow 권한은 해당 CI 카드가 허용한 파일로 제한한다. 결과 artifact와 source commit을 함께 기록한다. |
@@ -3070,6 +3070,6 @@ Do not implement it. arm64 MVP의 다음 작업은 CI-01/02 원격·격리 검�
 #### 다음 실행 묶음
 
 1. INT-00의 읽기 전용 분류는 완료했다. 외부 dirty 변경은 owner/review 확인 전까지 그대로 둔다.
-2. PRE-01은 integration `aff15f2`에서 완료했다. 다음은 PRE-02 문서 전수 대조이며, 작업 목록 변경은 별도 task branch에서 커밋·push된 뒤 integration `9a510f4`에 반영됐다.
+2. PRE-01/02 문서 작업은 완료했다. task branch 변경은 별도로 커밋·push한 뒤 순서대로 integration에 반영했다. 잔여 non-test 작업은 다음 카드 순서에 따라 시작한다.
 3. 문서가 정리된 뒤 현재 코드 batch를 고정하고 INT-01의 acceptance와 독립 review를 한 번 실행한다. 향후 CI/architecture/feature work는 각 의존성 단위가 준비된 뒤 별도 batch로 수용 검증한다.
 4. 통합 acceptance와 독립 리뷰가 통과하면 요청된 순서에 따라 integration을 main에 fast-forward하고, 명시된 push 조건을 충족할 때만 원격에 반영한다.
