@@ -297,8 +297,9 @@ codex
   quality failure로 기록해 run을 incomplete/error로 반환한다. 초기 준비 실패면
   target을 시작하지 않고 새 audit 파일을 정리한다. target이 시작된 뒤 발생한 audit
   오류는 자동 kill이나 stdout/stderr fallback을 일으키지 않으며, 이미 기록된 부분
-  파일은 보존된다. 디스크 오류와 64 MiB 경계 failure-injection 검증은 아직
-  `not_tested`이며 정상·완전한 audit으로 표시하지 않는다.
+  파일은 보존된다. ENOSPC 반환 writer, short write, 정확한 64 MiB counter 경계와
+  초과 write 거부는 failure-injection으로 검증했다. 실제 디스크 고갈, close 실패,
+  end-to-end 64 MiB 파일 생성은 `not_tested`이며 정상·완전한 audit으로 표시하지 않는다.
   이미 발생한 target의 효과는 되돌릴 수 없으며, 감사 오류를 이유로 Phase 2에
   자동 보안 kill/차단을 추가하지 않는다.
 - root supervisor는 `--run-as UID:GID`로 비특권 target identity를 명시해야 한다.

@@ -111,8 +111,10 @@ ENV-02에는 현재 고정 generator의 ident, basename·suffix, 생성 경로�
   marshal/write/short-write·close 오류를 sticky quality failure로 기록해 run을
   incomplete/error로 반환한다. 초기 준비 실패는 target 시작 전에 실패하고 새 audit
   파일을 정리한다. target 시작 뒤 audit 실패가 나면 자동 kill/차단이나
-  stdout/stderr fallback을 추가하지 않으며, 부분 audit 파일은 보존한다. 디스크
-  오류와 64 MiB 경계 failure-injection은 `not_tested`; 이미 발생한 효과는 되돌릴 수 없다.
+  stdout/stderr fallback을 추가하지 않으며, 부분 audit 파일은 보존한다. ENOSPC 반환
+  writer, short write, 정확한 64 MiB counter 경계와 초과 write 거부는 failure-injection으로
+  검증했다. 실제 디스크 고갈, close 실패, end-to-end 64 MiB 파일 생성은 `not_tested`;
+  이미 발생한 효과는 되돌릴 수 없다.
 - root supervisor는 `--run-as UID:GID`를 요구하며 root UID/GID를 거부한다.
   supplementary groups를 비운다. 비root supervisor는 자신의 effective UID/GID와
   기존 supplementary groups를 target에 상속한다. helper는 target의
