@@ -1528,7 +1528,7 @@ Process tree     Event / decision timeline                 Evidence
 
 검색·필터는 run, 시간, mode, event kind, action/result, completeness를 우선한다. 손실/incomplete 표시는 목록과 run 상세 양쪽에서 눈에 띄게 하고, 수집이 불완전한 run의 집계로부터 “위반 없음”을 말하지 않는다. 민감 경로는 화면에서 축약·마스킹할 수 있도록 하되 저장 원본과 화면 표시 정책을 별도 결정하며, 파일 내용·prompt·response·네트워크 payload는 수집하거나 표시하지 않는다. 첫 설계 범위에는 정책 편집, 실행 시작/중지, 차단 해제, 자동 remediation을 넣지 않는다. 최종 필드·보존 기간·삭제/export 동작은 실제 Event/Decision persistence schema와 threat model을 대조해 F9-DESIGN에서 정하고, 그 전까지 UI/API 구현을 시작하지 않는다.
 
-**실행 순서:** 완료 P0/P1 재확인 → 현재 PRE-02/ENV-01 게이트 해결 → ENV-02 → P2-01→02→03→04 및 승인된 후속 정리 → Phase 2 보고 → P3-01→02→03 → Phase 3 보고 → P4-01 설계 확인→02→03→04 → V-01 → F5 → F6 → F7 → F8 → F9-DESIGN → persistence/query 계약 확정 → F9 구현. Linux acceptance는 우선 aarch64 guest에서 닫고, 다른 architecture는 별도 카드와 host/kernel 검증을 추가해 확장한다. F10은 조건부다. TOOL/MCP는 선택 보조 작업, CI/DOC/REL은 해당 선행 완료와 별도 권한이 있을 때 끼워 넣는 작업이며 다음 제품 Phase의 검증을 생략하는 우회 경로가 아니다.
+**실행 순서:** 완료 P0/P1 재확인 → 현재 PRE-02/ENV-01 게이트 해결 → ENV-02 → P2-01→02→03→04 및 승인된 후속 정리 → Phase 2 보고 → P3-01→02→03 → Phase 3 보고 → P4-01 설계 확인→02→03→04 → V-01 → F5 → F6 → F7 → F8 → F9-DESIGN → persistence/query 계약 확정 → F9 구현. Linux MVP는 aarch64 acceptance를 근거로 유지한다. amd64 runtime은 CI-02 격리 근거나 동등 guest 확보 후 ARCH-01에서 별도로 추가·검증한다. F10은 조건부다. TOOL/MCP는 선택 보조 작업, CI/DOC/REL은 해당 선행 완료와 별도 권한이 있을 때 끼워 넣는 작업이며 다음 제품 Phase의 검증을 생략하는 우회 경로가 아니다.
 
 현재 G1/G2/G4 문서 정합성은 반영했다. 사용자가 제공한 최신 guest 정보로 환경 준비 상태는 확인됐지만, 이 세션의 Lima 제어 socket 제한 때문에 assistant가 guest 명령을 직접 실행하지 못한다. 남은 실행 gate는 guest 환경 확보가 아니라 **최신 source/object 동기화와 현재 변경분의 verifier/runtime acceptance**다. 상위 작업 간 달력·공수는 아직 추정하지 않는다.
 
