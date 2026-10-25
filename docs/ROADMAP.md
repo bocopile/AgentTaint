@@ -13,11 +13,11 @@
 - [x] **Phase 0 — Bootstrap** · [prompts/00-bootstrap.md](../prompts/00-bootstrap.md)
       Go 모듈 골격, `doctor`(읽기 전용 진단), `run`(명시적 실행)
       — 로컬 수용 검증 완료(macOS arm64). Linux amd64/arm64는 cross-build만 통과; 원격 CI 미실행.
-      당시 Phase 0 산출물은 감시·차단을 제공하지 않았다. 이후 Phase 구현을 포함한 현재 상태는 [IMPLEMENTATION_MASTER_PLAN.md](./IMPLEMENTATION_MASTER_PLAN.md)의 12.10절을 참고.
+      당시 Phase 0 산출물은 감시·차단을 제공하지 않았다. 이후 Phase 구현을 포함한 현재 상태는 [IMPLEMENTATION_MASTER_PLAN.md](./IMPLEMENTATION_MASTER_PLAN.md)의 최신 snapshot을 참고.
 - [x] **Phase 1 — Core Event Model** · [prompts/01-core-event-model.md](../prompts/01-core-event-model.md)
       플랫폼 독립 Event 타입 (`internal/core`)
       — 7종 raw event·식별자·strict JSON codec 및 macOS arm64 독립 검증 완료.
-      당시 Phase 1 산출물은 센서·라벨·정책·차단을 포함하지 않았다. 이후 Phase 구현을 포함한 현재 상태는 [IMPLEMENTATION_MASTER_PLAN.md](./IMPLEMENTATION_MASTER_PLAN.md)의 12.10절을 참고.
+      당시 Phase 1 산출물은 센서·라벨·정책·차단을 포함하지 않았다. 이후 Phase 구현을 포함한 현재 상태는 [IMPLEMENTATION_MASTER_PLAN.md](./IMPLEMENTATION_MASTER_PLAN.md)의 최신 snapshot을 참고.
 - [x] **Phase 2 — Linux Observer** · [prompts/02-linux-observer.md](../prompts/02-linux-observer.md)
       eBPF로 fork/exec/exit, file open, network connect 관찰. Phase 2 기본 observer 수용은 완료했고,
       후속 P2-FU-03 toolchain probe는 integration에 구현됐으나 fixture/full acceptance는 `not_tested`다.

@@ -953,7 +953,7 @@ AgentTaint/
 | 완료 | ID | 작업 | 선행 조건 | 주 산출물 |
 |---|---|---|---|---|
 | [x] | DOC-00 | 2026-10-25 현재 상태·잔여 작업·Git 전략 snapshot 통합 | INT-00 변경 소유권 분류 | 12.14절 기준선·의존성 목록을 integration에 반영하고 문서 diff 검토·`git diff --check` 완료 (integration `9a510f4`) |
-| [x] | PRE-01 | 문서·Phase·예시 불일치 정리안 적용 | 문서 수정 요청 | Phase 2 toolchain probe status를 Architecture·Roadmap·prompt에 맞춤; integration `aff15f2`, `git diff --check` 통과 |
+| [x] | PRE-01 | 문서·Phase·예시 불일치 정리안 적용 | 문서 수정 요청 | Phase 2 probe 상태 정합성, Phase 0/1 Roadmap snapshot links, SECRET/PRIVATE_KEY 예시 확인; 92개 local file links와 19개 internal anchors 해소 확인; integration `aff15f2` 이후 `git diff --check` 통과 |
 | [ ] | PRE-02 | 채택 기본안·허용 경로를 구체화해 규범에 반영 | 4절 기본안, 관련 E 설계 | 보장 표·정합적인 구조·현재 작업 범위; G1/G2/G4 및 D05 문서 계약 반영, 구현 증거는 별도 카드 |
 | [ ] | TOOL-01 | 선택한 외부 스킬 세 개와 reference 도입 | D06 기본안, E01 | source SHA·reference 검증·discovery 증거 |
 | [ ] | TOOL-02 | 전용 preflight·docs·semantics 스킬 | E01 | 세 개의 좁은 검증 절차 |
@@ -1413,8 +1413,8 @@ go test -race -count=1 ./...
 
 | ID / 현재 상태 | 실행할 일·주요 파일 또는 대상 | 선행·완료 기준·금지 |
 |---|---|---|
-| PRE-01 / 일부 진행 | `docs/`, `prompts/`의 Phase 번호·예시·현황 오류를 12.2 표와 대조. 단일 SECRET과 PRIVATE_KEY 미래 예시 분리, SUBORCHESTRATOR의 오래된 현황·과도한 권한 안내 수정 | 기존 Phase 0 수정은 보존. 의미 변경은 PRE-02로 분리. 남은 전수 확인은 모든 링크·버전·Phase/status·예시 및 SUBORCHESTRATOR의 현재 상태·권한 주장을 포함한다. 링크·버전·Phase 참조 검증 후 완료; 경쟁 제품에 대한 단정으로 보안을 증명하지 않음 |
-| PRE-02 / 일부 진행 | E01/E08/E09와 D05에 따른 문서 충돌별 최소 변경안 작성. 첫 범위는 감사 출력 분리·생성 파일 정확한 위치·Linux 실행 권한 계약 | 감사 파일의 64 MiB 상한·sticky write failure 처리 및 현재 bpf2go 생성 ident/경로를 ARCHITECTURE와 ENV-02 기록에 반영했다. observer READY/EOF/permit 계약도 P2-04 증거 범위와 구분했다. 남은 일은 전체 문서 계약 전수 검토와 미검증 failure-injection 항목 표시다. G4 probe의 executable/arguments/timeout/output cap/trust 기준은 probe 작업 전 미해결로 둔다. 문서 보장 충돌은 AGENTS 절차를 따르고, 후속 모든 Phase를 한 번에 포괄 승인한 것으로 취급하지 않음 |
+| PRE-01 / 완료 (2026-10-25) | `docs/`, `prompts/`의 status·Phase·example·link consistency를 대조했다. Phase 2 probe 상태를 Architecture/Roadmap/prompt에 맞추고 Phase 0/1 current-status links를 최신 snapshot으로 갱신했다. | 92개 local file links와 19개 internal anchor targets가 해소됨. pinned version references, Phase prompt headings/Roadmap labels, SECRET/PRIVATE_KEY 분리 및 SUBORCHESTRATOR의 dated host facts/least-permission 안내를 확인했다. 리뷰 범위의 보안 의미 변경은 없음; link checker는 문서 정적 확인이며 사용자 runtime/test acceptance가 아님 |
+| PRE-02 / 일부 진행 | E01/E08/E09와 D05에 따른 문서 충돌별 최소 변경안 작성. 감사 출력 분리·생성 파일 위치·Linux 실행 권한 계약을 규범 문서와 대조한다. | 감사 파일의 64 MiB 상한·sticky write failure 처리, bpf2go ident/경로, observer READY/EOF/permit, block 미지원 시 fail-before-start 및 명시 kill 계약이 문서화돼 있다. G4 executable/arguments/timeout/output cap/trust 기준도 기록되고 P2-FU-03에 구현됐다. 남은 일은 잔여 전체 계약 대조와 disk/cap-boundary failure-injection을 `not_tested`로 유지하는 것. 규범 충돌은 AGENTS 절차에 따르고, 후속 Phase의 포괄 승인은 추정하지 않음 |
 | TOOL-01 / 미착수·선택 | 8절의 고정 upstream 세 스킬과 필요한 references를 프로젝트 범위에 도입. provenance·원본 SHA·변경점·host discovery·제거 대상 기록 | E01/설치 경로 쓰기 권한 필요. 스킬 설치 실패는 제품 개발을 차단하지 않음. 전역 설정·전체 팩·hook을 함께 설치하지 않음 |
 | TOOL-02 / 작성 완료·행동 검증 미완료 | 9.1절의 preflight/docs-contract/security-semantics 세 절차부터 skill-creator로 작성. phase-closeout, Linux verifier, replay, adversarial 절차는 해당 Phase에 도달할 때 추가 | 세 skill 파일은 `.agents/skills/`에 있다. 정상/범위 위반/증거 없음 프롬프트 평가와 discovery 확인이 남아 있다. 승인된 경로만 사용하고, 스킬의 답변을 실제 kernel 시험으로 대체하지 않음 |
 | TOOL-03 / 일부 구현·평가 | 9.2절의 implementer/reviewer/verifier 역할, 파일 소유권, 인계 필드, 중단·재개 절차 정리. 필요할 때만 eBPF/adversarial 담당 추가 | 8개 role 정의가 `.codex/agents/`에 있고 TOOL-03.a~e 인벤토리를 시작했다. 별도 파일 소유권을 나눈 병렬 조사·리뷰에 사용했다. 자동 발견, 완전한 handoff 절차와 역할별 동작 검증은 남아 있다. 서로 다른 에이전트가 같은 파일을 동시 수정하지 않고, 별도 orchestration 서버는 추가하지 않음 |
