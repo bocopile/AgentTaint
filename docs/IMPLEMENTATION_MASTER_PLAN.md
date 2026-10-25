@@ -3024,9 +3024,10 @@ Do not implement it. arm64 MVP의 다음 작업은 CI-01/02 원격·격리 검�
 
 이 절이 현재 작업 상태와 우선순위의 기준이다. 12.10~12.13절 및 앞선 실행 로그는 해당 날짜의 기록으로 보존하며, 이후의 증거가 이전 상태를 대체할 때 현재 상태 해석은 아래 snapshot을 따른다. 이 목록의 수용 기준은 각 Phase prompt와 규범 문서를 대체하지 않는다.
 
-#### 현재 기준선
+#### TOOL-01 시작 기준선 및 완료 기록
 
-- `main`: clean `194514fc5542aeb4a4df8f20e193344d9e901eef`, `origin/main`과 동일.
+- TOOL-01 시작 시 `main`: clean `194514fc5542aeb4a4df8f20e193344d9e901eef`, 당시 `origin/main`과 동일.
+- TOOL-01 완료: task branch `codex/tool-tool01-skill-import`의 최종 commit `470185a`를 integration merge commit `bbcc3d55a3350120dcf88c2075c1bdb03149c504`로 반영하고 main에 push했다. `git diff --check`, manifest/reference/license 경로·SHA 정적 검사, Codex CLI `0.164.0` fresh ephemeral read-only session의 세 skill discovery가 통과했다. 이 단위는 문서·skill asset만 변경했으며 Linux 제품 acceptance는 실행 대상이 아니었다.
 - INT-02/INT-03 integration: `.worktrees/phase4-integration-20261024`, branch `codex/phase4-integration-20261024`, HEAD `194514fc5542aeb4a4df8f20e193344d9e901eef`. Integration branch와 main은 push 완료했다. 이 exact source archive SHA-256 `41a93664ab60a2d4e8a539a6cf55b73ffc869b8bc792334564340493d33820ac`에서 Linux `7.0.0-28-generic aarch64` guest의 `make BUILD_DIR=.build-integration linux-acceptance`, explicit S25 mmap/concurrent tests, concurrent-run `-count=20`가 모두 통과했다. 독립 code/security review는 앞선 code-bearing HEAD `932c325`에서 blocker가 없었고, 최종 194514f는 문서 정정만 추가했다. 실제 디스크 고갈·audit close 실패·end-to-end 64 MiB 파일 생성 및 pre-scope in-flight invocation caveat는 그대로 미검증/제한이다.
 - arm64 MVP: candidate `b0d482b`, Linux 7.0.0-28 aarch64 guest의 지정 P4-04/V-01 시나리오에서 acceptance 통과 기록이 있다. 당시 통합 HEAD `db65bf8`은 그 candidate 뒤의 P2-FU-03 구현 및 테스트 변경을 포함했으며, 후속 INT-01 acceptance는 아래에 기록했다. 이 결과는 모든 kernel/배포 환경 보장이 아니다.
 - 아키텍처 지원: Linux arm64 MVP를 우선 지원한다. Linux amd64 runtime은 ARCH-01 전까지 미지원이며, Go cross-build만으로 지원 완료로 표시하지 않는다.
