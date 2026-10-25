@@ -2,11 +2,11 @@
 
 AI 에이전트와 그 하위 프로세스의 민감정보 접근·전파를 OS 수준(eBPF)에서
 추적하고, 위험한 정보 흐름을 정책에 따라 감사·차단하는 runtime security
-system을 목표로 한다. **현재 구현은 Linux eBPF 관측, Phase 3 audit-only
-taint/policy 평가, 제한된 Phase 4 BPF-LSM 사전 집행을 포함한다. 차단 증거는
-지정된 Linux guest와 fixture에 한정되며 P4-04 전체 검증은 진행 중이다.**
+system을 목표로 한다. **현재 Linux runtime은 arm64만 지원한다. 구현에는 eBPF
+관측, Phase 3 audit-only taint/policy 평가, 제한된 Phase 4 BPF-LSM 사전 집행이
+포함되며 검증 범위는 지정 guest와 fixture에 한정된다.**
 
-> **Status: 🚧 제한된 Linux MVP — observer·taint·policy와 일부 BPF-LSM block 시나리오를 aarch64 guest에서 검증; S25 mmap path-capture 및 concurrent-run no-loss fixtures는 Linux 7.0.0-28에서 통과했다. 다른 kernel/architecture의 P4-04 검증, 최종 보장 감사(V-01), 사용자 문서 확정(DOC-01)은 남아 있다.**
+> **Status: 🚧 제한된 Linux arm64 MVP — observer·taint·policy와 일부 BPF-LSM block 시나리오를 aarch64 guest에서 검증했다. S25 mmap path-capture 및 concurrent-run no-loss fixtures를 포함한 P4-04 acceptance는 Linux 7.0.0-28에서 통과했다. amd64 지원은 후속 작업이며, 다른 kernel의 runtime 동작은 검증되지 않았다.**
 > 진행 단계는 [docs/ROADMAP.md](./docs/ROADMAP.md), AI 코딩 에이전트가
 > 따르는 규칙은 [AGENTS.md](./AGENTS.md), Phase별 작업 지시는
 > [prompts/](./prompts/) 참고. 스택은 **Go + C/CO-RE(cilium/ebpf)**로
@@ -25,8 +25,9 @@ pre-operation hook에서 집행한다. 검증 범위는 직접 file open과 새 
 한정되며 기존 socket 송신, UDP `sendto`, IPv6 및 다른 미지원 경로를 보장하지 않는다.
 
 Go **1.26 이상**에서 빌드한다. 환경 진단과 일반 커맨드 실행은 macOS/Linux를
-대상으로 한다. 현재 실제 Linux 차단 검증은 BPF-LSM이 활성화된 Linux
-`7.0.0-38-generic` aarch64 guest의 지정 fixture에 한정된다. `run --observe`는
+대상으로 한다. 현재 Linux runtime은 arm64 전용이다. 실제 차단 검증은
+BPF-LSM이 활성화된 Linux `7.0.0-28-generic` aarch64 guest의 지정 fixture에
+한정된다. `run --observe`는
 Linux와 eBPF 권한이 필요하며 root 실행 시
 `--run-as UID:GID`로 target을 비특권 실행해야 한다. `run --observe`는
 monitor/audit alias다. `notify`와 `kill`은 post-event 동작이며, `block`은
@@ -39,8 +40,8 @@ byte-level taint 또는 AI 전체 실행 차단은 보장하지 않는다.
 |---|---|
 | Linux 5.13+ | 프로젝트에 선언된 최소 커널 기준이다. 이 버전 전반의 observer/block 동작 검증을 뜻하지 않는다. |
 | Linux 5.15+ | Phase 2 acceptance prompt가 지정한 Linux 테스트 profile이다. 5.15 전체에서 통과했다는 런타임 증거는 아니다. |
-| Linux 7.0.0-38-generic, aarch64 | BPF-LSM이 활성화된 guest에서 지정된 observer·block fixture를 실행한 기록이 있다. 각 기록은 [구현 계획 12.10절](./docs/IMPLEMENTATION_MASTER_PLAN.md)의 scenario별 범위와 한계를 따른다. |
-| Linux amd64 | Go cross-build만 확인했다. amd64 guest의 BPF verifier/load/attach/runtime은 검증되지 않았다. |
+| Linux 7.0.0-28-generic, aarch64 | BPF-LSM이 활성화된 guest에서 지정된 observer·block fixture를 실행한 기록이 있다. 각 기록은 [구현 계획 12.10절](./docs/IMPLEMENTATION_MASTER_PLAN.md)의 scenario별 범위와 한계를 따른다. |
+| Linux amd64 | 현재 runtime에서 지원하지 않는다. Go cross-build만 확인했으며 BPF verifier/load/attach/runtime은 검증되지 않았다. 별도 아키텍처 지원 작업으로 이연했다. |
 | macOS arm64 | portable Go 개발·검사와 CLI 일부를 확인했다. macOS native observer/enforcement는 구현되지 않았다. |
 
 커널 버전만으로 BPF 사용 가능 여부를 판정할 수 없다. BTF 접근, BPF 권한,
@@ -136,6 +137,7 @@ regular file로 mode `0600`에 생성된다.
 
 ### 문제 해결
 
+- **Linux amd64에서 observer가 지원되지 않는다고 표시됨:** 현재 observer runtime은 arm64 전용이다. amd64 교차 빌드나 BPFEL/BPFEB 생성물은 amd64 verifier/load/attach/runtime 지원을 의미하지 않는다. amd64 지원은 ARCH-01 완료 후에만 추가한다.
 - **observer가 시작되지 않거나 BTF 오류가 발생함:** Linux guest 안에서
   `./agenttaint doctor --json`을 확인하고 `/sys/kernel/btf/vmlinux`의 존재와
   선택한 mode에 필요한 eBPF 권한을 점검한다. 진단 출력은 hook load/attach 성공을

@@ -22,8 +22,8 @@
       eBPF로 fork/exec/exit, file open, network connect 관찰
 - [x] **Phase 3 — Taint Engine** · [prompts/03-taint-engine.md](../prompts/03-taint-engine.md)
       Taint/policy audit integration과 네 Linux guest runtime scenario 검증 완료. 테스트가 disposable fixture를 만들며 저장소에 재현 스크립트는 추가하지 않는다. audit only이며 block 없음.
-- [ ] **Phase 4 — Linux Enforcement** · [prompts/04-linux-enforcement.md](../prompts/04-linux-enforcement.md)
-      BPF-LSM 기반 block, 지원되지 않는 block 요청의 시작 전 실패, 명시적 monitor/notify/kill mode
+- [x] **Phase 4 — Linux Enforcement** · [prompts/04-linux-enforcement.md](../prompts/04-linux-enforcement.md)
+      Linux arm64 MVP 범위의 BPF-LSM block, 지원되지 않는 block 요청의 시작 전 실패, 명시적 monitor/notify/kill mode — Linux 7.0.0-28 aarch64 guest acceptance 완료. amd64 지원은 별도 후속 작업이다.
 
 ## 확장
 

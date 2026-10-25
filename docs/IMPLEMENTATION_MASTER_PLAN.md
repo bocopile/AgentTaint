@@ -4,7 +4,7 @@
 
 최초 분석 기준: `bocopile/AgentTaint`의 `5cc919dadb0a86ea5ec00c794ed07918ccc42d9a`
 
-상태: **2026-10-25 기준, 기존 작업을 순서대로 진행 중이다. Phase 0/1, P2-01~P2-04, P3-01~P3-03, P4-01~P4-03은 각 기록 범위에서 완료했다. P2-FU-01/02의 process/thread scope 보완도 통합했다. path capture는 syscall-entry nofault miss에서 `getname_flags` kprobe/kretprobe로 커널이 복사한 raw pathname을 복구하도록 수정했고, candidate `b0d482b`의 전체 Linux acceptance batch에서 Linux 7.0.0-28 aarch64의 S25 mmap 및 concurrent-run no-loss fixtures가 PASS했다. 이는 해당 guest/kernel과 fixture의 증거이며 다른 kernel/architecture에 대한 보장은 아니다. Architecture/Phase 4 source-path 문서 차이는 observer source와 active LSM source를 구분해 정정했다. raw syscall pathname 의미와 Linux 5.13+ 하한을 유지한다. P4-04는 architecture/runtime matrix와 한계 검토가 남아 미완료이며 V-01은 claim-to-test 표 갱신 중이다. CI-01/02, DOC-01 및 REL-01~03은 미완료다. 대시보드는 최초 계획의 Phase 9/F9이며 현재 스텁이다. 상세 근거와 순서는 12.10~12.12절 및 최신 실행 기록을 따른다.**
+상태: **2026-10-25 기준, Linux arm64 MVP의 지정 acceptance를 완료했다. Linux observer runtime은 `GOARCH=arm64`만 허용하며 amd64는 교차 빌드와 일부 생성물 존재만으로 지원하지 않는다. P4-04와 V-01은 Linux 7.0.0-28 aarch64 guest의 기록된 scenario/fixture 한계 안에서 완료했다. S25 mmap 및 concurrent-run no-loss fixtures를 포함한 전체 acceptance batch가 PASS했지만 Linux 5.13+ 전반이나 다른 커널에서의 동작을 뜻하지 않는다. `getname_flags` kernel-copy path capture, BPF source-path 설명 정정과 raw syscall pathname 계약을 유지한다. DOC-01은 README/프로젝트 개요의 지원·진단 설명을 갱신해 완료했다. CI-01/02와 REL-01~03은 미완료다. amd64 observer runtime 검증·지원은 ARCH-01 후속 작업으로 이연한다. 대시보드는 최초 계획의 Phase 9/F9이며 현재 스텁이다. 상세 근거와 순서는 12.10~12.12절 및 최신 실행 기록을 따른다.**
 
 이 문서는 제품 철학 분석, macOS 사용 가능성, `addyosmani/agent-skills` 도입 검토, 아키텍처, 언어, 디렉터리, 작업 목록, 검증 기준과 사용자 결정 사항을 한 곳에 모은다. 다른 AI가 새로운 세션에서 읽고 현재 작업을 식별할 수 있도록 작성했다. 최초 분석 당시에는 제품 코드·Go 모듈이 없었다. **현재 실행 상태는 12.10절과 문서 끝의 최신 날짜별 검증 기록을 기준으로 하며, 2절의 환경·저장소 조사는 최초 분석 시점의 snapshot이다.**
 
@@ -148,7 +148,7 @@ Taint는 지정된 민감 자원 접근 이력에 따른 보수적 상태다. By
 
 ### 3.2 초기 보장으로 표현할 수 있는 것
 
-현재 문서 기준 목표는 지정 파일 접근, fork/exec에 따른 라벨 상태 관리, 새 외부 IPv4 연결에서의 정책 평가다. P2-01~04 observer와 P3-01~03 taint reference·policy evaluator·audit integration 및 네 가지 Linux runtime 시나리오를 기존 guest에서 검증했다. 저장소 내 재현 스크립트 대신 자동화 테스트가 disposable fixture를 만드는 계약을 Phase 3 prompt에 반영했다. Phase 3/reference 평가는 audit only다. Phase 4 `block` mode는 현재 BPF-LSM guest의 제한된 direct file-open 및 새 IPv4 connect fixture에서 pre-operation 차단을 검증했다. 이는 전체 OS 작업이나 정보 흐름을 차단한다는 보장이 아니며, audit completeness와 P4-04 전체 acceptance는 미완료다.
+현재 Linux MVP의 선언 범위는 arm64다. P2-01~04 observer와 P3-01~03 taint reference·policy evaluator·audit integration, Phase 4의 제한된 direct file-open 및 새 IPv4 connect pre-operation 차단을 지정 guest에서 검증했다. S25 no-loss를 포함한 P4-04 acceptance는 Linux 7.0.0-28 aarch64 범위에서 완료했다. Phase 3/reference 평가는 audit only다. 이는 전체 OS 작업이나 정보 흐름을 차단한다는 보장이 아니며, 다른 커널 release 및 amd64 runtime은 현재 지원·검증 범위 밖이다.
 
 | 흐름 | 초기 모델의 위치 |
 |---|---|
@@ -206,7 +206,7 @@ VM 안 AI 부모 ──fork──> 도구 자식 ──open──> secret fixtur
 | D04 | 외부 LLM API | 초기 보호 예시에서 LLM API 목적지에 자동 예외를 주지 않음. taint 이후 평가 대상 연결에는 같은 정책 적용 | 유명 API라는 이유로 보호를 우회시키지 않음. 기존 연결 미지원 한계는 그대로 명시 | 채택 기본안 |
 | D05 | block 미지원 | block 요청 시 필수 기능이 없으면 target 시작 전 오류 종료. monitor/notify/kill은 사용자가 그 mode를 명시했을 때만 | 요청한 보장과 실제 mode 일치. 기존 Phase 4의 fallback 문구를 이 계약에 맞춰 정리 | 채택 기본안; 규범 반영 작업 필요 |
 | D06 | 외부 스킬 | 프로젝트 단위로 source-driven-development, documentation-and-adrs, code-review-and-quality부터 선택 도입. 원본 SHA와 필요한 reference를 함께 관리 | global 전체 팩·중복 router·hook의 영향 억제. 8.5절의 선택 배포본 방식 사용 | 채택 기본안; 아직 미설치 |
-| D07 | CPU 검증 | 현재 arm64 VM으로 개발하고 배포 전 amd64 Linux 검증 추가. 유료 runner를 자동 도입하지 않음 | 로컬 환경 활용과 배포 호환성 증거 분리. 검증 전 amd64 지원 표시는 보류 | 채택 기본안 |
+| D07 | CPU 지원 순서 | Linux arm64를 첫 MVP 지원 대상으로 삼고 amd64 runtime 지원은 별도 후속 작업에서 추가한다. 유료 runner를 자동 도입하지 않음 | 실제 구현·검증이 있는 arm64 범위를 먼저 명시하고, amd64는 verifier/load/attach/runtime 근거가 쌓인 뒤 지원 표시에 추가 | 채택 기본안 (2026-10-25 사용자 결정) |
 | D08 | 로그 | payload·환경변수·전체 argv를 기본 수집하지 않음. resource 별칭·최소 프로세스 식별자 중심; 상세 경로는 명시적 진단 선택. 로컬 저장·외부 업로드 없음 | 관측 도구가 새로운 민감정보 저장소가 되는 위험을 줄임. 저장 시 사용자 전용 권한·용량 상한 적용 | 채택 기본안 |
 | D09 | 라이선스·공개 배포 | 지금 LICENSE나 공개 배포 방침을 바꾸지 않음. 릴리스 준비 때 소유자 선택 | 일반 개발·검증에는 불필요한 결정. 권리·배포 조건 변경은 별도 확인 | 배포 시점에만 확인 |
 
@@ -976,14 +976,15 @@ AgentTaint/
 | [x] | P4-01 | 동기 집행 아키텍처 결정·검증 설계 | Phase 3 완료, E04/E09, D05 | Go/kernel 책임·run scope·fault·실패 행동 및 제한을 사용자 승인·문서화 (2026-10-20); runtime 검증은 P4-02/04 |
 | [x] | P4-02 | 지원 source·network pre-op 집행 | P4-01 | 별도 direct-file deny 및 source-attempt→network deny guest fixtures에서 실제 EPERM, receiver 비도달, allow 대조군과 Go reference 차이를 검증 (2026-10-21; runner audit coverage limitation은 12.10 최신 업데이트) |
 | [x] | P4-03 | modes·지원 불가 처리·health·로그 | P4-02 | monitor/notify/block/kill 16개 scenario 조합, 상태·audit loss 및 fail-before-start 검증 (2026-10-21; 제한은 P4-03 실행 기록) |
-| [ ] | P4-04 | adversarial·장애·아키텍처별 검증 | P4-03, D07 | candidate `b0d482b` 전체 acceptance와 S25 mmap/concurrent-run no-loss fixtures가 guest Linux `7.0.0-28` aarch64에서 PASS. 해당 환경에서 no-loss 기준 충족; 다른 kernel/architecture matrix와 보장 범위 감사가 남아 미완료 |
+| [x] | P4-04 | adversarial·장애·지원 아키텍처 검증 | P4-03, D07 | Linux arm64 MVP scope의 `b0d482b` 전체 acceptance와 S25 mmap/concurrent-run no-loss fixtures가 guest Linux `7.0.0-28` aarch64에서 PASS. 다른 kernel의 runtime 및 amd64 지원 검증은 범위 밖으로 기록하고 ARCH-01로 이연 |
 | [x] | P2-FU-01 | process observer parent TID/TGID lifecycle lookup 보완 | P4-04 guest 실패 증거, Phase 2 범위 확인 | `on_process_fork` parent TID miss 시 tracked TGID fallback; lifecycle test 통과. P2-FU-02에서 관측된 CPU affinity별 worker-thread event loss도 보완·재검증 |
 | [x] | P2-FU-02 | file/network observer worker-thread scope lookup 보완 | P2-FU-01 통합 재검증 중 CPU affinity별 network observer timeout | `file_current_process` 및 `network_current_process`에서 TID scope miss 시 같은 프로세스 TGID fallback; guest `TestFileAndConnectObserver` 비고정 3회 및 CPU 0/1 고정 실행 PASS, 통합 acceptance PASS (2026-10-24) |
-| [ ] | V-01 | Linux MVP 최종 보장 감사 | P4-04 | claim→mechanism→test 감사 초안 및 S25 guest evidence 갱신; P4-04 architecture/runtime matrix와 독립 문서 검토 후 확정 |
-| [ ] | DOC-01 | 사용자 안내·운영·문제 해결 문서 | 해당 구현 완료, 최종판은 V-01 | 설치·모드·지원 범위·진단·복구 안내 |
+| [x] | V-01 | Linux arm64 MVP 최종 보장 감사 | P4-04 | claim→mechanism→test 표를 Linux 7.0.0-28 aarch64 evidence와 대조하고 미검증 kernel/amd64를 명시. arm64 MVP 범위 안에서 확정 |
+| [x] | DOC-01 | 사용자 안내·운영·문제 해결 문서 | 해당 구현 완료, 최종판은 V-01 | README와 프로젝트 개요에 arm64 지원 범위, 검증 kernel, 진단 한계 및 amd64 이연을 반영 |
 | [ ] | REL-01 | 재현 배포 산출물·의존성 검토 | V-01, 지원 환경의 CI 증거 | binary/BPF/source 대응·checksum·SBOM·라이선스 기록 |
 | [ ] | REL-02 | 배포·설치·업데이트·제거·복구 | REL-01, D09 및 공개 배포 승인 | 승인된 배포 방식과 실제 설치/롤백 검증 |
 | [ ] | REL-03 | 제한된 시범 사용·피드백·유지보수 | V-01, F5, DOC-01, 필요 시 별도 자격증명 승인 | 검증된 사용 사례·문제 접수·지원 범위 |
+| [ ] | ARCH-01 | Linux amd64 observer runtime 지원 추가 | arm64 MVP 완료, CI-02 격리 검증 환경 또는 동등한 승인 guest | amd64 syscall ABI/BPF object 생성·verifier/load/attach/runtime acceptance를 완료한 뒤 지원 표기를 추가; 그 전까지 amd64는 미지원 |
 | [ ] | F5 | Mac에서 Linux VM을 사용하는 경험 정리 | V-01, D01 | VM 실행·진단·소스 동기화 UX; native는 별도 |
 | [ ] | F6 | rich flow·다중 라벨 상세화 | 선행 Phase 완료 | pipe/file/IPC 전파 설계 |
 | [ ] | F7 | Kubernetes 범위 상세화 | 로컬 IFC 완성·선행 Phase 완료 | cgroup/pod attribution 계획 |
@@ -993,7 +994,7 @@ AgentTaint/
 
 **설계 입력과 선행 조건의 구분:** E01~E09는 독립적인 실행 작업이 아니라 담당 작업에서 구체화할 설계 계약이다. E07을 확정하기 위해 ENV-02를 수행하고, E04를 검증하기 위해 P4-01을 수행한다. 표의 E 참조를 “이미 구현 완료돼야 설계 착수 가능”으로 해석하지 않는다. 다만 그 설계를 사용하는 후속 코드 작업에는 규범 정합성과 검증된 계약이 필요하다.
 
-**최소 진행 경로:** 관련 PRE 정합성 정리 → P0 → P1 → P2 → P3 → P4 → V-01. ENV-01/02는 P2 전에 준비하고, TOOL-01/02는 개발 보조 경로다. 외부 스킬·메모리 서버의 설치 실패가 portable P0/P1의 필수 의존성이 되지 않게 한다. 단계 사이의 기존 완료 보고·범위 확인은 생략하지 않는다.
+**최소 진행 경로:** 관련 PRE 정합성 정리 → P0 → P1 → P2 → P3 → P4(arm64) → V-01 → DOC-01 → REL-01 및 CI 증거 → 선택 아키텍처 확장(ARCH-01). ENV-01/02는 P2 전에 준비하고, TOOL-01/02는 개발 보조 경로다. 외부 스킬·메모리 서버의 설치 실패가 portable P0/P1의 필수 의존성이 되지 않게 한다. 단계 사이의 기존 완료 보고·범위 확인은 생략하지 않는다.
 
 **2026-10-25 현재 작업 순서 — 테스트 실행은 마지막 배치로 보류:**
 
@@ -1007,16 +1008,18 @@ AgentTaint/
 | 4 | PRE-02 | 채택 기본안·허용 파일 경로·보장 표를 현재 ARCH/SECURITY/Phase prompt와 대조하고 서로 다른 범위를 정합화. | source-path correction 반영; 전체 보장 표와 failure-injection 문서 정합성은 남음 |
 | 5 | TOOL-01/02/03 및 MCP-01 잔여 문서 | 이미 저장소에 있는 전용 skills와 agent 역할/인계 규칙의 source·scope·output contract를 정리. Runtime discovery/행동 acceptance는 batch에서 수행. | 문서·정적 정리 진행; runtime 확인 보류 |
 | 6 | CI-02 authoring / CI-01 remote gate | Linux BPF workflow는 격리·일회성 runner 및 artifact/cache 경계를 확인한 뒤 작성한다. 현 세션에는 해당 runner 설정 증거가 없으므로 self-hosted runner를 등록하거나 외부 PR 코드를 실행하지 않는다. CI-01 portable 원격 run은 batch 후보의 정확한 commit에서 별도 GitHub 실행 승인·접근이 확인될 때 수행한다. | runner·remote CI 미검증; workflow 작성과 외부 실행은 환경 근거 전까지 보류 |
-| 7 | V-01 / DOC-01 / REL-01 준비 | 지원 보장 claim-to-test 표, user/operations guide, artifact/source mapping·checksum·SBOM/license manifest 초안을 작성. 런타임 근거가 없는 항목은 `not_tested`로 둠. | V-01 초안 갱신; P4-04 matrix 완료 후 확정 |
-| 8 | REL-02 / REL-03 | install/update/rollback 및 제한된 pilot의 실행 계획·복구 절차를 작성. 실제 배포·외부 공유는 별도 승인 전 수행하지 않음. | V-01/REL-01 이후 |
-| 9 | F5~F9 | Linux MVP 이후 VM UX, rich-flow, Kubernetes, feedback interface, local dashboard를 각 선행 Phase와 저장·조회 계약에 따라 상세화. | 선행 Phase 미완료라 설계·구현 보류 |
-| 10 | F10 | payload-aware metadata 필요성만 검토하고 자동 착수하지 않음. | 조건부, 별도 승인 필요 |
+| 7 | V-01 / DOC-01 | Linux arm64 MVP의 지원 claim을 evidence와 대조하고 사용자 문서를 갱신. 미검증 kernel/amd64를 명시. | 완료; P4-04 acceptance는 7.0.0-28 aarch64에 한정 |
+| 8 | CI-01/02 및 REL-01 | portable 원격 CI와 격리 Linux BPF job의 실행 근거를 확보한 뒤 source/object mapping·checksum·SBOM/license manifest를 완성. | CI runner·remote evidence 미검증; REL-01 미착수 |
+| 9 | REL-02 / REL-03 | install/update/rollback 및 제한된 pilot의 계획·복구 절차를 작성. 실제 배포·외부 공유는 별도 승인 전 수행하지 않음. | REL-01 이후 |
+| 10 | ARCH-01 | amd64 syscall ABI/object 지원을 구현하고 독립 guest에서 verifier/load/attach/runtime을 확인한 뒤 지원 matrix에 추가. | arm64 MVP 완료 뒤 별도 후속; 현재 amd64 미지원 |
+| 11 | F5~F9 | Linux MVP 이후 VM UX, rich-flow, Kubernetes, feedback interface, local dashboard를 각 선행 Phase와 저장·조회 계약에 따라 상세화. | 선행 Phase 미완료라 설계·구현 보류 |
+| 12 | F10 | payload-aware metadata 필요성만 검토하고 자동 착수하지 않음. | 조건부, 별도 승인 필요 |
 
 **검증 batch 상태:** candidate `b0d482b`에서 guest `gofmt -d` 확인과 `make BUILD_DIR=.build-integration linux-acceptance`를 완료했다. batch에는 BPF generation, `go vet`, `go build`, 전체 비특권 test suite, root runner, root 나머지 packages, required enforcement exit-delete 및 required S25 mmap/concurrent-run fixtures가 포함됐고 모두 PASS했다. `b0d482b` 이후 현재 변경은 README/master-plan의 상태와 claim-to-test 문서 정리뿐이다. 다음 코드 변경이 생기면 영향받는 검증과 최종 통합 batch를 다시 실행한다. Remote GitHub CI는 runner/권한 선행조건 때문에 이 batch에 포함되지 않았다.
 
 **P2 follow-up 기록:** P2-FU-01은 `20cdee1`에서 `on_process_fork` parent TID miss 시 tracked TGID를 조회한다. P2-FU-02는 `2c775ba`에서 file/network observer TID scope miss 시 같은 process TGID를 조회한다. aarch64 guest의 `TestFileAndConnectObserver` 무고정 3회와 CPU 0/1 고정 실행, 이후 통합 acceptance sensor 단계가 통과했다. 상세 로그는 문서 끝의 2026-10-24 기록에 있다.
 
-**P4 현 상태:** 이전 통합 acceptance 명령은 pass했지만 path-capture loss가 실제로 관측됐다. §12.10 사용자 승인 결정의 no-loss audit acceptance는 충족되지 않았으므로 현재 P4-04는 계속 미완료다. path capture 구현 수정 후 마지막 batch에서 다시 판정한다.
+**P4 현 상태:** Linux arm64 MVP에 대해 candidate `b0d482b`의 마지막 acceptance batch가 PASS했다. required S25 mmap path-capture 및 concurrent-run fixture에서 exact raw target pathname과 complete coverage를 확인했다. 이에 따라 P4-04는 현재 arm64 지원 scope에서 완료로 판정한다. 다른 kernel release 및 amd64 runtime 검증은 지원 matrix 밖이며 후속 작업이다.
 
 **OSS 기반 토큰 사용 절감 적용:** OSS [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)를 코드 탐색 기본 경로로 적용했다. 현재 세션에서 graph status 확인 후 좁은 `search_graph`와 정확한 심볼 `get_code_snippet`을 사용하고, 출력은 필요한 source/metadata만 추렸다. `AGENTS.md`에는 검색 범위 제한·출력 필터링·원문 보존 규칙을 기록했다. 추가 묶음이 필요할 때는 [Repomix](https://github.com/yamadashy/repomix)의 파일 선택/표준입력 기능을 선택적으로 사용하되 전체 저장소 팩을 기본 생성하지 않는다. [LLMLingua](https://github.com/microsoft/LLMLingua)는 의미 압축의 검토 비용과 의미 손실 가능성 때문에 규범 문서·BPF 코드·정책·acceptance assertion에 적용하지 않는다. 현재 전후 토큰 계측 baseline이 없어 절감률이나 비용 절감 수치는 주장하지 않는다.
 
@@ -1024,7 +1027,7 @@ AgentTaint/
 
 **2026-10-25 path-capture batch 결과 및 수정:** candidate `1fe6319`에서 `make BUILD_DIR=.build-integration linux-acceptance`를 시작했다. `go generate`, `go vet`, `go build`, portable `go test -count=1 ./...`가 통과했고, privileged runner에서 새 `getname_flags` probes의 load/attach를 거쳐 mmap target의 `openat` 성공까지 도달했다. 기존 `TestRunObservedMmapPathReadFault`가 이전 설계의 `-EFAULT` diagnostic 및 incomplete 상태를 강제해, 경로를 회수하고 complete coverage를 반환한 결과를 실패로 오판했다. fixture를 exact raw target pathname이 audit file에 있고 RunObserved가 complete/exit 0을 반환하는지 확인하도록 수정했다. 이 수정 반영 후 full final batch를 다시 실행해야 하며 P4-04/V-01은 아직 미완료다.
 
-**2026-10-25 최종 acceptance — candidate `b0d482b`:** `make BUILD_DIR=.build-integration linux-acceptance`를 Linux `7.0.0-28-generic`, aarch64 guest에서 다시 실행했다. BPF sensor/enforcement generation, `go vet ./...`, `go build ./...`, non-root `go test -count=1 ./...`, root Linux runner suite, root 나머지 packages, required `TestEnforceProcessExitMapDeleteFailureFailsClosed`, 그리고 `AGENTTAINT_REQUIRE_S25_BPF=1`의 `TestRunObservedMmapPathReadFault`/`TestRunObservedSeparatesConcurrentRuns`가 통과했다. mmap fixture는 nofault entry read 뒤 getname_flags에서 kernel-copied raw path를 회수해 audit JSONL에 exact target pathname이 있고 coverage가 complete/exit 0인지 확인한다. 이 증거로 §12.10의 S25 no-loss acceptance를 이 kernel/architecture fixture에서 충족했다. 다른 kernel release, arm64 외 runtime, 별도 mutation/attach/loss 조건은 이 증거로 보장하지 않으며 P4-04 architecture matrix는 열려 있다.
+**2026-10-25 최종 acceptance — candidate `b0d482b`:** `make BUILD_DIR=.build-integration linux-acceptance`를 Linux `7.0.0-28-generic`, aarch64 guest에서 다시 실행했다. BPF sensor/enforcement generation, `go vet ./...`, `go build ./...`, non-root `go test -count=1 ./...`, root Linux runner suite, root 나머지 packages, required `TestEnforceProcessExitMapDeleteFailureFailsClosed`, 그리고 `AGENTTAINT_REQUIRE_S25_BPF=1`의 `TestRunObservedMmapPathReadFault`/`TestRunObservedSeparatesConcurrentRuns`가 통과했다. mmap fixture는 nofault entry read 뒤 getname_flags에서 kernel-copied raw path를 회수해 audit JSONL에 exact target pathname이 있고 coverage가 complete/exit 0인지 확인한다. 이 증거로 §12.10의 S25 no-loss acceptance를 이 kernel/architecture fixture에서 충족했다. arm64만 지원하는 현재 제품 범위를 기준으로 P4-04를 닫는다. 다른 kernel release와 amd64 runtime, 별도 mutation/attach/loss 조건은 이 증거로 보장하지 않는다.
 
 ### 12.2 문서 정합성 준비 작업
 
@@ -1457,7 +1460,7 @@ go test -race -count=1 ./...
 | P4-01 | 동기 커널 상태와 Go reference model의 소유·갱신·수명·policy snapshot·race 계약. hook capability와 장애 행동표·권한 profile 설계 | Phase 3 완료 후 실제 kernel 가능성 검증 및 규범 충돌 제안/사용자 확인. 비동기 Go 이벤트 처리를 pre-op 동기 판정처럼 설명하지 않음 |
 | P4-02 | 승인된 `bpf/*.bpf.c`, maps, `internal/policy/kernel.go`, `internal/enforce/enforce_linux.go` 및 생성 `enforce_bpfel.go/.o`: 지원 source file-open·새 IPv4 connect의 pre-op 거부, 앞선 LSM 거부 존중 | direct file deny와 read-allow→taint→network-deny를 별개 fixture로 검증. syscall errno·상태·수신 측·allow 대조군이 함께 증명돼야 PASS |
 | P4-03 | CLI/enforce/env: monitor/notify/block/명시 kill, 요청/활성 mode·실제 action/result, unsupported 처리·health·감사 로그·종료 의미 | D05 수정안 확인 후 block 미지원이면 target 시작 전 실패. kill은 사용자가 명시한 경우만. 로그 손실과 커널 집행 상태 손실을 구분 |
-| P4-04 | Linux integration/adversarial: source→connect race, 여러 CPU/thread, map 포화, attach/loader 장애, supervisor 방해·FD·권한 재상승, timeout cleanup | S17~S38의 해당 사례와 arm64/amd64 실제 검증. bounded synchronization 사용, race 숨기는 sleep 금지. 기존 소켓/IPv6/pipe 미지원은 따로 표시 |
+| P4-04 | Linux integration/adversarial: source→connect race, 여러 CPU/thread, map 포화, attach/loader 장애, supervisor 방해·FD·권한 재상승, timeout cleanup | 지원 선언 대상인 arm64의 S17~S38 사례와 실제 검증. amd64를 지원한다고 표시하기 전 별도 ARCH-01 acceptance 수행. bounded synchronization 사용, race 숨기는 sleep 금지. 기존 소켓/IPv6/pipe 미지원은 따로 표시 |
 | V-01 | 현재 source/object/policy/environment를 묶은 claim→test 감사, 지원표·성능 측정 조건·README/doctor/log 일치 | P4-04 후. 실제 Linux 부작용까지 확인한 범위만 보장. 제한된 기술 MVP와 일반 AI 전체 유출 방지는 다름. 필수 검증 누락 시 완료 불가 |
 
 #### F. 사용자 문서·배포·운영
@@ -1839,7 +1842,7 @@ Go `-race`는 Go 코드의 race 검출이고 kernel/Go 간 논리적 race를 모
 | S27 | target stdin/stdout에 JSON·binary 출력 | audit와 대상 데이터가 섞이지 않음 | P0/P2 |
 | S28 | target가 policy/control/log를 수정 시도 | 정의한 권한 경계와 threat model 일치 | P4 |
 | S29 | guest 내부 FS와 host 공유 FS | 파일 동일성 차이를 분리 기록 | ENV/P2~4 |
-| S30 | arm64와 amd64에서 동일 지원 시나리오 | 각각의 kernel·verifier·실행 증거 | D07에 따라 |
+| S30 | 선언한 Linux 지원 아키텍처의 동일 지원 시나리오 | 현재 arm64의 kernel·verifier·실행 증거. amd64 검증은 별도 ARCH-01에서 수행 | 현재 MVP는 arm64만 지원; amd64 결과는 `not_tested` |
 | S31 | 보호 전에 열린 파일 FD·stdin redirection·env 입력 | 초기 source 범위 밖임을 명시; 라벨 없음 ≠ 비밀 없음 | P2~4 한계 검증 |
 | S32 | 여러 CPU/worker의 source·fork·connect 순서 및 replay 교란 | 정한 인과·소비 순서 준수, 누락·중복 의미 명시 | P2~4 |
 | S33 | root target 종료 뒤 살아 있는 자식과 취소/timeout | 남은 scope의 감시 유지, 종료·drain·잔류 상태 보고 | P2~4 |
@@ -2942,16 +2945,16 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - P2-FU-01/02와 P4-04 fixture를 포함한 통합 commit `6cd8e8e`에서 `make BUILD_DIR=.build-integration linux-acceptance` 전체가 PASS했다: sensor/enforcement BPF generation, `go vet ./...`, `go build ./...`, 비특권 전체 테스트, root runner, root 나머지 package, required `TestEnforceProcessExitMapDeleteFailureFailsClosed`, required S25 mmap/concurrent-run outer tests.
 - P4-04 결과는 fixture의 명시적 불완전 감사 fail-closed 경로까지 검증한다. 실제 path-capture loss가 여전히 `AuditCoverage=incomplete`를 만들 수 있으므로 이 PASS는 완전 감사 기록 보장이나 모든 지원 환경에서의 path capture 성공을 뜻하지 않는다. D07의 raw syscall pathname 의미와 Linux 5.13+ 하한을 유지하고, 완전 감사 보장 및 P4-04 최종 완료는 V-01의 claim-to-test 감사와 함께 결정한다. 검증 환경은 연결된 aarch64 Linux guest이며 amd64 Linux runtime은 `not_tested`다.
 
-#### V-01 Linux MVP 최종 보장 감사 초안 — 2026-10-25
+#### V-01 Linux arm64 MVP 최종 보장 감사 — 2026-10-25
 
-날짜별 과거 기록은 당시의 실행 이력으로 보존한다. candidate `b0d482b`의 no-loss acceptance는 aarch64 Linux 7.0.0-28 guest에서 통과했고, ARCHITECTURE/Phase 4 BPF source-path 설명도 현 구현에 맞춰 정정됐다. V-01은 P4-04의 나머지 architecture/runtime matrix와 독립 문서 검토가 끝나기 전까지 초안 상태다.
+날짜별 과거 기록은 당시의 실행 이력으로 보존한다. candidate `b0d482b`의 전체 acceptance와 no-loss fixtures는 aarch64 Linux 7.0.0-28 guest에서 통과했다. 현재 observer constructor가 `runtime.GOARCH != "arm64"`이면 실행을 거부하는 코드와 이 evidence를 대조했다. 따라서 이 감사는 **Linux arm64 MVP의 명시된 guest/scenario 범위**에 대해 확정하며, 미검증 커널을 지원한다고 확장하지 않는다. amd64 runtime을 현재 지원 범위에서 제외하고 별도 ARCH-01로 이연했다.
 
 | Claim | Mechanism / timing | Evidence | Supported wording | Limitation |
 |---|---|---|---|---|
 | 지정 source 파일에 접근한 프로세스에 SECRET을 연결한다 | syscall file-open 관측 뒤 성공 completed event를 Go `internal/taint` reference에 반영 | `TestPolicyAuditPipelineFourScenarios`; guest `TestRunObservedPolicyAuditPipeline`; `TestRunFailedSourceOpenTaintsKernelButNotReference`는 kernel source-attempt와 Go reference 의미 차이를 대조 | audit model은 관측된 성공 FileOpen에서 process label을 기록한다. block projection은 승인된 source open 시도를 보수적으로 상태에 반영할 수 있다. | 파일 bytes를 읽었는지 증명하지 않는다. raw pathname exact match이며 alias, dirfd, symlink, rename, mount identity를 해석하지 않는다. |
-| fork된 child에 process label/state를 전파한다 | process lifecycle event 및 kernel fork hook에서 process birth identity/run scope로 상태를 갱신 | `TestProcessObserverThreadLifecycle`; `TestRunBlockPropagatesSourceAcrossForkToChildOnAnotherCPU`; exit-delete required acceptance | 지원된 process fork 경로에서 identity를 추적하고 state를 분리한다. | 모든 clone/thread/namespace 경로와 host 전체 프로세스를 보장하지 않는다. Linux amd64 runtime은 이번 batch에서 `not_tested`다. |
+| fork된 child에 process label/state를 전파한다 | process lifecycle event 및 kernel fork hook에서 process birth identity/run scope로 상태를 갱신 | `TestProcessObserverThreadLifecycle`; `TestRunBlockPropagatesSourceAcrossForkToChildOnAnotherCPU`; exit-delete required acceptance | 검증된 arm64 guest에서 지원된 process fork 경로의 identity를 추적하고 state를 분리한다. | 모든 clone/thread/namespace 경로와 host 전체 프로세스를 보장하지 않는다. amd64 runtime은 지원되지 않으며 ARCH-01에서 검증한다. |
 | SECRET process의 새 IPv4 connect 정책을 평가한다 | 관측된 completed connect 뒤 Go reference가 라벨·policy snapshot을 평가; audit history incomplete면 verdict 생성 억제 | `TestPolicyAuditPipelineFourScenarios`; `TestRunObservedPolicyAuditPipeline`; coverage loss fixture | 완전한 관측 history에서 지원된 새 IPv4 connect에 audit/deny verdict를 기록한다. 이력 손실은 `AuditCoverage=incomplete`로 표시하고 verdict/action을 억제한다. | 기존 connection, UDP `sendto`, IPv6, 비지원 sink와 누락된 event는 포함하지 않는다. |
-| syscall-entry nofault miss 뒤 raw pathname을 보존한다 | `getname_flags` kprobe/kretprobe가 syscall에 사용된 kernel-copied `struct filename.name`을 pending open에 연결한다. attach/copy 실패는 진단 및 incomplete fail-closed로 남는다. | `TestRunObservedMmapPathReadFault`, `TestRunObservedSeparatesConcurrentRuns`; final `make linux-acceptance` candidate `b0d482b`, Linux 7.0.0-28 aarch64 | 이 guest의 mmap page-fault fixture와 concurrent-run fixture에서는 exact raw target pathname이 audit에 기록되고 run coverage가 complete였다. | 내부 kernel symbol `getname_flags`의 attach 가능성·구조체 BTF·동작이 다른 모든 5.13+ kernel에서 검증된 것은 아니다. 현재 observer runtime은 arm64만 지원하고, 다른 kernel/architecture의 no-loss는 `not_tested`. |
+| syscall-entry nofault miss 뒤 raw pathname을 보존한다 | `getname_flags` kprobe/kretprobe가 syscall에 사용된 kernel-copied `struct filename.name`을 pending open에 연결한다. attach/copy 실패는 진단 및 incomplete fail-closed로 남는다. | `TestRunObservedMmapPathReadFault`, `TestRunObservedSeparatesConcurrentRuns`; final `make linux-acceptance` candidate `b0d482b`, Linux 7.0.0-28 aarch64 | 이 guest의 mmap page-fault fixture와 concurrent-run fixture에서는 exact raw target pathname이 audit에 기록되고 run coverage가 complete였다. | 내부 kernel symbol `getname_flags`의 attach 가능성·구조체 BTF·동작이 Linux 5.13+ 전체에서 검증된 것은 아니다. 다른 kernel의 no-loss는 `not_tested`; amd64 runtime은 지원되지 않는다. |
 | 요청한 file open 및 새 IPv4 connect를 block한다 | BPF-LSM hook의 pre-operation decision; Go가 검증한 bounded kernel projection | `TestRunBlockedFileOpenDenyWithAllowControl`; `TestRunBlockedSourceTaintDeniesConnectWithAllowControl`; `TestRunBlockUsesLoadedPolicySnapshotAfterPolicyFileMutation`; 통합 acceptance의 verifier/load/attach/runtime 단계 | 검증된 guest에서 지정 direct file-open 및 지원된 새 IPv4 connect fixture가 `EPERM`으로 거부됐고 허용 대조군은 통과했다. | 모든 OS operation, 기존 socket, UDP send, path alias, 다른 프로세스/daemon/원격 agent 작업을 차단한다고 보장하지 않는다. |
 | notify/kill 모드의 결과를 구분한다 | 정책 event 이후 userspace action; kill은 post-operation cgroup action | `TestRunPolicyModesNotifyAndKillAfterPolicyEvent`, `TestRunPolicyModeScenarioMatrix`; receiver `Accept` assertion | 완전한 audit 결과가 있을 때 notify 기록과 명시적 kill action을 block과 구분한다. 불완전 audit에서는 action을 억제한다. | kill 이전에 sink effect가 발생했을 수 있으며 이미 발생한 effect를 되돌리지 않는다. notify/kill은 prevention이 아니다. |
 | audit 손실을 노출한다 | 복구할 수 없는 path capture diagnostic, drop counter, decode/queue quality가 sticky `incomplete` 상태로 반영 | `TestRunObservedPolicyAuditPipeline`; `TestAuditCoverageLossRemainsStickyAfterQueueRecovers`; required S25 fixture | 감지된 잔여 손실은 run audit coverage를 incomplete로 남기고 후속 policy verdict/action을 억제한다. S25의 성공 사례는 raw path recovery를 확인한다. | 모든 가능한 손실 원인이 감지된다고 보장하지 않는다. 모든 kernel/architecture/memory race에서 path capture가 성공한다고 보장하지 않는다. |
@@ -2975,13 +2978,13 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 ## Security Semantics
 - what is detected: 지원된 Linux guest에서 run에 속한 process lifecycle, 지정 file-open, 새 IPv4 connect 관측과 감지된 audit coverage loss.
 - what is blocked: 검증된 BPF-LSM guest의 지원 direct file-open 및 새 IPv4 connect fixture를 pre-operation으로 거부한다.
-- what is NOT guaranteed: byte-level taint, 모든 파일 alias/모든 OS effect, 모든 지원 kernel/architecture에서 audit capture 성공, 기존 connection/UDP `sendto`, post-event kill 전 송신 효과의 회수, amd64 Linux runtime 동작.
+- what is NOT guaranteed: byte-level taint, 모든 파일 alias/모든 OS effect, Linux 5.13+ 전체에서 audit capture 성공, 기존 connection/UDP `sendto`, post-event kill 전 송신 효과의 회수, amd64 Linux runtime 동작(현재 미지원).
 
 ## Limitations
-- 현재 acceptance runtime은 연결된 aarch64 Linux guest에 한정한다. amd64 Linux runtime은 `not_tested`다.
+- 현재 지원·acceptance runtime은 arm64이며 실제 acceptance guest는 Linux 7.0.0-28 aarch64다. amd64 runtime은 현재 미지원이며 ARCH-01 전까지 지원을 표시하지 않는다.
 - 현재 test guest는 Linux 7.0.0-28 aarch64다. `getname_flags` kprobe/kretprobe attach를 사용할 수 없는 환경에서 observer는 fail-before-run하며, 다른 kernel/architecture의 verifier·load·attach는 확인하지 않았다.
 - 남은 path/drop/decode/queue loss가 확인되면 그 run의 policy verdict/action을 억제한다. S25 no-loss acceptance pass는 지정된 fixture/guest에 한정된다.
 - 지원 가능한 kernel/architecture 전체의 장기 안정성, 모든 race 및 host root/커널 compromise 저항은 검증되지 않았다.
 
 ## Next Phase
-Do not implement it. P4-04의 남은 architecture/runtime matrix와 DOC-01/REL-01 선행 내용을 순서대로 마무리한 뒤 V-01을 최종 확정한다. no-loss 기준은 유지한다. 현재 S25 성공 증거는 Linux 7.0.0-28 aarch64의 specified fixtures에 한정하고, 미검증 kernel/architecture 결과를 일반화하지 않는다.
+Do not implement it. arm64 MVP의 다음 작업은 CI-01/02 원격·격리 검증 근거를 확보한 뒤 REL-01 산출물 재현성 검토를 마치는 것이다. amd64 runtime 추가는 그 뒤 ARCH-01에서 별도 구현·검증한다. no-loss 기준은 유지하며, 현재 S25 성공 증거는 Linux 7.0.0-28 aarch64의 specified fixtures에 한정한다.

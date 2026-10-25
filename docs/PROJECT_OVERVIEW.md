@@ -2,7 +2,7 @@
 
 이 문서는 AgentTaint를 처음 보는 개발자가 프로젝트의 목적과 경계를 빠르게 이해하도록 쓴 개요입니다. 설치·운영 절차나 전체 검증을 대신하지 않습니다.
 
-> 이 문서는 처음 읽는 사람을 위한 요약입니다. 정확한 보안 계약과 검증 범위는 [보안 모델](SECURITY_MODEL.md), [아키텍처](ARCHITECTURE.md), [위협 모델](THREAT_MODEL.md), [구현 계획](IMPLEMENTATION_MASTER_PLAN.md)을 기준으로 확인하세요.
+> 이 문서는 처음 읽는 사람을 위한 요약입니다. 정확한 보안 계약과 검증 범위는 [보안 모델](SECURITY_MODEL.md), [아키텍처](ARCHITECTURE.md), [위협 모델](THREAT_MODEL.md), [구현 계획](IMPLEMENTATION_MASTER_PLAN.md)을 기준으로 확인하세요. 현재 Linux runtime 지원 아키텍처는 arm64이며, amd64는 후속 작업입니다.
 
 ## 먼저 예를 들어 보겠습니다
 
@@ -48,7 +48,7 @@ AgentTaint는 프롬프트의 의도나 에이전트 이름을 판별하지 않�
 - **지원 범위가 제한돼 있습니다.** 현재 제품 방향은 Linux eBPF, 지정한 파일 경로, `fork`/`exec` 계보, 새 IPv4 연결입니다. 기존 socket의 전송, IPv6, UDP `sendto` 등 모든 유출 경로를 보장하지 않습니다.
 - **파일 경로가 파일 객체의 고유 ID는 아닙니다.** 상대경로, symlink, hardlink, rename, mount 별칭을 같은 파일로 추론하지 않습니다.
 - **관찰과 차단은 다릅니다.** event 기록이나 `notify`/`kill`은 사전 차단이 아닙니다. 차단은 해당 Linux 환경에서 필요한 hook의 준비와 실제 동작이 검증된 범위에만 해당합니다.
-- **MVP 검증은 진행 중입니다.** README와 구현 계획에 기록된 대로 P4-04 전체 검증과 최종 보장 감사 V-01은 완료 전입니다. 지원 범위와 최신 증거는 [구현 계획](IMPLEMENTATION_MASTER_PLAN.md)을 확인하세요.
+- **MVP 검증 범위는 제한적입니다.** Linux arm64의 지정 guest와 fixture에서 P4-04 acceptance가 통과했습니다. 이는 다른 커널 버전이나 amd64 runtime 검증을 뜻하지 않습니다. 현재 지원 범위와 최신 증거는 [구현 계획](IMPLEMENTATION_MASTER_PLAN.md)을 확인하세요.
 
 ## 근거와 그림 읽기
 
@@ -70,7 +70,7 @@ Go 코드가 일반 정책 해석과 기준 taint 의미를 소유합니다. BPF
 
 ## 어디서 시작하나요?
 
-개발 checkout에서 간단한 환경 진단은 다음과 같습니다.
+개발 checkout에서 간단한 환경 진단은 다음과 같습니다. 진단은 커널·권한 등 정적 정보를 표시하며 실제 BPF verifier/load/attach 성공을 확인하지 않습니다.
 
 ```sh
 go run ./cmd/agenttaint doctor --json
@@ -82,7 +82,7 @@ go run ./cmd/agenttaint doctor --json
 ./agenttaint run --mode block --policy ./policies/example.yaml --audit-file ./block-audit.jsonl --run-as 65534:65534 -- /path/to/agent
 ```
 
-`/path/to/agent`와 정책 안의 source 경로는 예시 자리표시자입니다. 실제 Linux 실행 조건과 monitor mode 예시는 [README](../README.md)를 확인하세요. `doctor`는 정적 환경 정보를 보여줄 뿐 BPF hook의 실제 attach나 차단 가능성을 증명하지 않습니다.
+`/path/to/agent`와 정책 안의 source 경로는 예시 자리표시자입니다. 실제 Linux arm64 실행 조건과 monitor mode 예시는 [README](../README.md)를 확인하세요. Linux amd64에서는 observer runtime이 실행 전에 거부됩니다.
 
 ## 더 읽을 자료
 
