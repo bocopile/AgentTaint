@@ -272,7 +272,8 @@ codex
 - `run`은 argv를 shell 문자열로 합치지 않고, 환경변수·틸드·와일드카드를
   target 인자에서 임의로 확장하지 않는다. 후보 목록의 홈 경로·glob 해석만
   Go 코드로 수행한다. 자식 stdin/stdout/stderr와 정상 종료 코드를 보존한다.
-  진단·선택 경로·**Phase 0에는 감시와 차단이 없다는 안내**는 stderr로 보낸다.
+  진단·선택 경로·**pass-through 실행에는 감시와 차단이 활성화되지 않는다는
+  안내**는 stderr로 보낸다.
   target stdout을 AgentTaint 출력으로 오염시키지 않으며 PATH를 수정하지 않는다.
 
 ### Phase 2 확장 계약 — 구현 및 검증 범위

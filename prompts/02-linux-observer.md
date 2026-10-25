@@ -116,9 +116,11 @@ ENV-02에는 현재 고정 generator의 ident, basename·suffix, 생성 경로�
   target exec를 허용한다. 추가 application FD는 전달하지 않는다.
   이 launch protocol은 supervisor의 준비 ACK 후 target 허가를 보내며, 잘못된 응답·EOF·
   timeout·부모 종료에서는 target을 실행하지 않는다.
-- Toolchain probe는 신뢰된 명시적 절대 경로만 사용한다. 도구별 고정 인자,
-  timeout·출력 크기 상한과 신뢰/권한 기준을 먼저 기록한다. PATH/프로젝트
-  fallback, shell, 권한 상승, 설치, mount, 모듈/BPF load/attach는 금지한다.
+- Toolchain probe는 신뢰된 명시적 절대 경로만 사용한다. allowlist/argv는
+  clang·llvm-strip `--version`, bpftool `version`으로 고정한다. 각 실행은
+  5초 timeout, stdout/stderr 각각 8 KiB, 빈 environment, `/` working directory를
+  사용한다. PATH/프로젝트 fallback, shell, 권한 상승, 설치, mount, 모듈/BPF
+  load/attach는 금지한다.
   subprocess를 실행하는 probe를 정적 읽기 전용 점검이라고 부르지 않는다.
   절대 경로·존재·실행 권한은 파일 신뢰의 증거가 아니며, 버전 조회도 코드 실행이므로
   부작용이 없다고 보장하지 않는다.
