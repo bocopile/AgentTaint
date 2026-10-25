@@ -81,10 +81,36 @@ total, not a before/after comparison and not attributable to the three skills.
 It includes session startup context and harness overhead. Adding TOOL-02's two
 behavior-test sessions gives `70,859` reported tokens across three fresh Codex
 sessions; this is only a record of verification cost, not a savings measure.
-MCP-01 remains responsible for measuring context costs, checking the existing
-codebase-memory MCP's freshness and outage fallback, and deciding whether
-another OSS tool is justified. No installer, hook, script, plugin, global
-setting, or runtime dependency was added.
+
+## MCP-01 graph freshness and fallback check
+
+The existing codebase-memory MCP was checked read-only on 2026-10-25. The exact
+root `/Users/okestro/projects/AgentTaint` resolves to project
+`Users-okestro-projects-AgentTaint` (11,392 nodes, 15,812 edges), and
+`index_status` returned `ready`. `search_graph` found
+`recordBPFDropDeltas` at `internal/runner/observe_linux.go:885-928` and
+`TestRunObservedSeparatesConcurrentRuns` in
+`internal/runner/observe_linux_test.go`; the bounded snippet matched the
+current source for the helper. The source file's last code commit is
+`12b66c275aab507e5c0a67480ffb229c7cde0967`. These checks show that the sampled
+graph entries are usable, but the MCP API exposes no indexed commit, timestamp,
+or dirty-worktree fingerprint, so they do not prove whole-index freshness.
+
+Fallback behavior was exercised for an insufficient graph result: a scoped
+`search_code` query under `internal/env/` returned no matches, then narrow
+`rg --files` inspection found `doctor.go` and `doctor_test.go`. A query against
+an unavailable project returned `project not found or not indexed`; direct
+repository search is the documented next step. A real `Transport closed` or
+timeout outage was not induced during this check (`not_tested`), and the
+previously observed intermittent transport closure was not reproduced. Do not
+describe `ready` as freshness evidence, and do not re-index automatically;
+re-indexing mutates MCP state. Read-only graph queries were used. Mutation
+tools are available in the MCP surface, but no mutation was invoked; this check
+did not audit GitHub connector permissions.
+
+No token savings are claimed: no comparable before/after task was measured.
+No installer, hook, script, plugin, global setting, or runtime dependency was
+added.
 
 ## Removal scope
 
