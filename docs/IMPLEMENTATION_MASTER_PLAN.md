@@ -2901,13 +2901,14 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - 아키텍처 지원: Linux arm64 MVP를 우선 지원한다. Linux amd64 runtime은 ARCH-01 전까지 미지원이며, Go cross-build만으로 지원 완료로 표시하지 않는다.
 - P2-FU-03: toolchain probe 구현 `96cfad3`가 `db65bf8`에 병합됐으나 fixture와 현재 HEAD acceptance는 pending (`not_tested`).
 - 보존 대상: `/Users/okestro/.codex/worktrees/ca3f/AgentTaint`의 `codex/phase4-p404-20261024-acceptance`는 HEAD `f887531`에서 Makefile, master plan, runner test 3개 등 5개 파일이 dirty다. 이 worktree는 읽기 전용으로 대조하고 소유자/변경 목적을 확인하기 전에는 편집·stage·stash·reset·삭제하지 않는다.
+- INT-00 읽기 전용 대조 결과: dirty `Makefile`, `auditfile_linux_test.go`, `observe_quality_test.go`는 현재 integration 파일과 내용이 같다. dirty 계획 문서는 integration의 최신 arm64 acceptance 기록을 포함하지 않아 현재 기준으로 통합하지 않는다. dirty `observe_linux_test.go`는 audit/policy assertion 일부를 기대 동작 기반으로 바꾸어 실제 관측 검증을 약화하는 변경이 있어 별도 소유자 확인·리뷰 전에는 통합하지 않는다. 외부 worktree는 계속 보존한다.
 - 대시보드: F9는 아직 구현되지 않았고 Phase 9 prompt는 스텁이다. Runs → Run detail timeline → Evidence detail은 설계 제안일 뿐 승인된 제품 계약이 아니다. 우선 event/decision 저장·조회 계약을 정하고, F9-DESIGN 승인을 받은 후 구현한다.
 
 #### 남은 작업 순서와 작업별 Git 전략
 
 | 순서 / ID | 상태·작업 / 완료 조건 | 선행·의존 | Git 단위와 통합 순서 |
 |---|---|---|---|
-| 0 / INT-00 | dirty P4 acceptance worktree의 5개 파일을 integration 및 task 증거와 읽기 전용 대조하고 소유권·중복·누락만 기록한다. 기존 변경은 보존한다. | 즉시. 파일 소유자를 확인할 수 없으면 해당 변경 통합을 보류하고 확인 가능한 나머지 작업은 진행 | 현재 integration 기준으로 비교 기록만 남긴다. dirty worktree에 branch/commit을 만들거나 수정하지 않는다. 필요하면 소유자가 별도 task branch를 만든다. |
+| 0 / INT-00 — 완료 | dirty P4 acceptance worktree의 5개 파일을 integration과 읽기 전용 대조했다. 3개 파일은 integration과 동일하고, plan은 stale이며, runner acceptance test 변경은 별도 review가 필요하다. | 완료; 기존 변경 모두 보존 | 비교 결과만 이 절에 기록했다. dirty worktree에 branch/commit을 만들거나 수정하지 않았다. |
 | 1 / DOC-00, PRE-01, PRE-02 | 전체 계획·문서·prompt 상태 감사와 정리를 먼저 한다. status, version, 링크, 예시, 지원 범위와 norm 충돌을 대조하고 수정 근거·미해결 결정을 기록한다. 아키텍처/보안 의미 충돌은 승인 전 멈춘다. | INT-00에서 dirty worktree 변경 소유권 확인. 현재 master-plan snapshot도 이 문서 작업에 포함 | 각 독립 문서 단위마다 `codex/docs-<task-id>-<slug>` / `.worktrees/<task-id>`를 사용한다. 이 계획 갱신은 `codex/docs-worklist-20261025-redefined`에서 진행 중이며 리뷰 후 integration에 문서 commit으로 반영한다. |
 | 2 / INT-01 | P2-FU-03와 현재 코드 통합 acceptance를 완료한다. fixture 포함 doctor probe, portable suite, Go vet/build, Linux arm64 `make linux-acceptance`, 독립 diff/security review를 정확한 통합 HEAD에서 실행하고 결과를 기록한다. | INT-00 ownership 분류와 DOC-00/PRE 문서 작업 완료. 이 시점에 코드·문서 batch를 고정 | 기존 `codex/phase4-integration-20261024`를 통합 대상으로 이어간다. 이미 task commit은 통합돼 있으므로 재커밋하지 않는다. acceptance 전 push 금지. 실패 수정은 전용 새 worktree/task branch에서 만들고 통합 후 영향 검사를 재실행한다. |
 | 3 / TOOL-01~03, MCP-01 | 사용자가 요청한 토큰 절감 검토를 포함해 도구 후보를 조사하고, 압축 품질·비용·보안 경계·라이선스를 실제 근거로 평가한다. 필요한 최소 도구만 별도 승인 및 안전 설계 뒤 도입한다. MCP 추가는 현재 codebase-memory MCP가 못 채우는 요구가 입증될 때만 완료로 본다. | PRE 감사와 도구 요구 정의. 외부 도구 설치나 자동 호출 정책 변경은 별도 승인 필요 | 카드마다 전용 branch/worktree를 쓰고, 조사 문서와 구현을 분리한다. 도입 후보가 없으면 증거를 남기고 `not_needed`로 닫는다. |
@@ -2937,7 +2938,7 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 
 #### 다음 실행 묶음
 
-1. INT-00에서 외부 dirty P4 worktree의 변경을 읽기 전용으로 분류하고, 통합에 필요한 파일 소유권을 확인한다.
-2. DOC-00/PRE-01/PRE-02 문서 작업을 먼저 끝내고, 이 계획서 변경은 전용 branch에서 리뷰·커밋한 뒤 기존 integration branch에 문서로 통합한다. 충돌은 두 문서 변경과 이력 보존 원칙에 따라 검토해 해결한다.
+1. INT-00의 읽기 전용 분류는 완료했다. 외부 dirty 변경은 owner/review 확인 전까지 그대로 둔다.
+2. DOC-00/PRE-01/PRE-02 문서 작업을 먼저 끝내고, 이 계획서 변경은 전용 branch에서 리뷰·커밋한 뒤 기존 integration branch에 문서로 통합한다. 충돌은 양쪽의 최신 증거와 이력 보존 원칙에 따라 검토해 해결한다.
 3. 문서가 정리된 뒤 현재 코드 batch를 고정하고 INT-01의 acceptance와 독립 review를 한 번 실행한다. 향후 CI/architecture/feature work는 각 의존성 단위가 준비된 뒤 별도 batch로 수용 검증한다.
 4. 통합 acceptance와 독립 리뷰가 통과하면 요청된 순서에 따라 integration을 main에 fast-forward하고, 명시된 push 조건을 충족할 때만 원격에 반영한다.
