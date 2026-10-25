@@ -32,12 +32,13 @@
 
 | 파일 | 구체 변경 |
 |---|---|
-| AGENTS.md | 기존 process 의미를 유지하면서 후속 run-scoped 실험 계약 추가. 엔진 변경은 G2 이후 |
+| AGENTS.md | 기존 process 의미를 유지하면서 후속 run-scoped 실험 계약 추가. 엔진 변경은 G2 이후. Stop Conditions에도 제한된 UI 순서 예외 연결 |
 | SECURITY_MODEL.md | 새 profile의 보수적 상태·송신 순서·범위·실패 요구를 구현 전 설계 계약으로 추가 |
 | THREAT_MODEL.md | 격리 제공자 책임, 초기 입력/alias/IPC/기존 연결/supervisor 실패 수용 조건 |
 | ARCHITECTURE.md | 상태/정책 소유·실험 경계와 읽기 화면 선행조건. 새 제품 패키지는 아직 허용하지 않음 |
 | ROADMAP.md | 로컬 읽기 화면의 제한된 순서 예외. Linux 우선·로컬 IFC 전 Kubernetes 금지는 유지 |
 | prompts/09-local-web-dashboard.md | Phase 0~8 일괄 완료 대신 검증된 slice·저장/query/권한·상세 prompt를 UI 선행조건으로 명시 |
+| IMPLEMENTATION_MASTER_PLAN.md | 활성 F9-DESIGN/F9 카드의 F8·Phase 0~8 선행조건 5곳을 같은 예외에 맞춤. 기존 완료 상태는 변경하지 않음 |
 
 현재 파일들은 변경하지 않았다. patch 자체만 문서 artifact로 보관한다.
 `git apply --check docs/proposals/g1-normative.patch`로 적용 가능성만 검사한다.

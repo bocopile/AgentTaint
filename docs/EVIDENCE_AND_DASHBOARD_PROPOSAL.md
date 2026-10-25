@@ -84,6 +84,13 @@ incomplete가 정확히 보고되는 것을 검증하는 **장애 동작 PASS**�
 새 profile이 필요로 하는 경로의 unsupported를 성공 취급하지 않는다. 지원 범위를
 줄이려면 제품 정의·UI·capability 검사도 같이 변경하는 별도 결정을 거친다.
 
+T09의 첫 strict profile 후보는 실패 지점을 더 세분화한다. source 상태 갱신 실패는
+그 source 접근을 허용하지 않고, sink 상태 조회 실패는 해당 sink operation을 거부한다.
+실행 중 membership/상태 신뢰를 잃으면 sticky scope fault로 이후 지원 sink를 거부하거나
+격리 제공자가 해당 실행을 종료해야 한다. 그 fault를 보존하거나 종료를 보장할 수
+없으면 profile capability를 충족하지 못한 것이다. 정확한 오류 코드·주입 지점과
+선택한 동작은 P06 카드에서 고정하며 현재 구현이 이를 지원한다고 주장하지 않는다.
+
 ## 4. 저장·조회 입력 계약
 
 저장 엔진/DB는 여기서 선정하지 않는다. P08a에서 다음 논리 기록과 version,
