@@ -4,9 +4,9 @@
 
 최초 분석 기준: `bocopile/AgentTaint`의 `5cc919dadb0a86ea5ec00c794ed07918ccc42d9a`
 
-상태: **2026-10-21 기준, 37개 상위 작업과 실행 카드를 순서대로 진행 중이다. Phase 0/1, P2-01~P2-04, P3-01~P3-03, P4-01~P4-03은 각 기록 범위에서 완료했다. P4-02 guest enforcement와 P4-03의 16개 mode/scenario 조합은 통과했으며 runner audit completeness는 path-capture loss로 미완료다. CI-02는 승인된 workflow 범위가 없어 미완료다. 현재 제품 작업은 P4-04이며, S25 path-capture 진단과 집계 수정은 구현했지만 새 회귀 검증 및 guest verifier/runtime 증거가 없어 P4-04는 미완료다. 최신 증거와 남은 항목은 12.10~12.12절을 따른다.**
+상태: **2026-10-25 작업 계획 snapshot. Linux arm64 MVP의 P4-04/V-01 acceptance는 candidate `b0d482b`, Linux 7.0.0-28 aarch64 guest의 지정 fixtures에서 완료했다. amd64 runtime은 미지원이며 ARCH-01로 이연한다. P2-FU-03 toolchain probe 구현 commit `96cfad3`는 integration HEAD `db65bf8`에 들어갔지만 그 HEAD의 acceptance는 `not_tested`다. 현재 `main`은 clean `d50981a`; integration은 main보다 26 commits 앞서고 해당 원격 tracking ref보다 4 commits 앞서 있어 아직 main 반영 전이다. 기존 dirty P4 acceptance worktree의 다섯 파일은 보존한다. 현재 권위 있는 잔여 작업과 Git 실행 순서는 12.14절을 따른다.**
 
-이 문서는 제품 철학 분석, macOS 사용 가능성, `addyosmani/agent-skills` 도입 검토, 아키텍처, 언어, 디렉터리, 작업 목록, 검증 기준과 사용자 결정 사항을 한 곳에 모은다. 다른 AI가 새로운 세션에서 읽고 현재 작업을 식별할 수 있도록 작성했다. 최초 분석 당시에는 제품 코드·Go 모듈이 없었다. **현재 실행 상태는 12.10절 기록이 기준이며, 2절의 환경·저장소 조사는 최초 분석 시점의 snapshot이다.**
+이 문서는 제품 철학 분석, macOS 사용 가능성, `addyosmani/agent-skills` 도입 검토, 아키텍처, 언어, 디렉터리, 작업 목록, 검증 기준과 사용자 결정 사항을 한 곳에 모은다. 다른 AI가 새로운 세션에서 읽고 현재 작업을 식별할 수 있도록 작성했다. 최초 분석 당시에는 제품 코드·Go 모듈이 없었다. **현재 실행 상태와 우선순위는 12.14절 snapshot이 기준이며, 12.10~12.13절의 날짜가 붙은 기록과 2절 조사는 당시 상태를 보존한다.**
 
 핵심 결론은 다음과 같다.
 
@@ -35,7 +35,7 @@
 - [MCP 구성](#10-mcp와-개발-도구-경계)
 - [디렉터리 구조](#11-목표-디렉터리-구조)
 - [전체 작업 목록](#12-전체-작업-목록과-단계별-실행-계약)
-- [37개 작업의 실행 카드와 순서](#1211-전체-작업-카드와-순차-실행-순서)
+- [작업 카드와 순차 실행 순서](#1211-전체-작업-카드와-순차-실행-순서)
 - [현재 실행 게이트와 재개 절차](#1212-현재-실행-게이트와-재개-절차)
 - [테스트와 증거](#13-테스트와-완료-증거)
 - [다음 AI 실행 템플릿](#14-다음-ai에게-전달할-실행-지시)
@@ -947,7 +947,7 @@ AgentTaint/
 
 ### 12.1 전체 체크리스트
 
-이 표의 체크는 수용 기준 검증 완료를 뜻한다. 구현 중인 항목의 상세 상태는 12.10절을 따른다. 문서 작성 완료를 제품 작업 완료 체크로 바꾸지 않는다. PRE/ENV/TOOL은 준비 작업 ID이며 기존 제품 Phase 번호를 바꾸지 않는다.
+이 표의 체크는 수용 기준 검증 완료를 뜻한다. 구현 중인 항목의 상세 상태와 현재 실행 순서는 12.14절을 따른다. 문서 작성 완료를 제품 작업 완료 체크로 바꾸지 않는다. PRE/ENV/TOOL은 준비 작업 ID이며 기존 제품 Phase 번호를 바꾸지 않는다.
 
 | 완료 | ID | 작업 | 선행 조건 | 주 산출물 |
 |---|---|---|---|---|
@@ -969,6 +969,9 @@ AgentTaint/
 | [x] | P2-02 | file·IPv4 connect observer | P2-01, E03 | guest openat/openat2/connect success/failure 및 raw normalization 검증 (2026-10-19; 남은 한계는 12.10절) |
 | [x] | P2-03 | run scope·출력·손실 상태 | P2-02, E08 | guest 계보 필터·별도 audit·손실 상태 검증 (2026-10-19; 남은 lifecycle 한계는 P2-04) |
 | [x] | P2-04 | start/stop·권한·Linux 실제 검증 | P2-03, E09 | nonce launch gate·권한 강등·신호·잔류 자손 guest 검증 (2026-10-19; setuid 재상승은 nosuid로 미검증) |
+| [x] | P2-FU-01 | process observer parent TID/TGID lifecycle lookup 보완 | P4-04 guest 실패 증거, Phase 2 범위 확인 | `on_process_fork` parent TID miss 시 tracked TGID fallback; lifecycle test 및 통합 acceptance 통과 (2026-10-24) |
+| [x] | P2-FU-02 | file/network observer worker-thread scope lookup 보완 | P2-FU-01 통합 재검증 중 CPU affinity별 timeout | TID scope miss 시 같은 프로세스 TGID fallback; aarch64 guest CPU 0/1 및 통합 acceptance 통과 (2026-10-24) |
+| [ ] | P2-FU-03 | opt-in toolchain version probe | Phase 2 prompt, ENV-02 | 구현 commit `96cfad3`가 integration `db65bf8`에 병합됨; fixture/full batch acceptance pending (`not_tested`) |
 | [ ] | CI-02 | 격리된 Linux BPF 검증 job | ENV-02, P2-04, 13.7절 | verifier·필수 scenario·잔류 자원 정리 증거 |
 | [x] | P3-01 | SECRET 상태 전이·replay | Phase 2 완료 | `ProcessKey` reference engine, ordered replay, external incomplete signal, unit vectors (2026-10-19; P3-02 연결 전) |
 | [x] | P3-02 | YAML policy·평가·명시적 external | P3-01, E05/E06, D04 | pinned YAML v3 strict snapshot, IPv4 CIDR/port evaluator, precedence/error tests (2026-10-19; runner integration P3-03) |
@@ -976,17 +979,19 @@ AgentTaint/
 | [x] | P4-01 | 동기 집행 아키텍처 결정·검증 설계 | Phase 3 완료, E04/E09, D05 | Go/kernel 책임·run scope·fault·실패 행동 및 제한을 사용자 승인·문서화 (2026-10-20); runtime 검증은 P4-02/04 |
 | [x] | P4-02 | 지원 source·network pre-op 집행 | P4-01 | 별도 direct-file deny 및 source-attempt→network deny guest fixtures에서 실제 EPERM, receiver 비도달, allow 대조군과 Go reference 차이를 검증 (2026-10-21; runner audit coverage limitation은 12.10 최신 업데이트) |
 | [x] | P4-03 | modes·지원 불가 처리·health·로그 | P4-02 | monitor/notify/block/kill 16개 scenario 조합, 상태·audit loss 및 fail-before-start 검증 (2026-10-21; 제한은 P4-03 실행 기록) |
-| [ ] | P4-04 | adversarial·장애·아키텍처별 검증 | P4-03, D07 | 지원 범위에 대한 증거 |
-| [ ] | V-01 | Linux MVP 최종 보장 감사 | P4-04 | claim→test 표·Required Final Report |
-| [ ] | DOC-01 | 사용자 안내·운영·문제 해결 문서 | 해당 구현 완료, 최종판은 V-01 | 설치·모드·지원 범위·진단·복구 안내 |
+| [x] | P4-04 | adversarial·장애·아키텍처별 검증 | P4-03, D07 | Linux arm64 MVP의 `b0d482b` acceptance 및 S25 mmap/concurrent-run fixtures 통과; Linux 7.0.0-28 aarch64로 한정 |
+| [x] | V-01 | Linux MVP 최종 보장 감사 | P4-04 | 지정 aarch64 guest/scenario에 대한 claim→test 감사; 다른 kernel/amd64 보장 없음 |
+| [x] | DOC-01 | 사용자 안내·운영·문제 해결 문서 | 해당 구현 완료, 최종판은 V-01 | README와 프로젝트 개요에 arm64 지원·진단·한계 반영 |
 | [ ] | REL-01 | 재현 배포 산출물·의존성 검토 | V-01, 지원 환경의 CI 증거 | binary/BPF/source 대응·checksum·SBOM·라이선스 기록 |
+| [ ] | ARCH-01 | Linux amd64 observer runtime 지원 추가 | arm64 MVP 완료, CI-02 격리 검증 환경 또는 동등한 승인 amd64 guest | amd64 syscall ABI/object generation/verifier/load/attach/runtime 수용 후에만 지원 표기; 그 전까지 미지원 |
 | [ ] | REL-02 | 배포·설치·업데이트·제거·복구 | REL-01, D09 및 공개 배포 승인 | 승인된 배포 방식과 실제 설치/롤백 검증 |
 | [ ] | REL-03 | 제한된 시범 사용·피드백·유지보수 | V-01, F5, DOC-01, 필요 시 별도 자격증명 승인 | 검증된 사용 사례·문제 접수·지원 범위 |
 | [ ] | F5 | Mac에서 Linux VM을 사용하는 경험 정리 | V-01, D01 | VM 실행·진단·소스 동기화 UX; native는 별도 |
 | [ ] | F6 | rich flow·다중 라벨 상세화 | 선행 Phase 완료 | pipe/file/IPC 전파 설계 |
 | [ ] | F7 | Kubernetes 범위 상세화 | 로컬 IFC 완성·선행 Phase 완료 | cgroup/pod attribution 계획 |
 | [ ] | F8 | 설명·피드백 인터페이스 상세화 | 선행 Phase 완료 | 읽기 중심 MCP/hook 계약 |
-| [ ] | F9 | 로컬 웹 뷰어 상세화 | 이벤트 저장·조회 계약 및 선행 완료 | 단일 바이너리 뷰어 계획 |
+| [ ] | F9-DESIGN | 로컬 웹 대시보드 화면·데이터·보안 설계 | F8, Event/Decision persistence·query 계약 입력 | Runs → Run detail timeline → Evidence detail 흐름, completeness 표시, 화면 필드·보존/삭제·localhost 보안 명세; 현재 제안은 미승인 |
+| [ ] | F9 | 로컬 웹 뷰어 상세화·구현 | Phase 0~8, F9-DESIGN 승인, 이벤트 저장·조회 계약 | 단일 바이너리 로컬 뷰어; Phase 9 prompt는 현재 스텁 |
 | [ ] | F10 | payload metadata 확장 필요성 판단 | 실제 필요성·별도 승인 | 구현 여부 결정; 자동 착수 안 함 |
 
 **설계 입력과 선행 조건의 구분:** E01~E09는 독립적인 실행 작업이 아니라 담당 작업에서 구체화할 설계 계약이다. E07을 확정하기 위해 ENV-02를 수행하고, E04를 검증하기 위해 P4-01을 수행한다. 표의 E 참조를 “이미 구현 완료돼야 설계 착수 가능”으로 해석하지 않는다. 다만 그 설계를 사용하는 후속 코드 작업에는 규범 정합성과 검증된 계약이 필요하다.
@@ -1361,11 +1366,11 @@ go test -race -count=1 ./...
 
 ### 12.11 전체 작업 카드와 순차 실행 순서
 
-이 절은 12.1절의 **37개 상위 작업을 실행 가능한 범위로 풀어 쓴 목록**이다. 같은 ID는 같은 작업이며 이중 집계하지 않는다. 제품 기능뿐 아니라 문서·환경·AI 도구·테스트·운영·배포까지 포함한다. 미래 작업의 목록화는 지금 구현하거나 새로운 파일 경로를 자동 허용한다는 뜻이 아니다.
+이 절은 12.1절의 작업 ID를 실행 가능한 범위로 푼 카드와 당시 의존성 기록이다. 같은 ID는 같은 작업이며 이중 집계하지 않는다. 제품 기능뿐 아니라 문서·환경·AI 도구·테스트·운영·배포까지 포함한다. 이후 카드 추가로 ID 수가 바뀔 수 있으므로 총개수는 완료율로 쓰지 않는다. **현재 상태·우선순위는 12.14절이 권위 있으며, 이 절의 과거 execution note는 날짜가 붙은 이력으로 읽는다.** 미래 작업의 목록화는 지금 구현하거나 새로운 파일 경로를 자동 허용한다는 뜻이 아니다.
 
 **이번 계획의 준비 조사(제품 Phase 0과 별개):** AGENTS, ARCHITECTURE, SECURITY_MODEL, THREAT_MODEL, ROADMAP, 기존 Phase 프롬프트, 이 문서 5/7~10/13절을 기준으로 삼았다. 코드 그래프로 실제 core/runner/CLI 심볼을 확인했고, 환경 담당자는 설치된 Lima의 help/list와 해당 VM 설정을 확인했다. 설계·목록 작성과 구현·독립 검증 역할을 분리했다.
 
-현재 재사용할 수 있는 계약은 `core.Event.Kind() EventKind`, `core.DecodeEvent([]byte) (Event, error)`, concrete event의 `encoding/json.Marshal`, CLI의 `doctor`/`run`, `make check`/`make race`다. `internal/runner/runner.go`의 `Run`은 무보호 커맨드 실행이지 observer supervisor가 아니다. Linux의 `run --observe --policy PATH --audit-file PATH` 실행 경로와 policy evaluator 및 Phase 4 enforcement API는 구현되어 있으며, 적용 범위와 미검증 경계는 관련 Phase 기록을 따른다. `doctor --probe-toolchain`과 `make generate-bpf`는 아직 구현되지 않은 제안 인터페이스이며, 실행 가능한 명령으로 복사하지 않는다. Linux 수집 helper·hook signature는 ENV-02/P2에서 실제 고정 버전 소스와 guest BTF로 확인한다.
+현재 재사용할 수 있는 계약은 `core.Event.Kind() EventKind`, `core.DecodeEvent([]byte) (Event, error)`, concrete event의 `encoding/json.Marshal`, CLI의 `doctor`/`run`, `make check`/`make race`다. `internal/runner/runner.go`의 `Run`은 무보호 커맨드 실행이지 observer supervisor가 아니다. Linux의 `run --observe --policy PATH --audit-file PATH` 실행 경로와 policy evaluator 및 Phase 4 enforcement API는 구현되어 있으며, 적용 범위와 미검증 경계는 관련 Phase 기록을 따른다. `doctor --probe-toolchain`은 P2-FU-03에서 opt-in으로 구현됐으나 현재 integration HEAD의 acceptance가 미완료다. 실행 전 interface와 안전 경계는 해당 prompt와 최신 작업 기록을 확인한다. `make generate-bpf`는 실행 가능한 명령인지 현재 Makefile에서 확인하고 나서 사용한다. Linux 수집 helper·hook signature는 ENV-02/P2에서 실제 고정 버전 소스와 guest BTF로 확인한다.
 
 각 카드를 실행할 때는 **① 참조 원문 읽기 → ② 범위·허용 파일 확인 → ③ 구현 → ④ 독립 리뷰·검증 → ⑤ 12.1 체크 및 12.10 증거 갱신**을 따른다. 미래 API를 추측하거나 문서만 작성하고 기능 완료로 체크하지 않는다. Phase 완료 보고는 매번 남기고, 다음 Phase는 이전 수용 기준과 그 Phase의 범위·권한이 확인된 경우에만 시작한다. 12.12절처럼 실제 게이트가 있으면 순차 진행 요청만으로 이를 생략하지 않는다.
 
@@ -1475,10 +1480,10 @@ go test -race -count=1 ./...
 
 | 게이트 | 확인한 근거·이유 | 최소 제안 / 재개 조건 | 현재 상태 |
 |---|---|---|---|
-| G1 감사 출력 계약 | 기존 prompt의 audit stdout 요구가 대상 stdout 보존과 충돌 | target stdin/out/err 보존과 `--observe` 필수 `--audit-file PATH`; 새 일반 파일 `0600` 배타 생성, 기존 파일/symlink/FIFO/device 거부, owner/parent 경로 검사. 현재 writer 64 MiB cap, sticky write/close failure, incomplete/error 결과, 실행 중 자동 kill·stdout fallback 없음 | **계약과 구현 경로 문서화 완료**; 디스크 오류와 cap-boundary failure-injection은 P4-04 통합 검증 대기 |
-| G2 생성물 경로 | 생성 ident·suffix·output 경로를 ENV-02에서 고정 | 승인된 기존 C/header·`internal/sensor/linux` 및 `internal/enforce` generated Go/object와 fixture/Makefile/portable 검사 범위 | **현재 source와 tracked artifact 대조 완료**: sensor `process` BPFEL/BPFEB, enforcement `enforce` BPFEL. 신규 재생성 재현성·verifier/load/attach는 P4-04 증거 대기 |
-| G3 Linux 실행 권한 | 과거 이 세션의 `limactl shell`은 host-agent/SSH socket `Operation not permitted`로 guest 명령 전에 실패했다. 이후 사용자가 guest 출력(aarch64, Linux `7.0.0-38-generic`, BPF-LSM active, cgroup v2, root/sudo, Go 1.26.8, clang 21.1.8 BPF target, bpftool 7.7.0, llvm-strip/libbpf 사용 가능)을 제공했고, 안내한 guest 명령이 이상 없이 실행됐다고 보고했다. 이는 guest 준비 상태에 대한 사용자 제공 증거이며, assistant 세션의 socket 제한과는 별개다. | 기존 guest 터미널에서 최신 checkout/source를 대상으로 생성·verifier/load/attach 및 P4-04 acceptance를 수행하고 결과를 현재 worktree와 대조한다. host-side BPF 생성은 runtime 증거가 아님 | **guest 준비는 사용자 보고로 충족; 최신 enforcement object 생성 및 현재 변경분 runtime acceptance는 미검증** |
-| G4 doctor toolchain 검사 | AGENTS의 Phase 2 clang 검사와 기본 doctor 비실행 계약의 접점 | 승인 후 기본 doctor/AI CLI 탐지는 계속 비실행, 신뢰된 명시적 절대 경로의 compiler/LLVM/bpftool만 별도 opt-in probe로 실행하도록 반영. 후보 `doctor --probe-toolchain`은 미구현. 고정 버전 인자·timeout·출력 상한·신뢰/권한 기준은 구현 전에 기록. PATH/프로젝트 fallback·shell·승격·설치·mount·BPF load 금지. 절대 경로/실행 권한은 신뢰 증거가 아니고 버전 실행의 무부작용이나 BPF capability를 보장하지 않음 | **문서 반영 완료**, probe 미구현 |
+| G1 감사 출력 계약 | 기존 prompt의 audit stdout 요구가 대상 stdout 보존과 충돌 | target stdin/out/err 보존과 `--observe` 필수 `--audit-file PATH`; 새 일반 파일 `0600` 배타 생성, 기존 파일/symlink/FIFO/device 거부, owner/parent 경로 검사. 현재 writer 64 MiB cap, sticky write/close failure, incomplete/error 결과, 실행 중 자동 kill·stdout fallback 없음 | 계약·구현 존재. disk error 및 cap-boundary failure-injection은 현재 batch의 전체 acceptance로 확인 |
+| G2 생성물 경로 | 생성 ident·suffix·output 경로를 ENV-02에서 고정 | 승인된 기존 C/header·`internal/sensor/linux` 및 `internal/enforce` generated Go/object와 fixture/Makefile/portable 검사 범위 | sensor `process` BPFEL/BPFEB, enforcement `enforce` BPFEL이 추적됨. `b0d482b` candidate에서 생성·verifier/load/attach acceptance 기록이 있음. 현재 `db65bf8` 전체 acceptance는 미실행 |
+| G3 Linux 실행 권한 | 이전 guest 출력 및 `b0d482b` Linux 7.0.0-28 aarch64 acceptance 증거. 과거 socket 제한 기록은 당시 상태로 보존 | 다음 batch에서 대상 commit·source hash가 같은지 확인하고 required Linux acceptance 실행 | guest/arm64 지정 scenario acceptance는 candidate `b0d482b`에서 통과. 현재 integration HEAD `db65bf8` acceptance는 미검증 |
+| G4 doctor toolchain 검사 | AGENTS의 Phase 2 clang 검사와 기본 doctor 비실행 계약의 접점 | P2-FU-03 구현: 명시적 opt-in probe와 고정 executable/argument/timeout/output/trust 제약. 수용은 fixture 및 현재 integration batch로 판정 | 문서와 구현 완료, 현재 integration acceptance pending (`not_tested`) |
 
 **Lima 재확인 — 2026-10-21 22:55 KST:** `limactl list --json`은 `ebpf-lab`을 `Broken`으로 표시했지만 host-agent socket 접근 오류는 계속 `operation not permitted`였다. `stat`은 `ha.sock`이 존재함을 보였고 `lsof -U -a -p 67705`는 PID 67705의 `limactl` 프로세스가 `ha.sock` 및 Lima endpoint socket들을 열고 있음을 확인했다. `ha.stderr.log`에는 guest 시간 동기화 기록이 22:55까지 이어졌고 `serialv.log`는 Ubuntu guest의 `serial-getty`와 login prompt를 보여준다. 따라서 로그상 VM은 boot된 것으로 보이나 이는 현재 guest shell 접근, kernel/BTF/BPF-LSM 상태 또는 BPF 검증 증거가 아니다. SSH/localhost guest 접속은 동일하게 `operation not permitted`로 거부됐고 `ps`도 sandbox에서 실행 거부됐다. 예상 경로 `serial.log`는 없고 실제 console 기록은 `serialv.log`에 있다. VM lifecycle, socket/lock, 설정 및 디스크 변경은 수행하지 않았으며, 이 근거는 VM 전체 삭제·재생성을 정당화하지 않는다.
 
@@ -2882,3 +2887,56 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - Linux arm64/amd64용 `go test -c`로 `internal/enforce`, `internal/runner`, `internal/sensor/linux`의 test binary 6개를 컴파일했다. 첫 시도에서 두 runner target이 `observe_linux_test.go`의 `uintptr(unix.AT_FDCWD)` 변환 오류(`constant -100 overflows uintptr`)로 실패했다. `AT_FDCWD`를 먼저 `int` 변수에 담은 뒤 `uintptr`로 변환하도록 수정했다.
 - 수정 뒤 같은 6개 Linux test binary 컴파일이 모두 exit 0이다. 이는 Linux 전용 테스트의 Go compile 성공만 증명하며, 테스트 실행이나 BPF verifier/load/attach/runtime 증거가 아니다.
 - guest 검증 순서를 한 명령으로 재현하도록 `make linux-acceptance`를 추가했다. Linux 전용 guard → sensor/enforcement BPF 재생성 → `vet` → build → 비특권 전체 테스트 → root 전체 테스트(필수 exit-delete) → required exit-delete acceptance → arm64 required S25 outer acceptance 순이다. root suite는 기존 privileged BPF fixture가 일반 사용자 권한에서 skip되는 공백을 메우며, 전체 suite와 별도 required S25 실행을 분리해 child helper test가 잘못 `SKIP`/실패 처리되는 일을 피한다. `make -n linux-acceptance` dry-run은 명령 순서를 확인했지만 target 자체 및 guest BPF/runtime acceptance는 아직 실행하지 않았다.
+
+### 12.14 2026-10-25 전체 잔여 작업 재정의 및 Git 전략
+
+이 절이 현재 작업 상태와 우선순위의 기준이다. 12.10~12.13절 및 앞선 실행 로그는 해당 날짜의 기록으로 보존하며, 이후의 증거가 이전 상태를 대체할 때 현재 상태 해석은 아래 snapshot을 따른다. 이 목록의 수용 기준은 각 Phase prompt와 규범 문서를 대체하지 않는다.
+
+#### 현재 기준선
+
+- `main`: clean, `d50981a`, fetch 당시 `origin/main`과 동일.
+- 통합 작업: `.worktrees/phase4-integration-20261024`, branch `codex/phase4-integration-20261024`, clean `db65bf8`. 기준 main보다 26 commits 앞서 있고 fetch 당시 `origin/codex/phase4-integration-20261024`보다 4 commits 앞서 있다. 이 HEAD는 아직 통합 acceptance를 통과하지 않았으므로 main 반영 및 통합 branch push 대상이 아니다.
+- arm64 MVP: candidate `b0d482b`, Linux 7.0.0-28 aarch64 guest의 지정 P4-04/V-01 시나리오에서 acceptance 통과 기록이 있다. 현재 통합 HEAD `db65bf8`은 그 candidate 뒤의 P2-FU-03 구현 및 테스트 변경을 포함하므로 별도 batch acceptance가 필요하다. 이 결과는 모든 kernel/배포 환경 보장이 아니다.
+- 아키텍처 지원: Linux arm64 MVP를 우선 지원한다. Linux amd64 runtime은 ARCH-01 전까지 미지원이며, Go cross-build만으로 지원 완료로 표시하지 않는다.
+- P2-FU-03: toolchain probe 구현 `96cfad3`가 `db65bf8`에 병합됐으나 fixture와 현재 HEAD acceptance는 pending (`not_tested`).
+- 보존 대상: `/Users/okestro/.codex/worktrees/ca3f/AgentTaint`의 `codex/phase4-p404-20261024-acceptance`는 HEAD `f887531`에서 Makefile, master plan, runner test 3개 등 5개 파일이 dirty다. 이 worktree는 읽기 전용으로 대조하고 소유자/변경 목적을 확인하기 전에는 편집·stage·stash·reset·삭제하지 않는다.
+- 대시보드: F9는 아직 구현되지 않았고 Phase 9 prompt는 스텁이다. Runs → Run detail timeline → Evidence detail은 설계 제안일 뿐 승인된 제품 계약이 아니다. 우선 event/decision 저장·조회 계약을 정하고, F9-DESIGN 승인을 받은 후 구현한다.
+
+#### 남은 작업 순서와 작업별 Git 전략
+
+| 순서 / ID | 상태·작업 / 완료 조건 | 선행·의존 | Git 단위와 통합 순서 |
+|---|---|---|---|
+| 0 / INT-00 | dirty P4 acceptance worktree의 5개 파일을 integration 및 task 증거와 읽기 전용 대조하고 소유권·중복·누락만 기록한다. 기존 변경은 보존한다. | 즉시. 파일 소유자를 확인할 수 없으면 해당 변경 통합을 보류하고 확인 가능한 나머지 작업은 진행 | 현재 integration 기준으로 비교 기록만 남긴다. dirty worktree에 branch/commit을 만들거나 수정하지 않는다. 필요하면 소유자가 별도 task branch를 만든다. |
+| 1 / DOC-00, PRE-01, PRE-02 | 전체 계획·문서·prompt 상태 감사와 정리를 먼저 한다. status, version, 링크, 예시, 지원 범위와 norm 충돌을 대조하고 수정 근거·미해결 결정을 기록한다. 아키텍처/보안 의미 충돌은 승인 전 멈춘다. | INT-00에서 dirty worktree 변경 소유권 확인. 현재 master-plan snapshot도 이 문서 작업에 포함 | 각 독립 문서 단위마다 `codex/docs-<task-id>-<slug>` / `.worktrees/<task-id>`를 사용한다. 이 계획 갱신은 `codex/docs-worklist-20261025-redefined`에서 진행 중이며 리뷰 후 integration에 문서 commit으로 반영한다. |
+| 2 / INT-01 | P2-FU-03와 현재 코드 통합 acceptance를 완료한다. fixture 포함 doctor probe, portable suite, Go vet/build, Linux arm64 `make linux-acceptance`, 독립 diff/security review를 정확한 통합 HEAD에서 실행하고 결과를 기록한다. | INT-00 ownership 분류와 DOC-00/PRE 문서 작업 완료. 이 시점에 코드·문서 batch를 고정 | 기존 `codex/phase4-integration-20261024`를 통합 대상으로 이어간다. 이미 task commit은 통합돼 있으므로 재커밋하지 않는다. acceptance 전 push 금지. 실패 수정은 전용 새 worktree/task branch에서 만들고 통합 후 영향 검사를 재실행한다. |
+| 3 / TOOL-01~03, MCP-01 | 사용자가 요청한 토큰 절감 검토를 포함해 도구 후보를 조사하고, 압축 품질·비용·보안 경계·라이선스를 실제 근거로 평가한다. 필요한 최소 도구만 별도 승인 및 안전 설계 뒤 도입한다. MCP 추가는 현재 codebase-memory MCP가 못 채우는 요구가 입증될 때만 완료로 본다. | PRE 감사와 도구 요구 정의. 외부 도구 설치나 자동 호출 정책 변경은 별도 승인 필요 | 카드마다 전용 branch/worktree를 쓰고, 조사 문서와 구현을 분리한다. 도입 후보가 없으면 증거를 남기고 `not_needed`로 닫는다. |
+| 4 / CI-01 | 저장소의 portable 검사·재현성 원격 검증 계약을 정리하고 지정 원격 job에서 통과시킨다. | TOOL 및 현재 acceptance 계약 정리 | `codex/ci-ci01-<slug>` / `.worktrees/ci-ci01`; workflow 권한은 해당 CI 카드가 허용한 파일로 제한한다. 결과 artifact와 source commit을 함께 기록한다. |
+| 5 / CI-02 | 격리된 Linux BPF 검증 job을 구성해 verifier와 필수 scenario를 재현하고 잔류 자원 정리를 확인한다. | CI-01, P2-04, 13.7절. 현재 문서상 승인 범위 충돌 시 구현 전 확인 | `codex/ci-ci02-<slug>` / `.worktrees/ci-ci02`; 전용 runner/권한을 먼저 검증하고 일반 CI에 privileged BPF를 섞지 않는다. |
+| 6 / REL-01 | 재현 가능한 산출물, binary/BPF/source 대응, checksum, SBOM 및 라이선스 기록을 만든다. | V-01 및 지원 환경에서 CI 증거 | `codex/rel-rel01-<slug>` / `.worktrees/rel-rel01`; release 산출물은 검증된 commit에만 연결한다. |
+| 7 / ARCH-01 | Linux amd64 observer runtime 지원을 추가할지 구현하고 승인된 amd64 guest/CI에서 ABI, 생성 object, verifier/load/attach, runtime acceptance를 통과시킨다. 그 전에는 미지원 표기를 유지한다. | arm64 MVP; CI-02 또는 동등한 승인 amd64 guest | `codex/arch-arch01-amd64` / `.worktrees/arch-arch01`; 기존 arm64 동작을 보호하고 별도 amd64 증거로 지원 범위를 넓힌다. |
+| 8 / F5 | Mac에서 Linux VM을 사용하는 경험과 진단 흐름을 정의·구현한다. native Endpoint Security는 별도 결정 없이는 제외한다. | V-01, D01, 지원 환경 기준 | `codex/f5-<task-id>-<slug>` / `.worktrees/<task-id>`; VM lifecycle 변경은 해당 Phase의 범위·승인을 확인한다. |
+| 9 / F6 | 다중 label 및 pipe/file/IPC 전파 범위를 설계하고 Source→Label→Propagation→Sink→Decision을 보존해 구현한다. | 이전 Phase 완료, security semantics review | `codex/f6-<task-id>-<slug>` / 전용 worktree. 규범 문서와 충돌하면 구현 전 중단한다. |
+| 10 / F7 | 로컬 IFC 완료 뒤 Kubernetes attribution 범위를 설계·구현한다. | F6 및 로컬 정보 흐름 완료 | `codex/f7-<task-id>-<slug>` / 전용 worktree. 선행 로컬 증거 없이 k8s 코드를 시작하지 않는다. |
+| 11 / F8 | 읽기 중심 설명·피드백 인터페이스의 권한·데이터 계약을 정한다. | F6/F7 선행 작업과 현재 event 계약 | `codex/f8-<task-id>-<slug>` / 전용 worktree. 새로운 MCP/hook 권한은 별도 검토한다. |
+| 12 / F9-DESIGN | 대시보드의 Runs → Run detail timeline → Evidence detail 화면, 데이터 필드, completeness/loss 표현, 기간·삭제, localhost 인증/노출 경계를 구체화하고 승인받는다. | F8 및 Event/Decision persistence·query 계약 입력 | `codex/f9-design-<task-id>-<slug>` / 전용 worktree. 지금은 설계 문서와 검토만 하며 UI 구현을 선행하지 않는다. |
+| 13 / F9-PERSIST | 대시보드가 소비할 Event/Decision 저장, 조회, 보존/삭제 및 completeness 계약을 설계하고 필요한 선행 구현을 승인받는다. | F9-DESIGN에서 식별된 저장/query 요구 | `codex/f9-persist-<task-id>-<slug>` / 전용 worktree; security/privacy review 후 구현 branch를 분리한다. |
+| 14 / F9 | 승인된 계약으로 단일 바이너리 로컬 dashboard를 구현하고 대표 audit run을 end-to-end 검증한다. | Phase 0~8, F9-DESIGN 승인, F9-PERSIST | `codex/f9-<task-id>-<slug>` / 전용 worktree. run/evidence completeness와 실제 보장 범위를 UI가 과장하지 않는지 검토한다. |
+| 15 / REL-02, REL-03 | 설치·업데이트·제거·복구와 제한된 시범 사용/피드백 운영을 준비한다. | REL-01, F5/F9 필요 산출물, D09 및 공개/자격증명 승인 | 각각 별도 `codex/rel-rel02-*`, `codex/rel-rel03-*` branch/worktree; 공개 배포·외부 계정 작업은 명시 승인 이후 진행한다. |
+| 조건부 / F10 | payload metadata 확장 필요성을 재평가한다. | 구체 사용 사례와 별도 승인 | 필요성이 입증될 때만 `codex/f10-<task-id>-<slug>`에서 설계 카드부터 연다. 자동 착수하지 않는다. |
+
+#### 공통 branch·worktree·통합 규칙
+
+1. 새 작업은 시작 전에 `main`과 모든 worktree를 확인한다. clean main에서 `git fetch origin` 후 기준 commit을 기록한다. dirty main은 자동 정리하지 않는다. 각 단위는 저장소 안의 `.worktrees/<task-id>`와 `codex/<phase>-<task-id>-<slug>` branch 하나를 사용하며, branch는 최신 clean `main`에서 만든다.
+2. 파일마다 writer를 하나로 둔다. 의존성이 있는 작업은 앞 작업의 검토·통합 후 시작하고, 병렬 작업은 파일 범위와 선행조건이 겹치지 않을 때만 한다. 사용자 변경과 다른 task의 변경을 stage/reset/stash로 덮지 않는다.
+3. 통합 batch는 동일한 main 기준 commit에서 만든 전용 `codex/<phase>-integration` branch/worktree에서 순서대로 task branch를 통합한다. 통합 중 main이 움직였으면 임의 rebase나 force update 대신 최신 main 기준 통합을 다시 만들고 관련 검증을 재실행한다.
+4. 각 작업 branch는 허용 경로만 stage하고 staged diff를 확인해 작업 단위 conventional commit을 만든다. 테스트는 사용자가 지정한 한 번의 batch acceptance로 모으되, batch가 green이 되기 전에는 main에 통합하지 않는다. 한 번의 batch는 현재 합의된 작업 묶음의 수용 검증을 의미하며, 미래 Phase의 수용 검증을 모두 마지막까지 미루는 뜻은 아니다.
+5. 명시 요청에 따라 task branch push는 가능하지만, integration push는 batch acceptance 및 검토 이후에만 한다. `main`은 검증된 integration만 fast-forward하고, main push는 통합 테스트 통과와 main 반영 요청이 함께 확인된 뒤 한다. force push, 무단 rebase, PR 생성, 원격 merge는 하지 않는다.
+6. 완료된 검증은 commit SHA, source 상태, host/guest/kernel/architecture, 명령, scenario, 결과로 기록한다. 코드 변경이 들어가면 영향받은 검증은 새 HEAD에서 다시 실행한다. 다른 candidate의 과거 성공을 현재 HEAD의 acceptance로 옮겨 적지 않는다.
+7. merge 뒤에는 clean하며 실제로 통합된 작업 worktree만 일반 `git worktree remove`로 정리한다. dirty worktree·미통합 branch·사용자 소유 변경은 보존한다.
+
+#### 다음 실행 묶음
+
+1. INT-00에서 외부 dirty P4 worktree의 변경을 읽기 전용으로 분류하고, 통합에 필요한 파일 소유권을 확인한다.
+2. DOC-00/PRE-01/PRE-02 문서 작업을 먼저 끝내고, 이 계획서 변경은 전용 branch에서 리뷰·커밋한 뒤 기존 integration branch에 문서로 통합한다. 충돌은 두 문서 변경과 이력 보존 원칙에 따라 검토해 해결한다.
+3. 문서가 정리된 뒤 현재 코드 batch를 고정하고 INT-01의 acceptance와 독립 review를 한 번 실행한다. 향후 CI/architecture/feature work는 각 의존성 단위가 준비된 뒤 별도 batch로 수용 검증한다.
+4. 통합 acceptance와 독립 리뷰가 통과하면 요청된 순서에 따라 integration을 main에 fast-forward하고, 명시된 push 조건을 충족할 때만 원격에 반영한다.
