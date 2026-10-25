@@ -59,10 +59,11 @@ bpf/network.bpf.c ──┘                                    │
 미검증 범위는 단일 구현 명세 `docs/IMPLEMENTATION_MASTER_PLAN.md`의 12.10절을 따른다.
 `doctor --probe-toolchain`은 기본 doctor와 구분되는 opt-in 인터페이스다. 성공한
 probe는 도구의 보고 version과 실행 결과만 기록하며, clang의 BPF target이나 BPF
-권한·BTF·verifier/load/attach capability를 증명하지 않는다. P2-FU-03에서 구현했으며
-P2-FU-03에서 구현했으며 fixture 및 현재 integration HEAD의 acceptance는 아직 실행하지
-않았다 (`not_tested`). 현재 상태는 [구현 작업 명세](../docs/IMPLEMENTATION_MASTER_PLAN.md)의
-최신 snapshot을 따른다. 감사 파일의 각 줄은
+권한·BTF·verifier/load/attach capability를 증명하지 않는다. P2-FU-03에서 구현했고,
+fixture와 현재 integration 코드 acceptance도 `1a059e7`에서 통과했다. 검증 환경은
+Linux `7.0.0-28-generic aarch64` guest에 한정된다.
+현재 상태는 [구현 작업 명세](../docs/IMPLEMENTATION_MASTER_PLAN.md)의 최신 snapshot을 따른다.
+감사 파일의 각 줄은
 Phase 1의 `internal/core` schema 1과 `DecodeEvent` 계약을 따른다.
 `event` discriminator, 중첩 `process`의 PID·birth/scope identity,
 POSIX `session_id`의 10진 문자열, 관측 stage/result와 각 payload를 보존한다.
