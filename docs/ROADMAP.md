@@ -19,7 +19,9 @@
       — 7종 raw event·식별자·strict JSON codec 및 macOS arm64 독립 검증 완료.
       당시 Phase 1 산출물은 센서·라벨·정책·차단을 포함하지 않았다. 이후 Phase 구현을 포함한 현재 상태는 [IMPLEMENTATION_MASTER_PLAN.md](./IMPLEMENTATION_MASTER_PLAN.md)의 12.10절을 참고.
 - [x] **Phase 2 — Linux Observer** · [prompts/02-linux-observer.md](../prompts/02-linux-observer.md)
-      eBPF로 fork/exec/exit, file open, network connect 관찰
+      eBPF로 fork/exec/exit, file open, network connect 관찰. Phase 2 기본 observer 수용은 완료했고,
+      후속 P2-FU-03 toolchain probe는 integration에 구현됐으나 fixture/full acceptance는 `not_tested`다.
+      현 상태는 [구현 작업 명세](./IMPLEMENTATION_MASTER_PLAN.md)의 최신 snapshot에서 확인한다.
 - [x] **Phase 3 — Taint Engine** · [prompts/03-taint-engine.md](../prompts/03-taint-engine.md)
       Taint/policy audit integration과 네 Linux guest runtime scenario 검증 완료. 테스트가 disposable fixture를 만들며 저장소에 재현 스크립트는 추가하지 않는다. audit only이며 block 없음.
 - [x] **Phase 4 — Linux Enforcement** · [prompts/04-linux-enforcement.md](../prompts/04-linux-enforcement.md)
