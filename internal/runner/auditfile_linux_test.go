@@ -3,12 +3,127 @@
 package runner
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
+	"time"
 
+	"github.com/bocopile/AgentTaint/internal/core"
 	"golang.org/x/sys/unix"
 )
+
+type auditFailureWriter struct {
+	bytes.Buffer
+	calls int
+	err   error
+}
+
+func (w *auditFailureWriter) Write(data []byte) (int, error) {
+	w.calls++
+	n := 4
+	if n > len(data) {
+		n = len(data)
+	}
+	_, _ = w.Buffer.Write(data[:n])
+	return n, w.err
+}
+
+type auditShortWriter struct{ calls int }
+
+func (w *auditShortWriter) Write(data []byte) (int, error) {
+	w.calls++
+	return len(data) - 1, nil
+}
+
+func auditWriterTestEvent() core.Event {
+	return core.FileOpenEvent{
+		Metadata: core.Metadata{
+			SchemaVersion:    core.SchemaVersion,
+			EventID:          "audit-writer-event",
+			RunID:            core.RunID("audit-writer-run"),
+			Timestamp:        time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC),
+			SessionID:        core.SessionID(7),
+			ObservationStage: core.StageCompleted,
+			OperationResult:  core.ResultSuccess,
+			Process: core.ProcessContext{
+				ProcessKey: core.ProcessKey{PID: core.ProcessID(42), BirthID: "audit-writer-birth", ScopeID: "audit-writer-scope"},
+				Comm:       "audit-writer-test",
+			},
+		},
+		Resource: core.FileResource{Path: "/workspace/.env"},
+		Access:   core.AccessRead,
+	}
+}
+
+func TestAuditWriterDiskFailureIsSticky(t *testing.T) {
+	output := &auditFailureWriter{err: syscall.ENOSPC}
+	writer := &auditWriter{}
+	event := auditWriterTestEvent()
+
+	firstErr := writer.writeTo(event, output)
+	if !errors.Is(firstErr, syscall.ENOSPC) {
+		t.Fatalf("write error = %v, want ENOSPC", firstErr)
+	}
+	if writer.written != int64(output.Len()) || output.Len() == 0 {
+		t.Fatalf("partial bytes were not accounted for: written=%d output=%d", writer.written, output.Len())
+	}
+	if got := writer.writeTo(event, output); got != firstErr {
+		t.Fatalf("sticky error = %v, want original %v", got, firstErr)
+	}
+	if output.calls != 1 {
+		t.Fatalf("writer called %d times after sticky failure, want 1", output.calls)
+	}
+}
+
+func TestAuditWriterShortWriteIsSticky(t *testing.T) {
+	output := &auditShortWriter{}
+	writer := &auditWriter{}
+	event := auditWriterTestEvent()
+
+	firstErr := writer.writeTo(event, output)
+	if !errors.Is(firstErr, io.ErrShortWrite) {
+		t.Fatalf("write error = %v, want ErrShortWrite", firstErr)
+	}
+	if got := writer.writeTo(event, output); got != firstErr {
+		t.Fatalf("sticky error = %v, want original %v", got, firstErr)
+	}
+	if output.calls != 1 {
+		t.Fatalf("writer called %d times after sticky failure, want 1", output.calls)
+	}
+}
+
+func TestAuditWriterCapBoundaryAndFailureAreSticky(t *testing.T) {
+	event := auditWriterTestEvent()
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventBytes := int64(len(encoded) + 1)
+	output := &bytes.Buffer{}
+	writer := &auditWriter{written: maxAuditBytes - eventBytes}
+
+	if err := writer.writeTo(event, output); err != nil {
+		t.Fatalf("write at exact audit cap failed: %v", err)
+	}
+	if writer.written != maxAuditBytes || output.Len() != int(eventBytes) {
+		t.Fatalf("exact cap state: written=%d output=%d", writer.written, output.Len())
+	}
+	firstErr := writer.writeTo(event, output)
+	if firstErr == nil || !errors.Is(firstErr, writer.failed) {
+		t.Fatalf("write beyond audit cap error = %v, sticky=%v", firstErr, writer.failed)
+	}
+	if got := writer.writeTo(event, output); got != firstErr {
+		t.Fatalf("sticky error = %v, want original %v", got, firstErr)
+	}
+	if output.Len() != int(eventBytes) {
+		t.Fatalf("cap failure wrote extra bytes: got=%d want=%d", output.Len(), eventBytes)
+	}
+}
 
 func trustedAuditTempDir(t *testing.T) string {
 	t.Helper()

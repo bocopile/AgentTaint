@@ -43,6 +43,10 @@ type auditWriter struct {
 }
 
 func (w *auditWriter) write(event core.Event) error {
+	return w.writeTo(event, w.file.file)
+}
+
+func (w *auditWriter) writeTo(event core.Event, output io.Writer) error {
 	if w.failed != nil {
 		return w.failed
 	}
@@ -56,7 +60,7 @@ func (w *auditWriter) write(event core.Event) error {
 		w.failed = fmt.Errorf("audit output exceeded the %d-byte limit", maxAuditBytes)
 		return w.failed
 	}
-	n, err := w.file.file.Write(encoded)
+	n, err := output.Write(encoded)
 	w.written += int64(n)
 	if err != nil {
 		w.failed = fmt.Errorf("write audit event: %w", err)
