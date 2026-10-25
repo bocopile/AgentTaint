@@ -19,15 +19,36 @@ import (
 
 type auditFailureWriter struct {
 	bytes.Buffer
-	calls int
-	err   error
+	calls    int
+	err      error
+	output   io.Writer
+	waitPath string
 }
 
 func (w *auditFailureWriter) Write(data []byte) (int, error) {
 	w.calls++
+	if w.waitPath != "" {
+		deadline := time.Now().Add(3 * time.Second)
+		for {
+			if _, err := os.Stat(w.waitPath); err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				return 0, syscall.ETIMEDOUT
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
 	n := 4
 	if n > len(data) {
 		n = len(data)
+	}
+	if w.output != nil {
+		written, err := w.output.Write(data[:n])
+		if err != nil {
+			return written, err
+		}
+		n = written
 	}
 	_, _ = w.Buffer.Write(data[:n])
 	return n, w.err

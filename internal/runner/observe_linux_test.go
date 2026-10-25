@@ -1151,6 +1151,55 @@ func TestUnprivilegedTargetCannotModifyPolicyAuditOrControl(t *testing.T) {
 	}
 }
 
+func TestAuditWriteFailureKeepsTargetOutputAndPartialFile(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root privileges to load and attach eBPF programs")
+	}
+	root, err := os.MkdirTemp("/tmp", "agenttaint-audit-write-failure-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	startedPath := filepath.Join(os.TempDir(), "."+filepath.Base(root)+"-target-started")
+	if _, err := os.Stat(startedPath); !os.IsNotExist(err) {
+		t.Fatalf("marker path is not safely absent: %s: %v", startedPath, err)
+	}
+	defer os.Remove(startedPath)
+	auditPath := filepath.Join(root, "audit.jsonl")
+	output := &auditFailureWriter{err: syscall.ENOSPC, waitPath: startedPath}
+	newWriter := func(file *auditFile) *auditWriter {
+		output.output = file.file
+		return &auditWriter{file: file, output: output}
+	}
+	var stdout, stderr bytes.Buffer
+	status := ModeStatus{RequestedMode: ModeMonitor, ActiveMode: "none", ActualAction: "none", Result: "not_started", AuditCoverage: "unknown"}
+	command := "touch " + strconv.Quote(startedPath) + "; printf 'target-started\\n'; sleep 0.2; printf 'target-finished\\n'"
+	code, runErr := runProtectedPlatformWithAuditWriterFactory(
+		context.Background(), "/bin/sh", []string{"sh", "-c", command}, nil,
+		&stdout, &stderr, auditPath, nil, &TargetIdentity{UID: 65534, GID: 65534},
+		ModeMonitor, &status, nil, enforce.New, newWriter,
+	)
+	if code != 1 || runErr == nil || !strings.Contains(runErr.Error(), "audit coverage is incomplete") || !errors.Is(runErr, syscall.ENOSPC) {
+		t.Fatalf("audit write failure result: code=%d status=%+v err=%v", code, status, runErr)
+	}
+	if status.AuditCoverage != "incomplete" || status.Result != "target_exit_code=0" || status.ActualAction != "observe_only" {
+		t.Fatalf("unexpected status after audit write failure: %+v", status)
+	}
+	if stdout.String() != "target-started\ntarget-finished\n" || stderr.Len() != 0 {
+		t.Fatalf("target streams changed or audit was redirected: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	if output.calls != 1 || output.Len() == 0 {
+		t.Fatalf("sticky writer state: calls=%d partial-bytes=%d", output.calls, output.Len())
+	}
+	partialFile, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatalf("partial audit file was not retained: %v", err)
+	}
+	if !bytes.Equal(partialFile, output.Bytes()) || len(partialFile) != 4 {
+		t.Fatalf("partial audit bytes differ: file=%q injected=%q", partialFile, output.Bytes())
+	}
+}
+
 func TestRunObservedNoNewPrivilegesBlocksSetuidTarget(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("requires root privileges to set up a setuid fixture")

@@ -38,12 +38,17 @@ const (
 
 type auditWriter struct {
 	file    *auditFile
+	output  io.Writer
 	written int64
 	failed  error
 }
 
 func (w *auditWriter) write(event core.Event) error {
-	return w.writeTo(event, w.file.file)
+	output := w.output
+	if output == nil {
+		output = w.file.file
+	}
+	return w.writeTo(event, output)
 }
 
 func (w *auditWriter) writeTo(event core.Event, output io.Writer) error {
@@ -156,6 +161,12 @@ func runWithModePlatform(ctx context.Context, path string, args []string, stdin 
 }
 
 func runProtectedPlatformWithDependencies(ctx context.Context, path string, args []string, stdin io.Reader, stdout, stderr io.Writer, auditPath string, snapshot *policy.Snapshot, identity *TargetIdentity, mode PolicyMode, status *ModeStatus, createScope func() (*runCgroup, error), newEnforcer func(policy.KernelProjection, uint64) (*enforce.Enforcer, error)) (code int, returnErr error) {
+	return runProtectedPlatformWithAuditWriterFactory(ctx, path, args, stdin, stdout, stderr, auditPath, snapshot, identity, mode, status, createScope, newEnforcer, func(file *auditFile) *auditWriter {
+		return &auditWriter{file: file}
+	})
+}
+
+func runProtectedPlatformWithAuditWriterFactory(ctx context.Context, path string, args []string, stdin io.Reader, stdout, stderr io.Writer, auditPath string, snapshot *policy.Snapshot, identity *TargetIdentity, mode PolicyMode, status *ModeStatus, createScope func() (*runCgroup, error), newEnforcer func(policy.KernelProjection, uint64) (*enforce.Enforcer, error), newAuditWriter func(*auditFile) *auditWriter) (code int, returnErr error) {
 	stderr = &lockedWriter{w: stderr}
 	credential, expectedIdentity, err := targetCredential(identity)
 	if err != nil {
@@ -244,7 +255,7 @@ func runProtectedPlatformWithDependencies(ctx context.Context, path string, args
 		}
 	}
 	queue := make(chan core.Event, auditQueueCapacity)
-	writer := &auditWriter{file: output}
+	writer := newAuditWriter(output)
 	writerDone := make(chan struct{})
 	go func() {
 		defer close(writerDone)
