@@ -91,7 +91,7 @@ Graphify의 코드 관계 그림은 이 실행 증거 화면을 대체하지 않
 
 | 기존 ID | 세부 작업 / 완료 기준 | 착수 조건 / Git 단위 |
 |---|---|---|
-| CI-01 | portable 원격 job, 정확한 commit의 build/vet/test와 artifacts 확인 | 정해진 batch/원격 실행 범위; `codex/ci-ci01-<date>-portable` |
+| CI-01 / verified | [5777fcb의 Ubuntu/macOS 원격 make check·make race 성공](CI_PORTABLE_EVIDENCE.md) | 원격 run 40201268334; portable 범위, Linux/BPF runtime은 CI-02 |
 | CI-02 | 격리된 Linux BPF runner, verifier/attach/runtime와 정리 증거 | 전용 runner 권한·환경 결정; `codex/ci-ci02-<date>-bpf` |
 | REL-01 | binary/BPF/source 대응, checksum·SBOM·license·재현 빌드 | 검증된 제품 commit과 지원 환경; `codex/rel-rel01-<date>-artifacts` |
 | F5 | macOS에서 Linux VM 실행·진단·소스 동기화 UX | 기존 플랫폼 순서 유지, native Endpoint Security 제외; `codex/f5-<task>-vm` |

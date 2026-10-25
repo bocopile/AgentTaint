@@ -966,7 +966,7 @@ AgentTaint/
 | [x] | P0-03 | portable CI 작성·검토 및 Phase 0 로컬 검증 | P0-02, CI 경로 승인 | 로컬 build/vet/test·runner 증거; 원격 CI not_run |
 | [x] | P1-01 | identity·resource·event 모델 | Phase 0 완료, E02 | 플랫폼 독립 core; OS identity 수집은 별도 |
 | [x] | P1-02 | event 의미·JSON codec·계약 테스트 | P1-01, E03 | 안정된 직렬화·오류 처리; 라벨 부여 기준 미구현 |
-| [ ] | CI-01 | 기존 portable CI의 원격 실행 검증 | P0-03/P1-02, 별도 GitHub 쓰기 승인 | 정확한 commit의 Linux/macOS 실행 증거 |
+| [x] | CI-01 | 기존 portable CI의 원격 실행 검증 | P0-03/P1-02, main push | `5777fcb`의 Ubuntu/macOS make check·make race 성공; [증거](CI_PORTABLE_EVIDENCE.md). BPF runtime 아님 |
 | [x] | P2-01 | process observer·decoder | Phase 1 완료, ENV-02 | guest verifier/load/attach, lifecycle·decoder 통합 검증 (2026-10-19; 남은 한계는 12.10절) |
 | [x] | P2-02 | file·IPv4 connect observer | P2-01, E03 | guest openat/openat2/connect success/failure 및 raw normalization 검증 (2026-10-19; 남은 한계는 12.10절) |
 | [x] | P2-03 | run scope·출력·손실 상태 | P2-02, E08 | guest 계보 필터·별도 audit·손실 상태 검증 (2026-10-19; 남은 lifecycle 한계는 P2-04) |
@@ -1011,7 +1011,7 @@ AgentTaint/
 | 2 | PRE-01 / PRE-02 | 지원·보장 표와 failure-injection 설명을 ARCH/SECURITY/Phase prompts에 대조하고 남은 불일치 정리. source-path 설명은 이미 수정했으며 규범 충돌은 임의로 덮지 않는다. | 잔여 정합성 검토 필요; PRE-01/02 task는 미완료 |
 | 3 | P4-04 no-loss path capture | syscall-entry nofault capture가 실패하면 `getname_flags` kprobe/kretprobe에서 커널이 실제 복사한 raw pathname을 회수. syscall 종료 시 user pointer를 재독해 경로를 추정하지 않고, kernel 5.13+ 하한과 `incomplete` fail-closed 처리를 유지. | arm64 MVP의 Linux 7.0.0-28 S25 acceptance 완료; 다른 kernel runtime은 미검증 |
 | 4 | TOOL-03 및 MCP-01 제한사항 | 저장된 skills·agent 역할·handoff의 source/scope/output contract를 점검한다. MCP graph miss·미등록 project fallback은 확인했으며 whole-index freshness와 실제 transport outage는 증거가 없어 미검증으로 유지한다. | MCP freshness/fallback 절차 문서화; token 절감률 미측정 |
-| 5 | CI-02 authoring / CI-01 remote gate | Linux BPF workflow는 격리·일회성 runner 및 artifact/cache 경계를 확인한 뒤 작성한다. runner 설정 증거 없이 self-hosted runner를 등록하거나 외부 PR 코드를 실행하지 않는다. portable 원격 CI는 정확한 commit의 GitHub 실행 증거로 확인한다. | runner·remote CI 미검증; 환경 근거 전까지 보류 |
+| 5 | CI-02 authoring / CI-01 remote gate | Linux BPF workflow는 격리·일회성 runner 및 artifact/cache 경계를 확인한 뒤 작성한다. runner 설정 증거 없이 self-hosted runner를 등록하거나 외부 PR 코드를 실행하지 않는다. portable 원격 CI는 정확한 commit의 GitHub 실행 증거로 확인한다. | CI-01은 `5777fcb` 원격 portable 성공으로 확인. CI-02 runner·격리 환경은 미검증으로 보류 |
 | 6 | V-01 / DOC-01 | Linux arm64 MVP claim-to-test를 evidence와 대조하고 사용자 문서에 지원/진단 범위를 반영. | 완료; P4-04 acceptance는 7.0.0-28 aarch64에 한정 |
 | 7 | REL-01 | 지원 환경 CI 근거가 확보된 뒤 source/object mapping·checksum·SBOM/license manifest를 완성한다. | CI 선행 조건 미충족; 미착수 |
 | 8 | REL-02 / REL-03 | install/update/rollback 및 제한된 pilot의 계획·복구 절차를 작성. 실제 배포·외부 공유는 별도 승인 전 수행하지 않음. | REL-01 이후 |
@@ -1431,7 +1431,7 @@ go test -race -count=1 ./...
 | P0-03 / 완료·로컬 범위 | `Makefile`, `.github/workflows/ci.yml` | portable workflow 작성·검토 및 로컬 검사 완료. 원격 CI 실행은 별도 CI-01 |
 | P1-01 / 완료 | `internal/core/event.go`, `process.go`, `resource.go` | 7종 event, named ID, 생애 key, IPv4 모델. 실제 birth/scope 수집은 P2 |
 | P1-02 / 완료 | `internal/core/event_test.go`, strict codec | 7종 JSON·unknown·잘못된 입력·Unicode·깊이 제한·race/fuzz 증거. 새 sensor가 보낸 이벤트도 이 계약에 맞춰야 함 |
-| CI-01 / 미실행 | 기존 portable GitHub Actions를 검토한 commit에서 실행하고 Linux/macOS 결과 수집 | commit/push/원격 실행은 별도 허용 범위. 로컬 성공이나 workflow 파일 존재만으로 원격 green 표시 금지 |
+| CI-01 / 완료·portable 범위 | `5777fcb`의 원격 Ubuntu/macOS job 결과 확인 | run `40201268334`, make check·make race 성공. [증거와 한계](CI_PORTABLE_EVIDENCE.md); 실제 BPF 검증은 CI-02 |
 
 #### C. Phase 2 — Linux 관찰, 아직 차단 없음
 
@@ -3056,7 +3056,7 @@ Do not implement it. arm64 MVP의 다음 작업은 CI-01/02 원격·격리 검�
 | 2a / INT-02 — 완료 | G1 writer의 부분 ENOSPC, short write, 정확한 64 MiB counter 경계와 초과 거부를 검사했다. 결정적 runner fixture는 ENOSPC 기록 이후 target을 release하며 target exit=0, stdout/non-empty stderr 보존, incomplete/error, 4-byte 부분 audit 파일 유지를 확인했다. | INT-01 완료. ARCH/SECURITY의 G1 계약을 바꾸지 않고 주입 writer 사용 | `codex/int-02-g1-failure-20261025` commit `7c7602b` push 및 integration/main fast-forward 완료 (`194514f`). 실제 디스크 고갈, close failure, end-to-end 64 MiB 파일 생성은 `not_tested`. |
 | 2b / INT-03 — 완료 | capture loss reason을 fork/exec/exit·file context 단계별로 나누고 drop baseline을 run scope 활성화 뒤로 이동했다. incomplete를 suppress하지 않는다. Task HEAD `e2cadfb`에서 S25 concurrent-run fixture 20회와 전체 Linux acceptance, integration HEAD `194514f`에서 final batch 및 명시 S25 테스트 PASS. | INT-02 task 완료. `7c7602b`에서 간헐 pre-scope counter loss 확인; site-specific evidence 및 scoped baseline fix 적용 | `codex/int-03-process-capture-20261025` commit `e2cadfb` push·독립 review 완료. INT-02/INT-03을 integration/main에 반영하고 검증·push 완료. |
 | 3 / TOOL-01~03, MCP-01 | 사용자가 요청한 토큰 절감 검토를 포함해 도구 후보를 조사하고, 압축 품질·비용·보안 경계·라이선스를 실제 근거로 평가한다. TOOL-01/02와 MCP graph fallback 절차 기록을 완료했고, MCP freshness/outage 증거의 한계는 보존한다. 다음 카드는 TOOL-03이며 실제 토큰 절감은 계측 후에만 주장한다. | INT-02/INT-03 완료, TOOL-01/02, PRE 감사 | 각 카드 전용 branch/worktree와 task commit. 조사 문서와 구현을 분리한다. 외부 설치, hook, 자동 호출 설정은 위험·권한을 확인하고 기존 명시 승인 범위에서만 적용한다. |
-| 4 / CI-01 | 저장소의 portable 검사·재현성 원격 검증 계약을 정리하고 지정 원격 job에서 통과시킨다. | TOOL 및 현재 acceptance 계약 정리 | `codex/ci-ci01-<slug>` / `.worktrees/ci-ci01`; workflow 권한은 해당 CI 카드가 허용한 파일로 제한한다. 결과 artifact와 source commit을 함께 기록한다. |
+| 4 / CI-01 — 완료 | `5777fcb` 원격 Ubuntu/macOS make check·make race 성공. [근거](CI_PORTABLE_EVIDENCE.md) | 현재 portable workflow 범위. BPF runtime·새 profile 검증은 포함하지 않음 | `codex/ci-ci01-20261025-evidence`; workflow 변경 없이 정확한 run/commit/job 결과 기록 |
 | 5 / CI-02 | 격리된 Linux BPF 검증 job을 구성해 verifier와 필수 scenario를 재현하고 잔류 자원 정리를 확인한다. | CI-01, P2-04, 13.7절. 현재 문서상 승인 범위 충돌 시 구현 전 확인 | `codex/ci-ci02-<slug>` / `.worktrees/ci-ci02`; 전용 runner/권한을 먼저 검증하고 일반 CI에 privileged BPF를 섞지 않는다. |
 | 6 / REL-01 | 재현 가능한 산출물, binary/BPF/source 대응, checksum, SBOM 및 라이선스 기록을 만든다. | V-01 및 지원 환경에서 CI 증거 | `codex/rel-rel01-<slug>` / `.worktrees/rel-rel01`; release 산출물은 검증된 commit에만 연결한다. |
 | 7 / ARCH-01 | Linux amd64 observer runtime 지원을 추가할지 구현하고 승인된 amd64 guest/CI에서 ABI, 생성 object, verifier/load/attach, runtime acceptance를 통과시킨다. 그 전에는 미지원 표기를 유지한다. | arm64 MVP; CI-02 또는 동등한 승인 amd64 guest | `codex/arch-arch01-amd64` / `.worktrees/arch-arch01`; 기존 arm64 동작을 보호하고 별도 amd64 증거로 지원 범위를 넓힌다. |
