@@ -84,7 +84,7 @@ func TestRunPreservesArgsStreamsEnvironmentAndExit(t *testing.T) {
 				if !reflect.DeepEqual(child.Args, args) || !bytes.Equal(child.Input, input) || child.Path != test.path {
 					t.Fatalf("child: %+v", child)
 				}
-				if !strings.HasSuffix(stderr.String(), "child-stderr\x00\xff\n") || !strings.Contains(stderr.String(), env.Notice) || !strings.Contains(stderr.String(), "via "+test.source) {
+				if !strings.HasSuffix(stderr.String(), "child-stderr\x00\xff\n") || !strings.Contains(stderr.String(), env.RunNotice) || !strings.Contains(stderr.String(), "via "+test.source) {
 					t.Fatalf("stderr: %q", stderr.Bytes())
 				}
 				if !reflect.DeepEqual(before, os.Environ()) {

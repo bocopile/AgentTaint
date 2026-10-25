@@ -42,7 +42,9 @@
       OAuth/relay)를 그대로 따르지 않고, 클라우드 계층 없이 단일 바이너리
       안에 내장하는 것을 기본 방향으로 한다 — 자세한 내용은
       [ARCHITECTURE.md](./ARCHITECTURE.md)의 "향후: 로컬 웹 대시보드" 절
-      참고. 이벤트 영속화/쿼리 계층이 먼저 정의되어야 착수 가능하다.
+      참고. 구현 전에 master plan의 `F9-DESIGN` 카드에서 사용자 흐름·화면·필드·
+      incomplete 상태·보존/삭제·localhost 보안 계약을 구체화하고, 이벤트
+      영속화/쿼리 계층을 정의해야 착수할 수 있다.
 - [ ] **Phase 10 — Payload-aware LLM Sink (조건부)** · [prompts/10-payload-aware-llm-sink.md](../prompts/10-payload-aware-llm-sink.md) (조건부 스텁)
       `SSL_write`/`SSL_read` uprobe로 LLM API 요청의 목적지·모델명 등
       메타데이터를 Sink 판정에 사용하는 확장. **구현이 확정된 게 아니라
