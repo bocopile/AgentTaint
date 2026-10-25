@@ -997,9 +997,9 @@ AgentTaint/
 
 **2026-10-25 현재 작업 순서 — 테스트 실행은 마지막 배치로 보류:**
 
-완료 증거는 위 task table과 날짜별 실행 기록을 따른다. 아래 목록은 구현·문서·도구 설정 작업이며 테스트 실행, verifier/load/attach acceptance, 원격 CI 실행은 마지막 batch gate에서 수행한다. 각 항목의 코드·문서 작성은 지금 진행하고, 검증 결과가 필요한 완료 표시는 batch 이후에만 갱신한다.
+완료 증거는 위 task table과 날짜별 실행 기록을 따른다. 아래 목록은 비테스트 작업과 현재 상태다. candidate `b0d482b`의 Linux acceptance batch는 완료했으며, 다음 코드·테스트 변경이 발생하면 영향받는 검증을 다시 실행한다.
 
-| 순서 | 항목 | 테스트를 제외한 작업 | batch gate 전 상태 |
+| 순서 | 항목 | 작업 | 현재 상태 |
 |---|---|---|---|
 | 1 | MCP-01 token 효율 | 기존 OSS `codebase-memory-mcp`를 기본 코드 검색에 적용하고 좁은 graph query·심볼 snippet·응답 필터링 규칙을 AGENTS.md에 추가. `Repomix`는 scope 지정 인계 자료에만 선택 사용하고, 보안 규범·코드에는 lossy compressor를 쓰지 않음. | 적용 완료; 전후 계측 baseline이 없어 절감률은 주장하지 않음 |
 | 2 | PRE-01 / P4-04 source layout | `ARCHITECTURE.md` BPF tree 및 Phase 4 prompt의 In Scope/Files를 syscall observer assembly/include 경로와 active LSM enforcement source로 구분해 현 구현에 맞춤. | 문서 정정 반영; diff hygiene pass |
@@ -1007,7 +1007,7 @@ AgentTaint/
 | 4 | PRE-02 | 채택 기본안·허용 파일 경로·보장 표를 현재 ARCH/SECURITY/Phase prompt와 대조하고 서로 다른 범위를 정합화. | source-path correction 반영; 전체 보장 표와 failure-injection 문서 정합성은 남음 |
 | 5 | TOOL-01/02/03 및 MCP-01 잔여 문서 | 이미 저장소에 있는 전용 skills와 agent 역할/인계 규칙의 source·scope·output contract를 정리. Runtime discovery/행동 acceptance는 batch에서 수행. | 문서·정적 정리 진행; runtime 확인 보류 |
 | 6 | CI-02 authoring / CI-01 remote gate | Linux BPF workflow는 격리·일회성 runner 및 artifact/cache 경계를 확인한 뒤 작성한다. 현 세션에는 해당 runner 설정 증거가 없으므로 self-hosted runner를 등록하거나 외부 PR 코드를 실행하지 않는다. CI-01 portable 원격 run은 batch 후보의 정확한 commit에서 별도 GitHub 실행 승인·접근이 확인될 때 수행한다. | runner·remote CI 미검증; workflow 작성과 외부 실행은 환경 근거 전까지 보류 |
-| 7 | V-01 / DOC-01 / REL-01 준비 | 지원 보장 claim-to-test 표, user/operations guide, artifact/source mapping·checksum·SBOM/license manifest 초안을 작성. 런타임 근거가 없는 항목은 `not_tested`로 둠. | P4 no-loss gate 이후 확정 |
+| 7 | V-01 / DOC-01 / REL-01 준비 | 지원 보장 claim-to-test 표, user/operations guide, artifact/source mapping·checksum·SBOM/license manifest 초안을 작성. 런타임 근거가 없는 항목은 `not_tested`로 둠. | V-01 초안 갱신; P4-04 matrix 완료 후 확정 |
 | 8 | REL-02 / REL-03 | install/update/rollback 및 제한된 pilot의 실행 계획·복구 절차를 작성. 실제 배포·외부 공유는 별도 승인 전 수행하지 않음. | V-01/REL-01 이후 |
 | 9 | F5~F9 | Linux MVP 이후 VM UX, rich-flow, Kubernetes, feedback interface, local dashboard를 각 선행 Phase와 저장·조회 계약에 따라 상세화. | 선행 Phase 미완료라 설계·구현 보류 |
 | 10 | F10 | payload-aware metadata 필요성만 검토하고 자동 착수하지 않음. | 조건부, 별도 승인 필요 |
