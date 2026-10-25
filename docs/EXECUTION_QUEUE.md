@@ -45,9 +45,9 @@ Graphify는 제품의 민감정보 추적·집행 엔진이 아니다.
 
 | ID / 상태 | 세부 작업과 산출물 | 완료 기준 / 검증 | 선행 / Git 단위 |
 |---|---|---|---|
-| P02-a / 계획 | 첫 사용자와 정상 작업 1개, 금지 효과 1개. 로컬 모델·승인 cloud·분리 실행 중 첫 방식 비교 | source 전후에 같은 작업의 허용 차이와 사용자 효용을 설명. 외부 전송 전면 차단만으로 정상 AI 작업 성공을 주장하지 않음 | 기존 P01 조사; `codex/design-p02-<date>-product` |
-| P02-b / 계획 | 민감정보·자원·접근 근거·권한·집행 상태 용어표. 파일, credential, DB view/API 결과 사례 | 사용자가 지정한 민감도와 실제 내용 자동 탐지를 분리. 미지정 데이터가 안전하다는 추론 금지 | P02-a; 같은 P02 branch의 별도 문서 커밋 |
-| P02-c / 계획 | 위험 명령의 정의: 실행파일, 실제 operation, resource, destination | `curl`/`psql` 이름만으로 위험·유출을 확정하지 않음. 조회·수정·삭제·전송의 구체 예시와 관측 한계 | P02-a/b; 같은 P02 branch의 별도 문서 커밋 |
+| P02-a / 제안 작성 완료 | [첫 사용자·정상/금지 시나리오](PRODUCT_SCOPE_PROPOSAL.md): 지정 합성 파일을 로컬 AI로 분석하고 사용자에게 표시 | 로컬/cloud/분리 실행 비교, source 전후 대조 및 helper와 실제 AI 사용성 분리. G1 미채택 | `codex/design-p02-20261025-product` |
+| P02-b / 제안 작성 완료 | [민감정보·자원·근거·권한·집행 상태 용어표](PRODUCT_SCOPE_PROPOSAL.md) | 사용자 지정과 자동 내용 탐지 구분, DB 연결과 결과 전달 구분. 새로운 보장 미구현 | P02-a와 같은 문서 카드 |
+| P02-c / 제안 작성 완료 | [위험 명령의 operation/resource/destination 예시](PRODUCT_SCOPE_PROPOSAL.md) | 조회/삭제/전송/credential 권한 구분. argv 관찰을 사전 차단으로 설명하지 않음 | P02-a/b와 같은 문서 카드 |
 | P03 / 계획 | ActPlane 등 재사용, 기존 격리 도구와 조합, 자체 엔진 비교표 | 버전/commit/license, launch·attach 방식, 지원 hook, 운영 복잡도, 동일 시나리오 실험안. README 주장을 runtime 근거로 승격하지 않음 | P02 첫 시나리오; `codex/design-p03-<date>-reuse` |
 | P04-a / 계획 | process/run/session 식별, source/sink, 신뢰 경계, 격리 제공자, 정책·상태 소유자 | 자식→부모/형제, 기존 연결, 초기 FD, 다음 run 산출물, supervisor 실패를 각각 지원/미지원/실험으로 분류 | P02; `codex/design-p04-<date>-contracts` |
 | P04-b / 계획 | 위협→메커니즘→검증→사용자 표시 표, 정상·실패 대조군 | 판정·실제 집행·수신 측 효과를 분리. no-loss 기준과 fail-before-start 대상 명시 | P04-a; 같은 P04 branch의 별도 문서 커밋 |
