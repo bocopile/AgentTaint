@@ -23,7 +23,7 @@ func Run(resolver env.Resolver, bin string, args []string, stdin io.Reader, stdo
 	if err != nil {
 		return 1, fmt.Errorf("resolve command: %w", err)
 	}
-	fmt.Fprintln(stderr, env.Notice)
+	fmt.Fprintln(stderr, env.RunNotice)
 	if runtime.GOOS != "linux" {
 		fmt.Fprintln(stderr, "Linux sensor unsupported on this host; use a Linux VM for future Linux phases.")
 	}

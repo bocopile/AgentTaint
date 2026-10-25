@@ -313,19 +313,23 @@ codex
   coverage를 incomplete로 표시하지만 자동 종료하지 않으며, 관측된 생애가 끝날 때까지
   감시를 유지한다. 이미 setsid로 분리된 자손에게 process-group 취소가 전달된다는
   보장은 없다.
-- 기본 `doctor`와 AI CLI 탐지는 계속 외부 파일을 실행하지 않는다. Phase 2에는
-  사용자가 명시적으로 선택한 **별도 toolchain probe**만 subprocess 실행을 허용한다
-  (후보 옵션 `doctor --probe-toolchain`, 아직 미구현). 신뢰를 확인한 compiler/
-  LLVM/bpftool의 명시적 절대 경로만 사용하고, PATH·프로젝트 후보 탐색이나
-  fallback을 하지 않는다. 절대 경로라는 이유만으로 신뢰된 파일로 간주하지 않는다.
-  존재·실행 권한도 신뢰의 증거가 아니다. 버전 인자만 전달해도 해당 파일의 코드를
-  실행하므로 부작용이 없다는 보장을 하지 않는다.
-- Probe는 도구별 고정 버전 조회 인자만 사용한다. 허용 도구·인자, timeout·출력
-  크기 상한, 실행 권한과 신뢰 확인 기준은 구현 전에 기록하고 테스트한다.
-  shell·권한 상승·설치·mount·모듈 로드·BPF load/attach를 수행하지 않는다.
-  timeout·초과 출력·실행 실패는 판정 불가/오류로 구분하며, 이를 정적 읽기 전용
-  검사라고 부르지 않는다. 버전 확인은 BPF target·BTF·verifier·실제 센서 capability
-  검증을 대체하지 않는다. AGENTS의 고정 버전과 기본 진단 임계값은 변경하지 않는다.
+- 기본 `doctor`와 AI CLI 탐지는 계속 외부 파일을 실행하지 않는다. opt-in
+  `doctor [--json] --probe-toolchain --tool NAME=/absolute/path [...]`만 명시된
+  toolchain 실행을 허용한다. 허용 이름은 `clang`, `llvm-strip`, `bpftool`이며,
+  적어도 하나를 지정하고 같은 이름은 한 번만 쓸 수 있다. 입력하지 않은 도구는
+  PATH나 프로젝트에서 찾지 않는다. 고정 argv는 각각 `--version`, `--version`,
+  `version`이다. 실행 파일은 최대 5초 동안, stdout/stderr 각각 최대 8 KiB를
+  보관하며 빈 environment와 `/` working directory를 사용한다. shell 실행, PATH
+  검색, 설치, 권한 상승, mount, BPF load/attach는 하지 않는다. 호출자가 명시한
+  경로는 해당 파일을 신뢰하고 실행을 승인한 것으로 취급한다. 절대 경로·일반 파일·
+  실행 권한만으로 파일의 신뢰성을 증명하지 않으며, probe는 임의 부작용을 격리하거나
+  방지하지 않는다. timeout은 실행 중인 직접 자식에만 적용되며 자손이나 filesystem/
+  network 부작용을 격리하지 않는다. JSON 결과는 `toolchain_probes`에 도구별
+  path/status/version을 기록한다. clang/llvm-strip은 LLVM 12 미만이면
+  `below_minimum`을 보고하고 명령은 실패 code를 반환한다. timeout, 출력 초과,
+  실행 오류와 인식할 수 없는 version도 구분해 실패 code를 반환한다. 보고된 version이나
+  성공 종료는 BPF target, BTF, verifier 또는 runtime capability를 증명하지 않는다.
+  AGENTS의 고정 버전과 기본 진단 임계값은 변경하지 않는다.
 
 ## 플랫폼 백엔드
 

@@ -204,7 +204,7 @@ VM 안 AI 부모 ──fork──> 도구 자식 ──open──> secret fixtur
 | D02 | 초기 보호 범위 | Phase 0~4는 기존 좁은 범위의 기술 MVP. 자식→부모 전달·기존 소켓 송신은 일반 AI 유출 방지 주장의 필수 후속 검증 | 초기 구현을 완결하면서 실제 사용 경로의 공백을 제품 완료로 오인하지 않음. 4.3절의 두 완료 기준 적용 | 채택 기본안 |
 | D03 | 첫 사용자·사용 사례 | 로컬 개발자, guest 내부 synthetic secret, 지정 파일 접근 후 새 연결 감사·차단 | 실제 자격증명·조직 배포 없이 재현 가능한 가치 검증 가능 | 채택 기본안 |
 | D04 | 외부 LLM API | 초기 보호 예시에서 LLM API 목적지에 자동 예외를 주지 않음. taint 이후 평가 대상 연결에는 같은 정책 적용 | 유명 API라는 이유로 보호를 우회시키지 않음. 기존 연결 미지원 한계는 그대로 명시 | 채택 기본안 |
-| D05 | block 미지원 | block 요청 시 필수 기능이 없으면 target 시작 전 오류 종료. monitor/notify/kill은 사용자가 그 mode를 명시했을 때만 | 요청한 보장과 실제 mode 일치. 기존 Phase 4의 fallback 문구를 이 계약에 맞춰 정리 | 채택 기본안; 규범 반영 작업 필요 |
+| D05 | block 미지원 | block 요청 시 필수 기능이 없으면 target 시작 전 오류 종료. monitor/notify/kill은 사용자가 그 mode를 명시했을 때만 | 요청한 보장과 실제 mode 일치. 기존 Phase 4의 fallback 문구를 이 계약에 맞춰 정리 | 규범 문서 반영 완료; runtime 증거는 P4-02/04 기록 참조 |
 | D06 | 외부 스킬 | 프로젝트 단위로 source-driven-development, documentation-and-adrs, code-review-and-quality부터 선택 도입. 원본 SHA와 필요한 reference를 함께 관리 | global 전체 팩·중복 router·hook의 영향 억제. 8.5절의 선택 배포본 방식 사용 | 채택 기본안; 아직 미설치 |
 | D07 | CPU 검증 | 현재 arm64 VM으로 개발하고 배포 전 amd64 Linux 검증 추가. 유료 runner를 자동 도입하지 않음 | 로컬 환경 활용과 배포 호환성 증거 분리. 검증 전 amd64 지원 표시는 보류 | 채택 기본안 |
 | D08 | 로그 | payload·환경변수·전체 argv를 기본 수집하지 않음. resource 별칭·최소 프로세스 식별자 중심; 상세 경로는 명시적 진단 선택. 로컬 저장·외부 업로드 없음 | 관측 도구가 새로운 민감정보 저장소가 되는 위험을 줄임. 저장 시 사용자 전용 권한·용량 상한 적용 | 채택 기본안 |
@@ -969,6 +969,7 @@ AgentTaint/
 | [x] | P2-02 | file·IPv4 connect observer | P2-01, E03 | guest openat/openat2/connect success/failure 및 raw normalization 검증 (2026-10-19; 남은 한계는 12.10절) |
 | [x] | P2-03 | run scope·출력·손실 상태 | P2-02, E08 | guest 계보 필터·별도 audit·손실 상태 검증 (2026-10-19; 남은 lifecycle 한계는 P2-04) |
 | [x] | P2-04 | start/stop·권한·Linux 실제 검증 | P2-03, E09 | nonce launch gate·권한 강등·신호·잔류 자손 guest 검증 (2026-10-19; setuid 재상승은 nosuid로 미검증) |
+| [ ] | P2-FU-03 | opt-in toolchain version probe | Phase 2 prompt, ENV-02 | 기본 doctor 비실행 유지; 명시 절대 경로·고정 argv·timeout/output cap으로 clang/llvm-strip/bpftool version 보고 및 fixture acceptance |
 | [ ] | CI-02 | 격리된 Linux BPF 검증 job | ENV-02, P2-04, 13.7절 | verifier·필수 scenario·잔류 자원 정리 증거 |
 | [x] | P3-01 | SECRET 상태 전이·replay | Phase 2 완료 | `ProcessKey` reference engine, ordered replay, external incomplete signal, unit vectors (2026-10-19; P3-02 연결 전) |
 | [x] | P3-02 | YAML policy·평가·명시적 external | P3-01, E05/E06, D04 | pinned YAML v3 strict snapshot, IPv4 CIDR/port evaluator, precedence/error tests (2026-10-19; runner integration P3-03) |
@@ -1013,10 +1014,10 @@ AgentTaint/
 | `00-bootstrap.md` 수용 기준 | 개인 머신 PATH 상태 고정 | fixture로 PATH 안/밖 통제 | Phase 0에서 완료 |
 | `00-bootstrap.md` doctor 검증 | 부모 PATH 불변만으로 읽기 전용 입증 | subprocess 환경·쓰기·임의 실행 여부 별도 검증 | Phase 0에서 완료 |
 | `02-linux-observer.md` 출력 | audit JSON stdout과 target stdout 보존 충돌 | 별도 필수 감사 파일·안전한 생성·실패 경계 | G1 문서 반영 및 `run --observe --audit-file` 구현 완료; disk failure·64 MiB 경계 failure-injection은 `not_tested` |
-| AGENTS clang 검사 / ARCH doctor 계약 | Phase 2 toolchain 버전 검사와 외부 명령 비실행 계약의 접점 | 기본 비실행 유지, 신뢰된 절대 경로의 명시 probe만 제한 실행 | G4 문서 반영 완료; probe 미구현 |
+| AGENTS clang 검사 / ARCH doctor 계약 / Phase 2 probe | Phase 2는 opt-in toolchain probe를 scope·acceptance에 포함하고 기본 doctor는 실행 금지 | 기본 비실행 유지, 신뢰된 명시 절대 경로의 probe만 실행 | 입력 계약 확정: `doctor [--json] --probe-toolchain --tool NAME=/absolute/path [...]`; 허용 이름 `clang`, `llvm-strip`, `bpftool`; fixed argv, 5초 timeout, stdout/stderr 각 8 KiB, 빈 env, `/` cwd. P2-FU-03에서 implementation·fixture acceptance 수행 |
 | `03-taint-engine.md` 상태·exec | PID-only map 예시, exec를 부모→자식 전파처럼 표현 | ProcessKey 기반 상태와 동일 생애 exec 유지로 구체화 | 2026-10-19 P3 구현 전 수정; P3-01/P3-03의 reference 실행 기록에서 동일 계약 확인 |
 | `04-linux-enforcement.md`, `THREAT_MODEL.md`, `ROADMAP.md` fallback | 자동 kill과 D05의 block 미지원 시 시작 전 실패 충돌 | 명시 mode와 capability 계약 정리 | 2026-10-19 정합화; block 미지원은 시작 전 실패, kill은 명시 mode만 허용 |
-| `docs/ARCHITECTURE.md` BPF tree, `prompts/04-linux-enforcement.md` scope/files | 문서는 `file.bpf.c`/`network.bpf.c`를 LSM enforcement 경로로 적지만 현재 active LSM hooks는 `enforce.bpf.c`에 있고, syscall observer는 `process.bpf.c`에서 file/network source를 include | observer assembly/source includes와 enforcement hooks를 구분해 문서 및 Phase 4 파일 범위를 현재 구조에 맞춤 | **미해결 규범 정합성 항목**; 현재 코드는 변경하지 않음. Phase 4 후속 작업 전 사용자 검토 필요 |
+| `docs/ARCHITECTURE.md` BPF tree, `prompts/04-linux-enforcement.md` scope/files | 과거 문서가 `file.bpf.c`/`network.bpf.c`를 LSM enforcement 경로와 혼동했음 | observer assembly/source includes와 active enforcement hook을 구분하고 Phase 4 file scope를 현재 구조에 맞춤 | 2026-10-25 문서 수정 완료; observer는 `process.bpf.c`가 include하고 active BPF-LSM hook은 `enforce.bpf.c`에 있음 |
 
 참조: 기존 `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY_MODEL.md`, `docs/ROADMAP.md`, `prompts/00~04`.
 
@@ -1462,10 +1463,21 @@ go test -race -count=1 ./...
 | F6 / 전달 경로 위협 모델 → file/pipe/IPC 객체 identity → child→parent 전파 → 다중 label → 기존 연결/전송 제어 검증 | `prompts/06-rich-flow.md`, taint/core/sensor/policy 확장. inherited FD/stdin/env/mmap 등은 지원/미지원 목록을 먼저 작성 | F5 및 상세 규범 확인 후. 새로운 source·propagation·sink마다 hook·상태·실제 effect 증거. 기존 연결 송신 통제는 별도 확장 설계가 필요하며 단순 fork 상속으로 해결됐다고 표시 금지 |
 | F7 / cgroup↔pod 귀속 → 종료/재사용 → 최소 권한 배포 → 정책 배포 → 다중 tenant 검증 | `prompts/07-kubernetes.md`, `deploy/daemonset.yaml/configmap.yaml/rbac.yaml`, Linux sensor 재사용 | 로컬 IFC와 선행 Phase 완료 후. hostPID/privilege·업데이트·노드 차이·pod attribution 증거. 첫 배포에 CRD/operator를 자동 추가하지 않음 |
 | F8 / 피드백 계약 → 읽기 중심 MCP/hook → 인증·권한·rate/size 제한 → host 통합 검증 | ROADMAP Phase 8, 10.3절. 아직 없는 상세 프롬프트부터 작성·확인 | F7 및 저장/조회에 필요한 데이터 계약 확인 후. capability/run 상태/위반 설명 중심. remote/기존 daemon의 scope 경계 유지, 자동 라벨 제거·정책 완화 API 금지 |
-| F9 / 로컬 저장·보존/삭제 → query → localhost HTTP → 내장 UI → 브라우저 보안·접근성 검증 | `prompts/09-local-web-dashboard.md`, `internal/web`, ARCHITECTURE의 dashboard stub | F8 및 영속화 계약 승인 후. loopback 접근 제어·CSRF/웹 입력·민감 경로 표시·로그 용량 검증. SaaS/OAuth relay/외부 업로드 기본 추가 금지 |
+| F9-DESIGN / 모니터링 대시보드 정보구조·사용자 흐름·데이터/보안 계약 | `prompts/09-local-web-dashboard.md`, `docs/ARCHITECTURE.md`의 local-only 방향, 현재 Event/Decision 모델 | F9 구현 전에 별도 완료. 화면 흐름과 저해상도 mockup, 화면별 데이터 필드, 검색·필터, run 상세 timeline, empty/error/incomplete 상태, 보존·삭제·export 정책, localhost 접근·브라우저 보안·접근성 요구를 명세하고 규범 문서 충돌을 검토한다. event persistence/query 계약과 연결하되 payload 수집·외부 업로드·정책 변경 UI를 추가하지 않음 |
+| F9 / 로컬 저장·보존/삭제 → query → localhost HTTP → 내장 UI → 브라우저 보안·접근성 검증 | `prompts/09-local-web-dashboard.md`, `internal/web`, F9-DESIGN 산출물 | F8 및 영속화 계약 승인 후. 승인된 화면/데이터 계약을 구현하고 loopback 접근 제어·CSRF/웹 입력·민감 경로 표시·로그 용량·접근성 검증. SaaS/OAuth relay/외부 업로드 기본 추가 금지 |
 | F10 / 필요성 검토 → 명시적 범위 승인 → metadata hook 가능성 → 별도 수용 시험 | `prompts/10-payload-aware-llm-sink.md`, SECURITY_MODEL의 조건부 확장 절 | 실제 요구와 별도 승인 전 보류. prompt/response 분류·DLP 전환 금지. 정적 TLS·hook 부재·관찰 대 집행의 차이를 검증. 불필요 판정이면 구현하지 않는 것이 정상 결과 |
 
-**실행 순서:** 완료 P0/P1 재확인 → 현재 PRE-02/ENV-01 게이트 해결 → ENV-02 → P2-01→02→03→04 → Phase 2 보고 → P3-01→02→03 → Phase 3 보고 → P4-01 설계 확인→02→03→04 → V-01 → F5 → F6 → F7 → F8 → F9. F10은 조건부다. TOOL/MCP는 선택 보조 작업, CI/DOC/REL은 해당 선행 완료와 별도 권한이 있을 때 끼워 넣는 작업이며 다음 제품 Phase의 검증을 생략하는 우회 경로가 아니다.
+**F9-DESIGN 시작안 — 제품/화면 제안이며 아직 구현 승인 계약이 아니다:** 대시보드는 전역 감시 제어판이 아니라 AgentTaint가 기록한 run과 그 증거를 읽는 로컬 뷰어로 시작한다.
+
+| 화면 | 첫 화면에서 답할 질문 | 최소 표시 항목 |
+|---|---|---|
+| Runs | 어떤 run이 언제, 어떤 mode로 실행됐고 결과 기록은 완전한가? | 시작/종료 시각, target 명령의 안전한 표시, 요청·활성 mode, 종료 결과, 이벤트·위반 수, `complete`/`incomplete`/`unknown` 수집 상태 |
+| Run detail | 이 run에서 어떤 OS effect와 policy decision이 관찰됐는가? | 시간순 event/decision timeline, process identity·parent 관계(수집된 경우), resource/path, event stage/result, matched rule·reason(기록된 경우), monitor/audit/deny/kill의 실제 action |
+| Evidence detail | 이 행이 무엇을 입증하며 무엇을 입증하지 않는가? | 원본 정규화 event 필드, decision 근거, capture/drop 오류와 미지원 필드. 성공한 effect와 차단 결과를 분리하고 미관측을 “발생하지 않음”으로 표시하지 않음 |
+
+검색·필터는 run, 시간, mode, event kind, action/result, completeness를 우선한다. 손실/incomplete 표시는 목록과 run 상세 양쪽에서 눈에 띄게 하고, 수집이 불완전한 run의 집계로부터 “위반 없음”을 말하지 않는다. 민감 경로는 화면에서 축약·마스킹할 수 있도록 하되 저장 원본과 화면 표시 정책을 별도 결정하며, 파일 내용·prompt·response·네트워크 payload는 수집하거나 표시하지 않는다. 첫 설계 범위에는 정책 편집, 실행 시작/중지, 차단 해제, 자동 remediation을 넣지 않는다. 최종 필드·보존 기간·삭제/export 동작은 실제 Event/Decision persistence schema와 threat model을 대조해 F9-DESIGN에서 정하고, 그 전까지 UI/API 구현을 시작하지 않는다.
+
+**실행 순서:** 완료 P0/P1 재확인 → 현재 PRE-02/ENV-01 게이트 해결 → ENV-02 → P2-01→02→03→04 및 승인된 후속 정리 → Phase 2 보고 → P3-01→02→03 → Phase 3 보고 → P4-01 설계 확인→02→03→04 → V-01 → F5 → F6 → F7 → F8 → F9-DESIGN → persistence/query 계약 확정 → F9 구현. Linux acceptance는 우선 aarch64 guest에서 닫고, 다른 architecture는 별도 카드와 host/kernel 검증을 추가해 확장한다. F10은 조건부다. TOOL/MCP는 선택 보조 작업, CI/DOC/REL은 해당 선행 완료와 별도 권한이 있을 때 끼워 넣는 작업이며 다음 제품 Phase의 검증을 생략하는 우회 경로가 아니다.
 
 현재 G1/G2/G4 문서 정합성은 반영했다. 사용자가 제공한 최신 guest 정보로 환경 준비 상태는 확인됐지만, 이 세션의 Lima 제어 socket 제한 때문에 assistant가 guest 명령을 직접 실행하지 못한다. 남은 실행 gate는 guest 환경 확보가 아니라 **최신 source/object 동기화와 현재 변경분의 verifier/runtime acceptance**다. 상위 작업 간 달력·공수는 아직 추정하지 않는다.
 
@@ -1478,7 +1490,7 @@ go test -race -count=1 ./...
 | G1 감사 출력 계약 | 기존 prompt의 audit stdout 요구가 대상 stdout 보존과 충돌 | target stdin/out/err 보존과 `--observe` 필수 `--audit-file PATH`; 새 일반 파일 `0600` 배타 생성, 기존 파일/symlink/FIFO/device 거부, owner/parent 경로 검사. 현재 writer 64 MiB cap, sticky write/close failure, incomplete/error 결과, 실행 중 자동 kill·stdout fallback 없음 | **계약과 구현 경로 문서화 완료**; 디스크 오류와 cap-boundary failure-injection은 P4-04 통합 검증 대기 |
 | G2 생성물 경로 | 생성 ident·suffix·output 경로를 ENV-02에서 고정 | 승인된 기존 C/header·`internal/sensor/linux` 및 `internal/enforce` generated Go/object와 fixture/Makefile/portable 검사 범위 | **현재 source와 tracked artifact 대조 완료**: sensor `process` BPFEL/BPFEB, enforcement `enforce` BPFEL. 신규 재생성 재현성·verifier/load/attach는 P4-04 증거 대기 |
 | G3 Linux 실행 권한 | 과거 이 세션의 `limactl shell`은 host-agent/SSH socket `Operation not permitted`로 guest 명령 전에 실패했다. 이후 사용자가 guest 출력(aarch64, Linux `7.0.0-38-generic`, BPF-LSM active, cgroup v2, root/sudo, Go 1.26.8, clang 21.1.8 BPF target, bpftool 7.7.0, llvm-strip/libbpf 사용 가능)을 제공했고, 안내한 guest 명령이 이상 없이 실행됐다고 보고했다. 이는 guest 준비 상태에 대한 사용자 제공 증거이며, assistant 세션의 socket 제한과는 별개다. | 기존 guest 터미널에서 최신 checkout/source를 대상으로 생성·verifier/load/attach 및 P4-04 acceptance를 수행하고 결과를 현재 worktree와 대조한다. host-side BPF 생성은 runtime 증거가 아님 | **guest 준비는 사용자 보고로 충족; 최신 enforcement object 생성 및 현재 변경분 runtime acceptance는 미검증** |
-| G4 doctor toolchain 검사 | AGENTS의 Phase 2 clang 검사와 기본 doctor 비실행 계약의 접점 | 승인 후 기본 doctor/AI CLI 탐지는 계속 비실행, 신뢰된 명시적 절대 경로의 compiler/LLVM/bpftool만 별도 opt-in probe로 실행하도록 반영. 후보 `doctor --probe-toolchain`은 미구현. 고정 버전 인자·timeout·출력 상한·신뢰/권한 기준은 구현 전에 기록. PATH/프로젝트 fallback·shell·승격·설치·mount·BPF load 금지. 절대 경로/실행 권한은 신뢰 증거가 아니고 버전 실행의 무부작용이나 BPF capability를 보장하지 않음 | **문서 반영 완료**, probe 미구현 |
+| G4 doctor toolchain 검사 | AGENTS의 Phase 2 clang 검사와 기본 doctor 비실행 계약의 접점 | opt-in `doctor --probe-toolchain`에서 사용자 명시 절대 경로의 allowlisted compiler/LLVM/bpftool만 fixed argv로 실행. PATH/fallback/shell/권한 상승/설치/mount/BPF load 금지; 5초 timeout, stdout/stderr 각각 8 KiB, empty env, `/` cwd. explicit path는 caller trust/execute approval이며 probe는 sandbox가 아님 | 인터페이스·실행 제한은 문서화했고 P2-FU-03 구현을 추가했다. batch acceptance 전이라 runtime status는 `not_tested` |
 
 **Lima 재확인 — 2026-10-21 22:55 KST:** `limactl list --json`은 `ebpf-lab`을 `Broken`으로 표시했지만 host-agent socket 접근 오류는 계속 `operation not permitted`였다. `stat`은 `ha.sock`이 존재함을 보였고 `lsof -U -a -p 67705`는 PID 67705의 `limactl` 프로세스가 `ha.sock` 및 Lima endpoint socket들을 열고 있음을 확인했다. `ha.stderr.log`에는 guest 시간 동기화 기록이 22:55까지 이어졌고 `serialv.log`는 Ubuntu guest의 `serial-getty`와 login prompt를 보여준다. 따라서 로그상 VM은 boot된 것으로 보이나 이는 현재 guest shell 접근, kernel/BTF/BPF-LSM 상태 또는 BPF 검증 증거가 아니다. SSH/localhost guest 접속은 동일하게 `operation not permitted`로 거부됐고 `ps`도 sandbox에서 실행 거부됐다. 예상 경로 `serial.log`는 없고 실제 console 기록은 `serialv.log`에 있다. VM lifecycle, socket/lock, 설정 및 디스크 변경은 수행하지 않았으며, 이 근거는 VM 전체 삭제·재생성을 정당화하지 않는다.
 

@@ -15,7 +15,7 @@ import (
 	"github.com/bocopile/AgentTaint/internal/runner"
 )
 
-const usage = "usage: agenttaint doctor [--json]\n       agenttaint run [--mode monitor|notify|block|kill --policy <path> --audit-file <path> [--run-as <uid>:<gid>]] [--bin <path>] -- <command> [args...]\n       --observe and --block remain aliases for --mode monitor and --mode block"
+const usage = "usage: agenttaint doctor [--json]\n       agenttaint doctor [--json] --probe-toolchain --tool NAME=/absolute/path [...]\n       agenttaint run [--mode monitor|notify|block|kill --policy <path> --audit-file <path> [--run-as <uid>:<gid>]] [--bin <path>] -- <command> [args...]\n       --observe and --block remain aliases for --mode monitor and --mode block"
 
 func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, env.NewResolver())) }
 
@@ -29,13 +29,69 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, resolver env.
 		fmt.Fprintln(stdout, usage)
 		return 0
 	case "doctor":
-		asJSON := len(args) == 2 && args[1] == "--json"
-		if len(args) != 1 && !asJSON {
-			return invalid("doctor accepts only --json")
+		asJSON, probe := false, false
+		var specs []env.ToolSpec
+		for i := 1; i < len(args); i++ {
+			option := args[i]
+			switch {
+			case option == "--json":
+				if asJSON {
+					return invalid("doctor accepts --json at most once")
+				}
+				asJSON = true
+			case option == "--probe-toolchain":
+				if probe {
+					return invalid("doctor accepts --probe-toolchain at most once")
+				}
+				probe = true
+			case option == "--tool":
+				i++
+				if i >= len(args) {
+					return invalid("--tool requires NAME=/absolute/path")
+				}
+				spec, err := env.ParseToolSpec(args[i])
+				if err != nil {
+					return invalid(err.Error())
+				}
+				specs = append(specs, spec)
+			case strings.HasPrefix(option, "--tool="):
+				spec, err := env.ParseToolSpec(strings.TrimPrefix(option, "--tool="))
+				if err != nil {
+					return invalid(err.Error())
+				}
+				specs = append(specs, spec)
+			default:
+				return invalid("unknown doctor option: " + option)
+			}
 		}
-		fmt.Fprintln(stderr, env.Notice)
-		if err := env.Diagnose(resolver).Write(stdout, asJSON); err != nil {
+		if probe != (len(specs) > 0) {
+			if probe {
+				return invalid("--probe-toolchain requires at least one --tool")
+			}
+			return invalid("--tool requires --probe-toolchain")
+		}
+		if probe {
+			if err := env.ValidateToolSpecs(specs); err != nil {
+				return invalid(err.Error())
+			}
+		}
+		report := env.Diagnose(resolver)
+		if probe {
+			fmt.Fprintln(stderr, env.ProbeNotice)
+			results, err := env.ProbeToolchain(specs)
+			if err != nil {
+				return invalid(err.Error())
+			}
+			report.Notice = env.ProbeNotice
+			report.ToolchainProbes = results
+		} else {
+			fmt.Fprintln(stderr, env.DoctorNotice)
+		}
+		if err := report.Write(stdout, asJSON); err != nil {
 			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if probe && env.ToolchainProbeFailed(report.ToolchainProbes) {
 			return 1
 		}
 		return 0

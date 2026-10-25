@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func executable(t *testing.T, path string) string {
@@ -390,5 +391,97 @@ func TestReadableProbe(t *testing.T) {
 	}
 	if err := readable(file); !errors.Is(err, io.EOF) {
 		t.Fatalf("empty: %v", err)
+	}
+}
+
+func TestToolchainProbeRequiresExplicitAllowlistedAbsolutePaths(t *testing.T) {
+	root := t.TempDir()
+	valid := executable(t, filepath.Join(root, "clang"))
+	for _, specs := range [][]ToolSpec{
+		nil,
+		{{Name: "go", Path: valid}},
+		{{Name: "clang", Path: "clang"}},
+		{{Name: "clang", Path: valid}, {Name: "clang", Path: valid}},
+		{{Name: "clang", Path: valid}, {Name: "bpftool", Path: filepath.Join(root, "missing")}},
+	} {
+		marker := filepath.Join(root, "executed")
+		if err := os.WriteFile(valid, []byte("#!/bin/sh\nprintf ran > '"+marker+"'\nprintf 'clang version 14.0.6\\n'\n"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ProbeToolchain(specs); err == nil {
+			t.Fatalf("accepted invalid specs: %+v", specs)
+		}
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Fatalf("executed a tool before validating every path: %v", err)
+		}
+	}
+}
+
+func TestToolchainProbeUsesFixedArgsAndEmptyEnvironment(t *testing.T) {
+	root := t.TempDir()
+	marker := filepath.Join(root, "args")
+	path := executable(t, filepath.Join(root, "clang"))
+	script := "#!/bin/sh\n" +
+		"printf '%s\\n' \"$1\" > '" + marker + "'\n" +
+		"if [ -n \"${AGENTTAINT_PROBE_SECRET+x}\" ]; then exit 31; fi\n" +
+		"printf 'clang version 14.0.6\\n'\n"
+	if err := os.WriteFile(path, []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AGENTTAINT_PROBE_SECRET", "must-not-be-inherited")
+	results, err := ProbeToolchain([]ToolSpec{{Name: "clang", Path: path}})
+	if err != nil || ToolchainProbeFailed(results) || len(results) != 1 || results[0].Version != "14.0.6" {
+		t.Fatalf("probe: %+v, %v", results, err)
+	}
+	args, err := os.ReadFile(marker)
+	if err != nil || string(args) != "--version\n" {
+		t.Fatalf("argv: %q, %v", args, err)
+	}
+}
+
+func TestToolchainProbeReportsMinimumAndOutputLimit(t *testing.T) {
+	root := t.TempDir()
+	below := executable(t, filepath.Join(root, "old-clang"))
+	if err := os.WriteFile(below, []byte("#!/bin/sh\nprintf 'clang version 11.0.0\\n'\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	results, err := ProbeToolchain([]ToolSpec{{Name: "clang", Path: below}})
+	if err != nil || len(results) != 1 || results[0].Status != "below_minimum" || results[0].Version != "11.0.0" {
+		t.Fatalf("old clang: %+v, %v", results, err)
+	}
+	noisy := executable(t, filepath.Join(root, "noisy-bpftool"))
+	if err := os.WriteFile(noisy, []byte("#!/bin/sh\nprintf 'bpftool v7.7.0\\n'\nprintf '%09000d' 0\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	results, err = ProbeToolchain([]ToolSpec{{Name: "bpftool", Path: noisy}})
+	if err != nil || len(results) != 1 || results[0].Status != "output_truncated" || !results[0].Truncated {
+		t.Fatalf("noisy bpftool: %+v, %v", results, err)
+	}
+}
+
+func TestToolchainProbeTimesOut(t *testing.T) {
+	oldTimeout := probeTimeout
+	probeTimeout = 25 * time.Millisecond
+	t.Cleanup(func() { probeTimeout = oldTimeout })
+	path := executable(t, filepath.Join(t.TempDir(), "slow-bpftool"))
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexec /bin/sleep 1\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	results, err := ProbeToolchain([]ToolSpec{{Name: "bpftool", Path: path}})
+	if err != nil || len(results) != 1 || results[0].Status != "timeout" {
+		t.Fatalf("timeout: %+v, %v", results, err)
+	}
+}
+
+func TestDefaultDiagnoseDoesNotExecuteFoundCLI(t *testing.T) {
+	root := t.TempDir()
+	marker := filepath.Join(root, "executed")
+	path := executable(t, filepath.Join(root, "claude"))
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nprintf ran > '"+marker+"'\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	_ = diagnose("darwin", Resolver{CandidateDirs: []string{root}}, nil, nil)
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("default diagnose executed found CLI: %v", err)
 	}
 }

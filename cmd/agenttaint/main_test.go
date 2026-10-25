@@ -17,7 +17,7 @@ import (
 func TestCLIParsing(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
-	for _, args := range [][]string{nil, {"unknown"}, {"doctor", "unexpected"}, {"doctor", "--json", "extra"}, {"run"}, {"run", "echo"}, {"run", "--"}, {"run", "--bin"}, {"run", "--bin", "", "--", "echo"}, {"run", "--bin", "--", "echo"}, {"run", "--bin=", "--", "echo"}, {"run", "--bad", "--", "echo"}, {"run", "--bin", "/file", "--bin", "/other", "--", "echo"}, {"run", "--observe", "--", "echo"}, {"run", "--observe", "--audit-file", "audit", "--", "echo"}, {"run", "--policy", "policy", "--", "echo"}, {"run", "--observe", "--policy"}, {"run", "--observe", "--policy", "policy", "--policy", "other", "--audit-file", "audit", "--", "echo"}, {"run", "--audit-file", "audit", "--", "echo"}, {"run", "--observe", "--audit-file"}, {"run", "--observe", "--observe", "--policy", "policy", "--audit-file", "audit", "--", "echo"}, {"run", "--run-as"}, {"run", "--run-as", "65534:65534", "--", "echo"}, {"run", "--observe", "--policy", "policy", "--run-as", "65534", "--audit-file", "audit", "--", "echo"}, {"run", "--observe", "--policy", "policy", "--run-as", "65534:65534", "--run-as", "65534:65534", "--audit-file", "audit", "--", "echo"}} {
+	for _, args := range [][]string{nil, {"unknown"}, {"doctor", "unexpected"}, {"doctor", "--json", "extra"}, {"doctor", "--tool", "clang=/bin/true"}, {"doctor", "--probe-toolchain"}, {"doctor", "--probe-toolchain", "--tool"}, {"doctor", "--probe-toolchain", "--tool", "clang=relative/path"}, {"run"}, {"run", "echo"}, {"run", "--"}, {"run", "--bin"}, {"run", "--bin", "", "--", "echo"}, {"run", "--bin", "--", "echo"}, {"run", "--bin=", "--", "echo"}, {"run", "--bad", "--", "echo"}, {"run", "--bin", "/file", "--bin", "/other", "--", "echo"}, {"run", "--observe", "--", "echo"}, {"run", "--observe", "--audit-file", "audit", "--", "echo"}, {"run", "--policy", "policy", "--", "echo"}, {"run", "--observe", "--policy"}, {"run", "--observe", "--policy", "policy", "--policy", "other", "--audit-file", "audit", "--", "echo"}, {"run", "--audit-file", "audit", "--", "echo"}, {"run", "--observe", "--audit-file"}, {"run", "--observe", "--observe", "--policy", "policy", "--audit-file", "audit", "--", "echo"}, {"run", "--run-as"}, {"run", "--run-as", "65534:65534", "--", "echo"}, {"run", "--observe", "--policy", "policy", "--run-as", "65534", "--audit-file", "audit", "--", "echo"}, {"run", "--observe", "--policy", "policy", "--run-as", "65534:65534", "--run-as", "65534:65534", "--audit-file", "audit", "--", "echo"}} {
 		var out, diagnostic bytes.Buffer
 		if code := run(args, nil, &out, &diagnostic, env.Resolver{}); code != 2 || out.Len() != 0 || !strings.Contains(diagnostic.String(), "usage:") {
 			t.Fatalf("%q: %d %q %q", args, code, out.String(), diagnostic.String())
@@ -39,7 +39,7 @@ func TestCLIParsing(t *testing.T) {
 		if code := run(args, nil, &out, &diagnostic, env.Resolver{}); code != 0 {
 			t.Fatalf("doctor: %d %s", code, diagnostic.String())
 		}
-		if !strings.Contains(out.String(), "not_executed_read_only") || !strings.Contains(diagnostic.String(), env.Notice) {
+		if !strings.Contains(out.String(), "not_executed_read_only") || !strings.Contains(diagnostic.String(), env.DoctorNotice) {
 			t.Fatalf("doctor: %s %s", out.String(), diagnostic.String())
 		}
 		if len(args) == 2 {
@@ -48,6 +48,35 @@ func TestCLIParsing(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+	}
+}
+
+func TestCLIDoctorToolchainProbeIsExplicit(t *testing.T) {
+	root := t.TempDir()
+	marker := filepath.Join(root, "executed")
+	tool := filepath.Join(root, "clang")
+	if err := os.WriteFile(tool, []byte("#!/bin/sh\nprintf '%s\\n' \"$1\" > '"+marker+"'\nprintf 'clang version 14.0.6\\n'\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	args := []string{"doctor", "--json", "--probe-toolchain", "--tool", "clang=" + tool}
+	if code := run(args, nil, &stdout, &stderr, env.Resolver{}); code != 0 {
+		t.Fatalf("probe exit=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), env.ProbeNotice) {
+		t.Fatalf("missing execution notice: %q", stderr.String())
+	}
+	var report env.Report
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.ToolchainProbes) != 1 || report.ToolchainProbes[0].Status != "reported" || report.ToolchainProbes[0].Version != "14.0.6" {
+		t.Fatalf("unexpected report: %+v", report.ToolchainProbes)
+	}
+	argsWritten, err := os.ReadFile(marker)
+	if err != nil || string(argsWritten) != "--version\n" {
+		t.Fatalf("tool args: %q, %v", argsWritten, err)
 	}
 }
 
@@ -170,7 +199,7 @@ func TestCLIRunRouting(t *testing.T) {
 		var out, diagnostic bytes.Buffer
 		input := []byte{0, 255, 10, 'x'}
 		code := run(args, bytes.NewReader(input), &out, &diagnostic, env.Resolver{})
-		if code != 23 || !bytes.Equal(out.Bytes(), input) || !strings.Contains(diagnostic.String(), env.Notice) || !strings.HasSuffix(diagnostic.String(), "target diagnostic\n") {
+		if code != 23 || !bytes.Equal(out.Bytes(), input) || !strings.Contains(diagnostic.String(), env.RunNotice) || !strings.HasSuffix(diagnostic.String(), "target diagnostic\n") {
 			t.Fatalf("run: %d %q %q", code, out.Bytes(), diagnostic.String())
 		}
 	}

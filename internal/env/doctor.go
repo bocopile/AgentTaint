@@ -2,6 +2,7 @@
 package env
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,12 +14,176 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // KnownCLIs is only a diagnostic convenience; runner accepts arbitrary commands.
 var KnownCLIs = []string{"claude", "codex"}
 
-const Notice = "Phase 0: no monitoring or blocking. Static checks do not verify BPF operation or protection readiness."
+const DoctorNotice = "Static checks do not execute discovered programs and do not verify BPF operation or protection readiness."
+const RunNotice = "Pass-through run: no monitoring or blocking is active."
+const ProbeNotice = "Opt-in toolchain version probes execute explicitly supplied binaries; they are not sandboxed and do not verify BPF capability."
+
+const probeOutputLimit = 8 * 1024
+
+var probeTimeout = 5 * time.Second
+
+var probeVersion = regexp.MustCompile(`(?i)(?:version\s+|(?:^|\s)v)([0-9]+\.[0-9]+(?:\.[0-9]+)?)\b`)
+
+type ToolSpec struct {
+	Name string
+	Path string
+}
+
+type ToolchainProbe struct {
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Status    string `json:"status"`
+	Version   string `json:"version,omitempty"`
+	Detail    string `json:"detail,omitempty"`
+	Truncated bool   `json:"output_truncated,omitempty"`
+}
+
+func ParseToolSpec(value string) (ToolSpec, error) {
+	name, path, ok := strings.Cut(value, "=")
+	if !ok || name == "" || path == "" {
+		return ToolSpec{}, errors.New("--tool requires NAME=/absolute/path")
+	}
+	return ToolSpec{Name: name, Path: path}, nil
+}
+
+func ValidateToolSpecs(specs []ToolSpec) error {
+	if len(specs) == 0 {
+		return errors.New("--probe-toolchain requires at least one --tool")
+	}
+	seen := make(map[string]struct{}, len(specs))
+	for _, spec := range specs {
+		if _, ok := toolProbeArgs(spec.Name); !ok {
+			return fmt.Errorf("unsupported tool %q; choose clang, llvm-strip, or bpftool", spec.Name)
+		}
+		if _, exists := seen[spec.Name]; exists {
+			return fmt.Errorf("tool %q was specified more than once", spec.Name)
+		}
+		seen[spec.Name] = struct{}{}
+		if !filepath.IsAbs(spec.Path) {
+			return fmt.Errorf("tool %q path must be absolute", spec.Name)
+		}
+		info, err := os.Stat(spec.Path)
+		if err != nil {
+			return fmt.Errorf("tool %q path: %w", spec.Name, err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("tool %q path is not a regular file", spec.Name)
+		}
+		if info.Mode().Perm()&0o111 == 0 {
+			return fmt.Errorf("tool %q path is not marked executable", spec.Name)
+		}
+	}
+	return nil
+}
+
+func toolProbeArgs(name string) ([]string, bool) {
+	switch name {
+	case "clang", "llvm-strip":
+		return []string{"--version"}, true
+	case "bpftool":
+		return []string{"version"}, true
+	default:
+		return nil, false
+	}
+}
+
+// ProbeToolchain executes only caller-supplied, allowlisted absolute paths.
+// It does not search PATH or claim to sandbox the selected programs.
+func ProbeToolchain(specs []ToolSpec) ([]ToolchainProbe, error) {
+	if err := ValidateToolSpecs(specs); err != nil {
+		return nil, err
+	}
+	results := make([]ToolchainProbe, 0, len(specs))
+	for _, spec := range specs {
+		args, _ := toolProbeArgs(spec.Name)
+		results = append(results, runToolProbe(spec, args))
+	}
+	return results, nil
+}
+
+type boundedBuffer struct {
+	data      []byte
+	limit     int
+	truncated bool
+}
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	remaining := b.limit - len(b.data)
+	if remaining > 0 {
+		if remaining > len(p) {
+			remaining = len(p)
+		}
+		b.data = append(b.data, p[:remaining]...)
+	}
+	if remaining < len(p) {
+		b.truncated = true
+	}
+	return len(p), nil
+}
+
+func runToolProbe(spec ToolSpec, args []string) ToolchainProbe {
+	result := ToolchainProbe{Name: spec.Name, Path: spec.Path}
+	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, spec.Path, args...)
+	cmd.Dir = string(os.PathSeparator)
+	cmd.Env = []string{}
+	cmd.WaitDelay = 100 * time.Millisecond
+	stdout := &boundedBuffer{limit: probeOutputLimit}
+	stderr := &boundedBuffer{limit: probeOutputLimit}
+	cmd.Stdout, cmd.Stderr = stdout, stderr
+	err := cmd.Run()
+	result.Truncated = stdout.truncated || stderr.truncated
+	if ctx.Err() == context.DeadlineExceeded {
+		result.Status = "timeout"
+		result.Detail = "version query exceeded 5 seconds"
+		return result
+	}
+	if result.Truncated {
+		result.Status = "output_truncated"
+		result.Detail = "stdout or stderr exceeded 8 KiB"
+		return result
+	}
+	if err != nil {
+		result.Status = "execution_failed"
+		result.Detail = err.Error()
+		return result
+	}
+	match := probeVersion.FindSubmatch(stdout.data)
+	if match == nil {
+		result.Status = "version_unrecognized"
+		result.Detail = "command succeeded but stdout did not contain a recognizable version"
+		return result
+	}
+	result.Version = string(match[1])
+	if spec.Name == "clang" || spec.Name == "llvm-strip" {
+		parts := strings.SplitN(result.Version, ".", 2)
+		major, parseErr := strconv.Atoi(parts[0])
+		if parseErr != nil || major < 12 {
+			result.Status = "below_minimum"
+			result.Detail = "LLVM 12 or newer is required"
+			return result
+		}
+	}
+	result.Status = "reported"
+	result.Detail = "version reported; BPF target and kernel capability were not tested"
+	return result
+}
+
+func ToolchainProbeFailed(results []ToolchainProbe) bool {
+	for _, result := range results {
+		if result.Status != "reported" {
+			return true
+		}
+	}
+	return false
+}
 
 // Resolver searches PATH first, then ordered directory patterns. It never changes PATH.
 // A zero Resolver searches PATH only. CandidateDirs may contain filepath.Glob patterns.
@@ -146,11 +311,12 @@ type CLIReport struct {
 }
 
 type Report struct {
-	OS       string       `json:"os"`
-	Notice   string       `json:"notice"`
-	Platform string       `json:"platform"`
-	Linux    *LinuxReport `json:"linux,omitempty"`
-	CLIs     []CLIReport  `json:"clis"`
+	OS              string           `json:"os"`
+	Notice          string           `json:"notice"`
+	Platform        string           `json:"platform"`
+	Linux           *LinuxReport     `json:"linux,omitempty"`
+	CLIs            []CLIReport      `json:"clis"`
+	ToolchainProbes []ToolchainProbe `json:"toolchain_probes,omitempty"`
 }
 
 // Diagnose only reads static system files and executable metadata. It never execs.
@@ -159,13 +325,13 @@ func Diagnose(resolver Resolver) Report {
 }
 
 func diagnose(goos string, resolver Resolver, read func(string) ([]byte, error), probe func(string) error) Report {
-	report := Report{OS: goos, Notice: Notice, CLIs: make([]CLIReport, 0, len(KnownCLIs))}
+	report := Report{OS: goos, Notice: DoctorNotice, CLIs: make([]CLIReport, 0, len(KnownCLIs))}
 	if goos == "linux" {
-		report.Platform = "Linux static diagnostics only; sensor not implemented in Phase 0"
+		report.Platform = "Linux static environment checks; sensor and BPF operation are not tested"
 		linux := diagnoseLinux(read, probe)
 		report.Linux = &linux
 	} else {
-		report.Platform = "v0.1 Linux sensor unsupported on this host; run in a Linux VM (Phase 0 still has no protection)"
+		report.Platform = "Linux observer and enforcement require Linux; this host provides no protected run"
 	}
 	for _, name := range KnownCLIs {
 		cli := CLIReport{Name: name, Version: "unknown", VersionReason: "not_executed_read_only"}
@@ -288,6 +454,15 @@ func (r Report) Write(w io.Writer, asJSON bool) error {
 		}
 		if cli.Recommendation != "" {
 			fmt.Fprintf(&out, "  recommendation: %s\n", cli.Recommendation)
+		}
+	}
+	for _, probe := range r.ToolchainProbes {
+		fmt.Fprintf(&out, "toolchain %s\n  path: %s\n  status: %s\n", probe.Name, probe.Path, probe.Status)
+		if probe.Version != "" {
+			fmt.Fprintf(&out, "  version: %s\n", probe.Version)
+		}
+		if probe.Detail != "" {
+			fmt.Fprintf(&out, "  detail: %s\n", probe.Detail)
 		}
 	}
 	_, err := io.WriteString(w, out.String())

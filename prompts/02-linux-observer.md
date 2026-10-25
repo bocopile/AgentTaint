@@ -40,12 +40,26 @@ bpf/network.bpf.c ──┘                                    │
   출력하거나 파일 실패 시 그곳으로 fallback하지 않는다.
 - `internal/env`에 명시적인 toolchain probe를 추가하는 범위:
   기본 doctor/AI CLI 탐지는 계속 비실행이며, 신뢰를 확인한 절대 경로의
-  compiler/LLVM/bpftool에 고정 버전 조회 인자만 전달한다. 후보 옵션은
-  `doctor --probe-toolchain`이며 정확한 입력 인터페이스는 구현 전에 기록한다.
+  compiler/LLVM/bpftool에 고정 버전 조회 인자만 전달한다. 사용법은
+  `doctor [--json] --probe-toolchain --tool NAME=/absolute/path [...]`이며
+  `NAME`은 `clang`, `llvm-strip`, `bpftool` 중 하나이고 한 이름은 한 번만
+  지정한다. 도구는 하나 이상 지정해야 하며 생략한 도구는 탐색하거나 실행하지
+  않는다. 고정 argv는 각각 `--version`, `--version`, `version`이다. 각 실행은
+  5초 timeout, stdout/stderr 각각 8 KiB 보관 한도를 사용한다. probe는 빈
+  environment와 `/` working directory에서 실행하며 shell, PATH 검색, project
+  fallback을 사용하지 않는다. 호출자가 명시한 경로는 해당 실행 파일을 신뢰하고
+  실행을 승인한 것으로 취급한다. 이 probe는 임의의 부작용을 격리하거나 막지
+  않으므로 신뢰할 수 있는 설치 파일만 지정한다. 실행 중인 직접 자식에 timeout을
+  적용해도 자손이나 filesystem/network 부작용이 격리되는 것은 아니다. clang/
+  llvm-strip 12 미만, 실행 실패, timeout, 출력 초과, 인식 불가 version은 doctor
+  실패 결과로 남기며, version 성공은 BPF target·BTF·verifier·load/attach를 검사하지
+  않는다.
 
 `run --observe --audit-file` 인터페이스는 P2-03/04에서 구현했다. 그 guest 검증과
 미검증 범위는 단일 구현 명세 `docs/IMPLEMENTATION_MASTER_PLAN.md`의 12.10절을 따른다.
-`doctor --probe-toolchain`은 **아직 미구현인 opt-in 인터페이스**다. 감사 파일의 각 줄은
+`doctor --probe-toolchain`은 기본 doctor와 구분되는 opt-in 인터페이스다. 성공한
+probe는 도구의 보고 version과 실행 결과만 기록하며, clang의 BPF target이나 BPF
+권한·BTF·verifier/load/attach capability를 증명하지 않는다. 감사 파일의 각 줄은
 Phase 1의 `internal/core` schema 1과 `DecodeEvent` 계약을 따른다.
 `event` discriminator, 중첩 `process`의 PID·birth/scope identity,
 POSIX `session_id`의 10진 문자열, 관측 stage/result와 각 payload를 보존한다.
