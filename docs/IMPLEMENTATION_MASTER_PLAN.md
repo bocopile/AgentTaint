@@ -1003,17 +1003,16 @@ AgentTaint/
 | 순서 | 항목 | 작업 | 현재 상태 |
 |---|---|---|---|
 | 1 | MCP-01 token 효율 | 기존 OSS `codebase-memory-mcp`를 기본 코드 검색에 적용하고 좁은 graph query·심볼 snippet·응답 필터링 규칙을 AGENTS.md에 추가. `Repomix`는 scope 지정 인계 자료에만 선택 사용하고, 보안 규범·코드에는 lossy compressor를 쓰지 않음. | 적용 완료; 전후 계측 baseline이 없어 절감률은 주장하지 않음 |
-| 2 | PRE-01 / P4-04 source layout | `ARCHITECTURE.md` BPF tree 및 Phase 4 prompt의 In Scope/Files를 syscall observer assembly/include 경로와 active LSM enforcement source로 구분해 현 구현에 맞춤. | 문서 정정 반영; diff hygiene pass |
-| 3 | P4-04 no-loss path capture | syscall-entry nofault capture가 실패하면 `getname_flags` kprobe/kretprobe에서 커널이 실제 복사한 raw pathname을 회수. syscall 종료 시 user pointer를 재독해 경로를 추정하지 않고, kernel 5.13+ 하한과 `incomplete` fail-closed 처리를 유지. | Linux 7.0.0-28 aarch64의 required S25 mmap/concurrent-run acceptance PASS; 다른 kernel/architecture는 미검증 |
-| 4 | PRE-02 | 채택 기본안·허용 파일 경로·보장 표를 현재 ARCH/SECURITY/Phase prompt와 대조하고 서로 다른 범위를 정합화. | source-path correction 반영; 전체 보장 표와 failure-injection 문서 정합성은 남음 |
-| 5 | TOOL-01/02/03 및 MCP-01 잔여 문서 | 이미 저장소에 있는 전용 skills와 agent 역할/인계 규칙의 source·scope·output contract를 정리. Runtime discovery/행동 acceptance는 batch에서 수행. | 문서·정적 정리 진행; runtime 확인 보류 |
-| 6 | CI-02 authoring / CI-01 remote gate | Linux BPF workflow는 격리·일회성 runner 및 artifact/cache 경계를 확인한 뒤 작성한다. 현 세션에는 해당 runner 설정 증거가 없으므로 self-hosted runner를 등록하거나 외부 PR 코드를 실행하지 않는다. CI-01 portable 원격 run은 batch 후보의 정확한 commit에서 별도 GitHub 실행 승인·접근이 확인될 때 수행한다. | runner·remote CI 미검증; workflow 작성과 외부 실행은 환경 근거 전까지 보류 |
-| 7 | V-01 / DOC-01 | Linux arm64 MVP의 지원 claim을 evidence와 대조하고 사용자 문서를 갱신. 미검증 kernel/amd64를 명시. | 완료; P4-04 acceptance는 7.0.0-28 aarch64에 한정 |
-| 8 | CI-01/02 및 REL-01 | portable 원격 CI와 격리 Linux BPF job의 실행 근거를 확보한 뒤 source/object mapping·checksum·SBOM/license manifest를 완성. | CI runner·remote evidence 미검증; REL-01 미착수 |
-| 9 | REL-02 / REL-03 | install/update/rollback 및 제한된 pilot의 계획·복구 절차를 작성. 실제 배포·외부 공유는 별도 승인 전 수행하지 않음. | REL-01 이후 |
-| 10 | ARCH-01 | amd64 syscall ABI/object 지원을 구현하고 독립 guest에서 verifier/load/attach/runtime을 확인한 뒤 지원 matrix에 추가. | arm64 MVP 완료 뒤 별도 후속; 현재 amd64 미지원 |
-| 11 | F5~F9 | Linux MVP 이후 VM UX, rich-flow, Kubernetes, feedback interface, local dashboard를 각 선행 Phase와 저장·조회 계약에 따라 상세화. | 선행 Phase 미완료라 설계·구현 보류 |
-| 12 | F10 | payload-aware metadata 필요성만 검토하고 자동 착수하지 않음. | 조건부, 별도 승인 필요 |
+| 2 | PRE-01 / PRE-02 | 지원·보장 표와 failure-injection 설명을 ARCH/SECURITY/Phase prompts에 대조하고 남은 불일치 정리. source-path 설명은 이미 수정했으며 규범 충돌은 임의로 덮지 않는다. | 잔여 정합성 검토 필요; PRE-01/02 task는 미완료 |
+| 3 | P4-04 no-loss path capture | syscall-entry nofault capture가 실패하면 `getname_flags` kprobe/kretprobe에서 커널이 실제 복사한 raw pathname을 회수. syscall 종료 시 user pointer를 재독해 경로를 추정하지 않고, kernel 5.13+ 하한과 `incomplete` fail-closed 처리를 유지. | arm64 MVP의 Linux 7.0.0-28 S25 acceptance 완료; 다른 kernel runtime은 미검증 |
+| 4 | TOOL-01/02/03 및 MCP-01 잔여 | 저장된 skills·agent 역할·handoff의 source/scope/output contract, graph freshness 및 service-outage fallback을 정리하고 확인. | token-efficient code discovery 규칙 적용; 나머지 문서·runtime 확인 보류 |
+| 5 | CI-02 authoring / CI-01 remote gate | Linux BPF workflow는 격리·일회성 runner 및 artifact/cache 경계를 확인한 뒤 작성한다. runner 설정 증거 없이 self-hosted runner를 등록하거나 외부 PR 코드를 실행하지 않는다. portable 원격 CI는 정확한 commit의 GitHub 실행 증거로 확인한다. | runner·remote CI 미검증; 환경 근거 전까지 보류 |
+| 6 | V-01 / DOC-01 | Linux arm64 MVP claim-to-test를 evidence와 대조하고 사용자 문서에 지원/진단 범위를 반영. | 완료; P4-04 acceptance는 7.0.0-28 aarch64에 한정 |
+| 7 | REL-01 | 지원 환경 CI 근거가 확보된 뒤 source/object mapping·checksum·SBOM/license manifest를 완성한다. | CI 선행 조건 미충족; 미착수 |
+| 8 | REL-02 / REL-03 | install/update/rollback 및 제한된 pilot의 계획·복구 절차를 작성. 실제 배포·외부 공유는 별도 승인 전 수행하지 않음. | REL-01 이후 |
+| 9 | ARCH-01 | amd64 syscall ABI/object 지원을 구현하고 독립 guest에서 verifier/load/attach/runtime을 확인한 뒤 지원 matrix에 추가. | arm64 MVP 및 CI 기반 이후 별도 후속; 현재 amd64 미지원 |
+| 10 | F5~F9 | Linux MVP 이후 VM UX, rich-flow, Kubernetes, feedback interface, local dashboard를 각 선행 Phase와 저장·조회 계약에 따라 상세화. | 선행 Phase 미완료라 설계·구현 보류 |
+| 11 | F10 | payload-aware metadata 필요성만 검토하고 자동 착수하지 않음. | 조건부, 별도 승인 필요 |
 
 **검증 batch 상태:** candidate `b0d482b`에서 guest `gofmt -d` 확인과 `make BUILD_DIR=.build-integration linux-acceptance`를 완료했다. batch에는 BPF generation, `go vet`, `go build`, 전체 비특권 test suite, root runner, root 나머지 packages, required enforcement exit-delete 및 required S25 mmap/concurrent-run fixtures가 포함됐고 모두 PASS했다. `b0d482b` 이후 현재 변경은 README/master-plan의 상태와 claim-to-test 문서 정리뿐이다. 다음 코드 변경이 생기면 영향받는 검증과 최종 통합 batch를 다시 실행한다. Remote GitHub CI는 runner/권한 선행조건 때문에 이 batch에 포함되지 않았다.
 
