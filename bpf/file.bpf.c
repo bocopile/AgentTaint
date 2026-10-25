@@ -107,7 +107,6 @@ static __always_inline void file_enter_openat(const char *filename, __u64 flags,
 		return;
 	}
 	pending.monotonic_ns = bpf_ktime_get_ns();
-	/* Retry a transient nofault miss after the syscall has resolved the user page. */
 	pending.user_path = (__u64)filename;
 	pending.access = file_access_from_flags(flags, flags_valid);
 	pending.syscall_kind = syscall_kind;
@@ -131,21 +130,6 @@ static __always_inline void file_exit_openat(long result)
 	struct agenttaint_pending_file_open *pending = bpf_map_lookup_elem(&pending_file_opens, &tid);
 	if (!pending)
 		return;
-	if (pending->flags & AGENTTAINT_PENDING_PATH_CAPTURE_FAILED) {
-		/* Keep the original user pathname; do not substitute a resolved kernel path. */
-		long copied = bpf_probe_read_user_str(pending->path, sizeof(pending->path),
-						     (const char *)(unsigned long)pending->user_path);
-		if (copied > 0) {
-			pending->flags &= ~AGENTTAINT_PENDING_PATH_CAPTURE_FAILED;
-			pending->path_read_result = (__s32)copied;
-			if (copied >= sizeof(pending->path))
-				pending->flags |= AGENTTAINT_PATH_TRUNCATED;
-			if (pending->path[0] != '/')
-				pending->flags |= AGENTTAINT_PATH_RELATIVE;
-		} else {
-			pending->path_read_result = (__s32)copied;
-		}
-	}
 	if (pending->flags & AGENTTAINT_PENDING_PATH_CAPTURE_FAILED) {
 		struct agenttaint_raw_file_open *diagnostic =
 			bpf_ringbuf_reserve(&process_events, sizeof(*diagnostic), 0);
@@ -205,4 +189,49 @@ static __always_inline void file_exit_openat(long result)
 	event->header.flags = flags;
 	bpf_ringbuf_submit(event, 0);
 	bpf_map_delete_elem(&pending_file_opens, &tid);
+}
+
+/*
+ * The syscall-entry user read is intentionally nofault. If it misses a
+ * nonresident page, capture the kernel's exact copied pathname after
+ * getname_flags has faulted and copied it. Never reread mutable user memory
+ * after the operation.
+ */
+SEC("kprobe/getname_flags")
+int BPF_KPROBE(on_getname_flags, const char *filename)
+{
+	__u32 tid = (__u32)bpf_get_current_pid_tgid();
+	struct agenttaint_pending_file_open *pending = bpf_map_lookup_elem(&pending_file_opens, &tid);
+	if (!pending || !(pending->flags & AGENTTAINT_PENDING_PATH_CAPTURE_FAILED))
+		return 0;
+	if (pending->user_path == (__u64)filename)
+		pending->path_capture_pending = 1;
+	return 0;
+}
+
+SEC("kretprobe/getname_flags")
+int BPF_KRETPROBE(on_getname_flags_return, struct filename *result)
+{
+	__u32 tid = (__u32)bpf_get_current_pid_tgid();
+	struct agenttaint_pending_file_open *pending = bpf_map_lookup_elem(&pending_file_opens, &tid);
+	if (!pending || !pending->path_capture_pending)
+		return 0;
+	pending->path_capture_pending = 0;
+	if (!result || (__u64)result >= (__u64)-4095)
+		return 0;
+	const char *kernel_path = NULL;
+	if (bpf_core_read(&kernel_path, sizeof(kernel_path), &result->name) < 0 || !kernel_path)
+		return 0;
+	long copied = bpf_probe_read_kernel_str(pending->path, sizeof(pending->path), kernel_path);
+	if (copied <= 0) {
+		pending->path_read_result = (__s32)copied;
+		return 0;
+	}
+	pending->flags &= ~AGENTTAINT_PENDING_PATH_CAPTURE_FAILED;
+	pending->path_read_result = (__s32)copied;
+	if (copied >= sizeof(pending->path))
+		pending->flags |= AGENTTAINT_PATH_TRUNCATED;
+	if (pending->path[0] != '/')
+		pending->flags |= AGENTTAINT_PATH_RELATIVE;
+	return 0;
 }

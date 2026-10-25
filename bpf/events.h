@@ -110,6 +110,7 @@ struct agenttaint_pending_file_open {
 	__u8 flags;
 	__u8 access;
 	__u8 syscall_kind;
+	__u8 path_capture_pending;
 	__s32 path_read_result;
 };
 

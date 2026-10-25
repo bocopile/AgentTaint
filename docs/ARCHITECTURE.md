@@ -71,7 +71,7 @@ AgentTaint/
 │
 ├── bpf/                          # eBPF C 소스 (CO-RE)
 │   ├── process.bpf.c             # observer object 조립; process tracepoint + file/network include
-│   ├── file.bpf.c                # process.bpf.c에 포함되는 file syscall tracepoint observer
+│   ├── file.bpf.c                # process.bpf.c에 포함; file syscall tracepoint + getname_flags capture
 │   ├── network.bpf.c             # process.bpf.c에 포함되는 connect tracepoint observer
 │   ├── enforce.bpf.c             # 별도 BPF-LSM object: bounded source projection + pre-op sink decision
 │   ├── maps.h
@@ -365,8 +365,10 @@ Observer object는 `internal/sensor/linux/doc.go`의 `go:generate`가
 Enforcement object는 `internal/enforce/doc.go`의 별도 `go:generate`가
 `bpf/enforce.bpf.c`에서 생성한다. 따라서 file/connect 관찰용 syscall
 tracepoint와 active BPF-LSM enforcement hook의 source 파일·생성 object를
-혼동하지 않는다. 로컬 실행과 향후 Kubernetes DaemonSet 배포는 이 경로를
-공유하며 배포 방식만 다르다.
+혼동하지 않는다. syscall-entry nofault path copy가 실패한 경우 observer는
+`getname_flags` kprobe/kretprobe에서 커널이 실제 복사한 raw pathname을 보완
+수집한다. probe를 attach할 수 없으면 observer 시작을 실패 처리한다. 로컬
+실행과 향후 Kubernetes DaemonSet 배포는 이 경로를 공유하며 배포 방식만 다르다.
 
 ## 향후: 로컬 웹 대시보드 (스텁)
 

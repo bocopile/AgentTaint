@@ -98,8 +98,9 @@ SECRET 프로세스의 socket connect
 ## Files
 
 `bpf/process.bpf.c`, `bpf/file.bpf.c`, `bpf/network.bpf.c` (observer include
-assembly와 syscall tracepoint capture), `bpf/enforce.bpf.c` (별도 active
-BPF-LSM object), `bpf/events.h`, `internal/sensor/linux/doc.go`와 generated
+assembly, syscall tracepoint capture, `getname_flags` fallback capture),
+`bpf/enforce.bpf.c` (별도 active BPF-LSM object), `bpf/events.h`,
+`internal/sensor/linux/doc.go`, `internal/sensor/linux/sensor.go`와 generated
 observer object, `internal/policy/kernel.go`, `internal/enforce/doc.go`,
 `internal/enforce/enforce_linux.go`,
 `internal/enforce/enforce_unsupported.go`, `internal/enforce/enforce_bpfel.go`와

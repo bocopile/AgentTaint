@@ -190,6 +190,16 @@ func New(scopeID uint64) (*Sensor, error) {
 		}
 		sensor.links = append(sensor.links, attached)
 	}
+	pathEntry, err := link.Kprobe("getname_flags", sensor.objects.OnGetnameFlags, nil)
+	if err != nil {
+		return nil, fmt.Errorf("attach pathname capture entry probe: %w", err)
+	}
+	sensor.links = append(sensor.links, pathEntry)
+	pathReturn, err := link.Kretprobe("getname_flags", sensor.objects.OnGetnameFlagsReturn, nil)
+	if err != nil {
+		return nil, fmt.Errorf("attach pathname capture return probe: %w", err)
+	}
+	sensor.links = append(sensor.links, pathReturn)
 	for _, target := range []struct {
 		name    string
 		program *ebpf.Program
