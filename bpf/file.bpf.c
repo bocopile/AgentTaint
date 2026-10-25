@@ -5,6 +5,10 @@
 #include "events.h"
 #include "maps.h"
 
+struct filename___local {
+	const char *name;
+} __attribute__((preserve_access_index));
+
 #ifndef O_ACCMODE
 #define O_ACCMODE 00000003
 #endif
@@ -220,7 +224,8 @@ int BPF_KRETPROBE(on_getname_flags_return, struct filename *result)
 	if (!result || (__u64)result >= (__u64)-4095)
 		return 0;
 	const char *kernel_path = NULL;
-	if (bpf_core_read(&kernel_path, sizeof(kernel_path), &result->name) < 0 || !kernel_path)
+	struct filename___local *local_result = (void *)result;
+	if (bpf_core_read(&kernel_path, sizeof(kernel_path), &local_result->name) < 0 || !kernel_path)
 		return 0;
 	long copied = bpf_probe_read_kernel_str(pending->path, sizeof(pending->path), kernel_path);
 	if (copied <= 0) {
