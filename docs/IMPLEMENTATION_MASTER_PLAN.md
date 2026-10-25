@@ -953,7 +953,7 @@ AgentTaint/
 | 완료 | ID | 작업 | 선행 조건 | 주 산출물 |
 |---|---|---|---|---|
 | [x] | DOC-00 | 2026-10-25 현재 상태·잔여 작업·Git 전략 snapshot 통합 | INT-00 변경 소유권 분류 | 12.14절 기준선·의존성 목록을 integration에 반영하고 문서 diff 검토·`git diff --check` 완료 (integration `9a510f4`) |
-| [ ] | PRE-01 | 문서·Phase·예시 불일치 정리안 적용 | 문서 수정 요청 | 일관된 기존 문서; 검토된 불일치는 수정하고 후속 Phase 전 항목은 명시적으로 이연 |
+| [x] | PRE-01 | 문서·Phase·예시 불일치 정리안 적용 | 문서 수정 요청 | Phase 2 toolchain probe status를 Architecture·Roadmap·prompt에 맞춤; integration `aff15f2`, `git diff --check` 통과 |
 | [ ] | PRE-02 | 채택 기본안·허용 경로를 구체화해 규범에 반영 | 4절 기본안, 관련 E 설계 | 보장 표·정합적인 구조·현재 작업 범위; G1/G2/G4 및 D05 문서 계약 반영, 구현 증거는 별도 카드 |
 | [ ] | TOOL-01 | 선택한 외부 스킬 세 개와 reference 도입 | D06 기본안, E01 | source SHA·reference 검증·discovery 증거 |
 | [ ] | TOOL-02 | 전용 preflight·docs·semantics 스킬 | E01 | 세 개의 좁은 검증 절차 |
@@ -3040,7 +3040,7 @@ Do not implement it. arm64 MVP의 다음 작업은 CI-01/02 원격·격리 검�
 | 순서 / ID | 상태·작업 / 완료 조건 | 선행·의존 | Git 단위와 통합 순서 |
 |---|---|---|---|
 | 0 / INT-00 — 완료 | dirty P4 acceptance worktree의 5개 파일을 integration과 읽기 전용 대조했다. 3개 파일은 integration과 동일하고, plan은 stale이며, runner acceptance test 변경은 별도 review가 필요하다. | 완료; 기존 변경 모두 보존 | 비교 결과만 이 절에 기록했다. dirty worktree에 branch/commit을 만들거나 수정하지 않았다. |
-| 1 / PRE-01, PRE-02 | 전체 계획·문서·prompt 상태 감사와 정리를 먼저 한다. status, version, 링크, 예시, 지원 범위와 norm 충돌을 대조하고 수정 근거·미해결 결정을 기록한다. 아키텍처/보안 의미 충돌은 승인 전 멈춘다. | INT-00/DOC-00 완료. 현재 master-plan snapshot도 감사 범위에 포함 | 각 독립 문서 단위마다 `codex/docs-<task-id>-<slug>` / `.worktrees/<task-id>`를 사용한다. 추가 문서 변경은 기존 integration에 바로 쓰지 않고 전용 task branch/worktree를 거친다. |
+| 1 / PRE-01 완료, PRE-02 pending | PRE-01에서 Phase 2 probe 구현 상태가 Architecture·Roadmap·Phase 2 prompt에 일치하도록 갱신했다. PRE-02는 status/version/link/example 전수 대조와 최소 규범 문서 정합성 검토를 계속한다. 보안 의미 충돌은 승인 전 중단한다. | INT-00/DOC-00 완료. 현재 master-plan snapshot도 감사 범위에 포함 | 각 독립 문서 단위마다 `codex/docs-<task-id>-<slug>` / `.worktrees/<task-id>`를 사용한다. 추가 문서 변경은 기존 integration에 바로 쓰지 않고 전용 task branch/worktree를 거친다. |
 | 2 / INT-01 | P2-FU-03와 현재 코드 통합 acceptance를 완료한다. fixture 포함 doctor probe, portable suite, Go vet/build, Linux arm64 `make linux-acceptance`, 독립 diff/security review를 정확한 통합 HEAD에서 실행하고 결과를 기록한다. | INT-00 ownership 분류와 DOC-00/PRE 문서 작업 완료. 이 시점에 코드·문서 batch를 고정 | 기존 `codex/phase4-integration-20261024`를 통합 대상으로 이어간다. 이미 task commit은 통합돼 있으므로 재커밋하지 않는다. acceptance 전 push 금지. 실패 수정은 전용 새 worktree/task branch에서 만들고 통합 후 영향 검사를 재실행한다. |
 | 3 / TOOL-01~03, MCP-01 | 사용자가 요청한 토큰 절감 검토를 포함해 도구 후보를 조사하고, 압축 품질·비용·보안 경계·라이선스를 실제 근거로 평가한다. 필요한 최소 도구만 별도 승인 및 안전 설계 뒤 도입한다. MCP 추가는 현재 codebase-memory MCP가 못 채우는 요구가 입증될 때만 완료로 본다. | PRE 감사와 도구 요구 정의. 외부 도구 설치나 자동 호출 정책 변경은 별도 승인 필요 | 카드마다 전용 branch/worktree를 쓰고, 조사 문서와 구현을 분리한다. 도입 후보가 없으면 증거를 남기고 `not_needed`로 닫는다. |
 | 4 / CI-01 | 저장소의 portable 검사·재현성 원격 검증 계약을 정리하고 지정 원격 job에서 통과시킨다. | TOOL 및 현재 acceptance 계약 정리 | `codex/ci-ci01-<slug>` / `.worktrees/ci-ci01`; workflow 권한은 해당 CI 카드가 허용한 파일로 제한한다. 결과 artifact와 source commit을 함께 기록한다. |
@@ -3070,6 +3070,6 @@ Do not implement it. arm64 MVP의 다음 작업은 CI-01/02 원격·격리 검�
 #### 다음 실행 묶음
 
 1. INT-00의 읽기 전용 분류는 완료했다. 외부 dirty 변경은 owner/review 확인 전까지 그대로 둔다.
-2. PRE-01/PRE-02 문서 작업을 먼저 끝낸다. 작업 목록 변경은 전용 task branch에서 커밋·push됐고 integration `9a510f4`에 통합했다. 나머지 문서 감사 수정은 별도 task commit으로 이어간다.
+2. PRE-01은 integration `aff15f2`에서 완료했다. 다음은 PRE-02 문서 전수 대조이며, 작업 목록 변경은 별도 task branch에서 커밋·push된 뒤 integration `9a510f4`에 반영됐다.
 3. 문서가 정리된 뒤 현재 코드 batch를 고정하고 INT-01의 acceptance와 독립 review를 한 번 실행한다. 향후 CI/architecture/feature work는 각 의존성 단위가 준비된 뒤 별도 batch로 수용 검증한다.
 4. 통합 acceptance와 독립 리뷰가 통과하면 요청된 순서에 따라 integration을 main에 fast-forward하고, 명시된 push 조건을 충족할 때만 원격에 반영한다.
