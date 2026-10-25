@@ -315,13 +315,16 @@ codex
   보장은 없다.
 - 기본 `doctor`와 AI CLI 탐지는 계속 외부 파일을 실행하지 않는다. Phase 2에는
   사용자가 명시적으로 선택한 **별도 toolchain probe**만 subprocess 실행을 허용한다
-  (후보 옵션 `doctor --probe-toolchain`, 아직 미구현). 신뢰를 확인한 compiler/
-  LLVM/bpftool의 명시적 절대 경로만 사용하고, PATH·프로젝트 후보 탐색이나
+  (`doctor --probe-toolchain`). 구현·현재 acceptance 상태는
+  [구현 작업 명세](./IMPLEMENTATION_MASTER_PLAN.md)의 최신 snapshot을 따른다.
+  신뢰를 확인한 compiler, LLVM, bpftool의 명시적 절대 경로만 사용하고,
+  PATH·프로젝트 후보 탐색이나
   fallback을 하지 않는다. 절대 경로라는 이유만으로 신뢰된 파일로 간주하지 않는다.
   존재·실행 권한도 신뢰의 증거가 아니다. 버전 인자만 전달해도 해당 파일의 코드를
   실행하므로 부작용이 없다는 보장을 하지 않는다.
 - Probe는 도구별 고정 버전 조회 인자만 사용한다. 허용 도구·인자, timeout·출력
-  크기 상한, 실행 권한과 신뢰 확인 기준은 구현 전에 기록하고 테스트한다.
+  크기 상한, 실행 권한과 신뢰 확인 기준은 구현 계약에 기록하고 fixture acceptance로
+  검증한다. acceptance가 끝나지 않은 변경은 완료로 표시하지 않는다.
   shell·권한 상승·설치·mount·모듈 로드·BPF load/attach를 수행하지 않는다.
   timeout·초과 출력·실행 실패는 판정 불가/오류로 구분하며, 이를 정적 읽기 전용
   검사라고 부르지 않는다. 버전 확인은 BPF target·BTF·verifier·실제 센서 capability

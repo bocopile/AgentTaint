@@ -41,11 +41,12 @@ bpf/network.bpf.c ──┘                                    │
 - `internal/env`에 명시적인 toolchain probe를 추가하는 범위:
   기본 doctor/AI CLI 탐지는 계속 비실행이며, 신뢰를 확인한 절대 경로의
   compiler/LLVM/bpftool에 고정 버전 조회 인자만 전달한다. 후보 옵션은
-  `doctor --probe-toolchain`이며 정확한 입력 인터페이스는 구현 전에 기록한다.
+  `doctor --probe-toolchain`이다. 입력·실행 경계는 구현 작업 명세의 G4에 기록했다.
 
 `run --observe --audit-file` 인터페이스는 P2-03/04에서 구현했다. 그 guest 검증과
-미검증 범위는 단일 구현 명세 `docs/IMPLEMENTATION_MASTER_PLAN.md`의 12.10절을 따른다.
-`doctor --probe-toolchain`은 **아직 미구현인 opt-in 인터페이스**다. 감사 파일의 각 줄은
+미검증 범위는 단일 구현 명세 `docs/IMPLEMENTATION_MASTER_PLAN.md`의 최신 snapshot을 따른다.
+`doctor --probe-toolchain`은 P2-FU-03에서 opt-in 구현됐다. fixture 및 현재 integration HEAD의
+acceptance는 아직 실행되지 않아 `not_tested`다. 상세 상태는 구현 작업 명세를 따른다. 감사 파일의 각 줄은
 Phase 1의 `internal/core` schema 1과 `DecodeEvent` 계약을 따른다.
 `event` discriminator, 중첩 `process`의 PID·birth/scope identity,
 POSIX `session_id`의 10진 문자열, 관측 stage/result와 각 payload를 보존한다.
