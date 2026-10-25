@@ -34,6 +34,7 @@ type processAgenttaintPendingConnect struct {
 type processAgenttaintPendingFileOpen struct {
 	_           structs.HostLayout
 	MonotonicNs uint64
+	UserPath    uint64
 	Process     struct {
 		_         structs.HostLayout
 		Pid       uint32
@@ -44,12 +45,12 @@ type processAgenttaintPendingFileOpen struct {
 		ScopeId   uint64
 		Comm      [16]int8
 	}
-	Path           [256]int8
-	Flags          uint8
-	Access         uint8
-	SyscallKind    uint8
-	_              [1]byte
-	PathReadResult int32
+	Path               [256]int8
+	Flags              uint8
+	Access             uint8
+	SyscallKind        uint8
+	PathCapturePending uint8
+	PathReadResult     int32
 }
 
 // Names of all BPF objects in the ELF.
@@ -64,6 +65,8 @@ const (
 	processMapProcessScope           = "process_scope"
 	processMapProcessTrackingEnabled = "process_tracking_enabled"
 	processMapTrackedProcesses       = "tracked_processes"
+	processProgOnGetnameFlags        = "on_getname_flags"
+	processProgOnGetnameFlagsReturn  = "on_getname_flags_return"
 	processProgOnProcessExec         = "on_process_exec"
 	processProgOnProcessExit         = "on_process_exit"
 	processProgOnProcessFork         = "on_process_fork"
@@ -113,11 +116,13 @@ type processSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type processProgramSpecs struct {
-	OnProcessExec *ebpf.ProgramSpec `ebpf:"on_process_exec"`
-	OnProcessExit *ebpf.ProgramSpec `ebpf:"on_process_exit"`
-	OnProcessFork *ebpf.ProgramSpec `ebpf:"on_process_fork"`
-	OnSysEnter    *ebpf.ProgramSpec `ebpf:"on_sys_enter"`
-	OnSysExit     *ebpf.ProgramSpec `ebpf:"on_sys_exit"`
+	OnGetnameFlags       *ebpf.ProgramSpec `ebpf:"on_getname_flags"`
+	OnGetnameFlagsReturn *ebpf.ProgramSpec `ebpf:"on_getname_flags_return"`
+	OnProcessExec        *ebpf.ProgramSpec `ebpf:"on_process_exec"`
+	OnProcessExit        *ebpf.ProgramSpec `ebpf:"on_process_exit"`
+	OnProcessFork        *ebpf.ProgramSpec `ebpf:"on_process_fork"`
+	OnSysEnter           *ebpf.ProgramSpec `ebpf:"on_sys_enter"`
+	OnSysExit            *ebpf.ProgramSpec `ebpf:"on_sys_exit"`
 }
 
 // processMapSpecs contains maps before they are loaded into the kernel.
@@ -193,15 +198,19 @@ type processVariables struct {
 //
 // It can be passed to loadProcessObjects or ebpf.CollectionSpec.LoadAndAssign.
 type processPrograms struct {
-	OnProcessExec *ebpf.Program `ebpf:"on_process_exec"`
-	OnProcessExit *ebpf.Program `ebpf:"on_process_exit"`
-	OnProcessFork *ebpf.Program `ebpf:"on_process_fork"`
-	OnSysEnter    *ebpf.Program `ebpf:"on_sys_enter"`
-	OnSysExit     *ebpf.Program `ebpf:"on_sys_exit"`
+	OnGetnameFlags       *ebpf.Program `ebpf:"on_getname_flags"`
+	OnGetnameFlagsReturn *ebpf.Program `ebpf:"on_getname_flags_return"`
+	OnProcessExec        *ebpf.Program `ebpf:"on_process_exec"`
+	OnProcessExit        *ebpf.Program `ebpf:"on_process_exit"`
+	OnProcessFork        *ebpf.Program `ebpf:"on_process_fork"`
+	OnSysEnter           *ebpf.Program `ebpf:"on_sys_enter"`
+	OnSysExit            *ebpf.Program `ebpf:"on_sys_exit"`
 }
 
 func (p *processPrograms) Close() error {
 	return _ProcessClose(
+		p.OnGetnameFlags,
+		p.OnGetnameFlagsReturn,
 		p.OnProcessExec,
 		p.OnProcessExit,
 		p.OnProcessFork,

@@ -1001,8 +1001,8 @@ AgentTaint/
 
 | 순서 | 항목 | 테스트를 제외한 작업 | batch gate 전 상태 |
 |---|---|---|---|
-| 1 | MCP-01 token 효율 | 기존 OSS `codebase-memory-mcp`를 기본 코드 검색에 적용하고 좁은 graph query·심볼 snippet·응답 필터링 규칙을 AGENTS.md에 추가. `Repomix`는 scope 지정 인계 자료에만 선택 사용하고, 보안 규범·코드에는 lossy compressor를 쓰지 않음. | 적용 중; 토큰 절감률은 측정하지 않음 |
-| 2 | PRE-01 / P4-04 source layout | `ARCHITECTURE.md` BPF tree 및 Phase 4 prompt의 In Scope/Files를 syscall observer assembly/include 경로와 active LSM enforcement source로 구분해 현 구현에 맞춤. | 사용자 승인됨; 문서 변경 진행 대상 |
+| 1 | MCP-01 token 효율 | 기존 OSS `codebase-memory-mcp`를 기본 코드 검색에 적용하고 좁은 graph query·심볼 snippet·응답 필터링 규칙을 AGENTS.md에 추가. `Repomix`는 scope 지정 인계 자료에만 선택 사용하고, 보안 규범·코드에는 lossy compressor를 쓰지 않음. | 적용 완료; 전후 계측 baseline이 없어 절감률은 주장하지 않음 |
+| 2 | PRE-01 / P4-04 source layout | `ARCHITECTURE.md` BPF tree 및 Phase 4 prompt의 In Scope/Files를 syscall observer assembly/include 경로와 active LSM enforcement source로 구분해 현 구현에 맞춤. | 문서 정정 반영; diff hygiene pass |
 | 3 | P4-04 no-loss path capture | syscall-entry nofault capture가 실패하면 `getname_flags` kprobe/kretprobe에서 커널이 실제 복사한 raw pathname을 회수하도록 observer를 보완. syscall 종료 시 user pointer를 재독해 경로를 추정하지 않으며, kernel 5.13+ 하한과 `incomplete` fail-closed 처리를 유지. | 구현 반영; probe attach 및 no-loss acceptance는 guest batch 전까지 미검증 |
 | 4 | PRE-02 | 채택 기본안·허용 파일 경로·보장 표를 현재 ARCH/SECURITY/Phase prompt와 대조하고 서로 다른 범위를 정합화. | 미착수 |
 | 5 | TOOL-01/02/03 및 MCP-01 잔여 문서 | 이미 저장소에 있는 전용 skills와 agent 역할/인계 규칙의 source·scope·output contract를 정리. Runtime discovery/행동 acceptance는 batch에서 수행. | 문서·정적 정리 진행; runtime 확인 보류 |
@@ -1019,6 +1019,8 @@ AgentTaint/
 **P4 현 상태:** 이전 통합 acceptance 명령은 pass했지만 path-capture loss가 실제로 관측됐다. §12.10 사용자 승인 결정의 no-loss audit acceptance는 충족되지 않았으므로 현재 P4-04는 계속 미완료다. path capture 구현 수정 후 마지막 batch에서 다시 판정한다.
 
 **OSS 기반 토큰 사용 절감 적용:** 이 저장소의 OSS `codebase-memory-mcp`를 코드 탐색 기본 경로로 적용했다. 현재 세션에서 graph status 확인 후 좁은 `search_graph`와 정확한 심볼 `get_code_snippet`을 사용하고, 출력은 필요한 source/metadata만 추렸다. `AGENTS.md`에는 검색 범위 제한·출력 필터링·원문 보존 규칙을 기록했다. 추가 묶음이 필요할 때는 [Repomix](https://github.com/yamadashy/repomix)의 파일 선택/표준입력 기능을 선택적으로 사용하되 전체 저장소 팩을 기본 생성하지 않는다. [LLMLingua](https://github.com/microsoft/LLMLingua)는 의미 압축의 검토 비용과 의미 손실 가능성 때문에 규범 문서·BPF 코드·정책·acceptance assertion에 적용하지 않는다. 현재 전후 토큰 계측 baseline이 없어 절감률이나 비용 절감 수치는 주장하지 않는다.
+
+**2026-10-25 path-capture implementation 준비:** 기존 `ebpf-lab` guest Linux `7.0.0-28-generic`, aarch64에서 Go 1.26.8, clang 21.1.8(BPF/BPFEL/BPFEB target), bpftool 7.7.0 및 readable kernel BTF를 확인했다. branch `33ea081`의 source로 `go generate ./internal/sensor/linux`을 실행해 `process_bpfel.go/.o`와 `process_bpfeb.go/.o`를 재생성했다. clang compile은 성공했고 기존 vmlinux.h의 forward declarations에서 warning만 나왔다. 이후 verifier/load/attach, 실제 open event, no-loss fixture, 전체 test suite는 실행하지 않았다. 생성물을 현재 통합 worktree에 복사했으며 해당 object는 guest kernel BTF에서 직접 재생성된 vmlinux.h를 사용하지 않고 저장소의 기존 `bpf/vmlinux.h` 입력을 사용했다.
 
 ### 12.2 문서 정합성 준비 작업
 
