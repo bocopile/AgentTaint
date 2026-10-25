@@ -210,6 +210,7 @@ VM 안 AI 부모 ──fork──> 도구 자식 ──open──> secret fixtur
 | D07 | CPU 지원 순서 | Linux arm64를 첫 MVP 지원 대상으로 삼고 amd64 runtime 지원은 별도 후속 작업에서 추가한다. 유료 runner를 자동 도입하지 않음 | 실제 구현·검증이 있는 arm64 범위를 먼저 명시하고, amd64는 verifier/load/attach/runtime 근거가 쌓인 뒤 지원 표시에 추가 | 채택 기본안 (2026-10-25 사용자 결정) |
 | D08 | 로그 | payload·환경변수·전체 argv를 기본 수집하지 않음. resource 별칭·최소 프로세스 식별자 중심; 상세 경로는 명시적 진단 선택. 로컬 저장·외부 업로드 없음 | 관측 도구가 새로운 민감정보 저장소가 되는 위험을 줄임. 저장 시 사용자 전용 권한·용량 상한 적용 | 채택 기본안 |
 | D09 | 라이선스·공개 배포 | 지금 LICENSE나 공개 배포 방침을 바꾸지 않음. 릴리스 준비 때 소유자 선택 | 일반 개발·검증에는 불필요한 결정. 권리·배포 조건 변경은 별도 확인 | 배포 시점에만 확인 |
+| D10 | 민감 source 후보 발견 | 조건부 로컬 Source Discovery를 정책 작성 보조로 설계: 사용자가 선택한 root의 path/metadata 규칙으로 후보만 출력하고, 본문을 읽지 않으며 정책 승인·수정은 사람이 수행 | 후보 제안과 security decision을 분리하고 기존 IFC 의미를 보존. 결과는 명시 실행 시 로컬에서만 보이며 기본 audit log·외부 전송·자동 label은 없음 | 설계 승인 (2026-10-25); 구현은 별도 승인·acceptance 전까지 보류 |
 
 D01~D08의 일반 제품 선택을 다시 질문하지 않는다. 다만 이 기본안은 규범 충돌의 구체적인 변경 승인이나 실행 환경의 쓰기 권한을 대신하지 않는다. 현재 확인이 필요한 착수 조건은 12.12절을 따른다. 라이선스 변경, 유료 인프라 계약, 실제 자격증명 도입, Mac 네이티브 보호처럼 이후 새로 범위에 들어오는 사항도 해당 시점에 확인한다.
 
@@ -959,6 +960,7 @@ AgentTaint/
 | [x] | TOOL-02 | 전용 preflight·docs·semantics 스킬 | E01 | `docs/TOOLING_SKILLS.md`의 세 prompt 사례에서 Phase scope·tracepoint semantics·미검증 지원 status 처리 PASS; Codex CLI 0.164.0 ephemeral read-only evaluation |
 | [x] | TOOL-03-agent-handoff | 서브에이전트 역할·인계·후속 검증 절차 | TOOL-02 | 8개 project-agent 설정의 역할·write 경계와 9.2절의 작업/evidence/handoff schema를 확인했고 Codex CLI discovery PASS. Native delegation과 각 role 행동은 `not_tested`; 전체 TOOL-03 도구 인벤토리는 별도 잔여 작업 |
 | [ ] | MCP-01 | 기존 MCP·도구 접근과 장애 경계 점검 | 10절, 실제 사용 환경 | 현재 root index 조회·대표 심볼 대조와 graph miss/미등록 project fallback을 확인했다. index commit/time/dirty fingerprint 부재, 실제 transport outage 재현, GitHub 권한 감사는 남아 있어 부분 진행 |
+| [x] | SRC-DESIGN | Source Discovery 정책 작성 보조 아키텍처 설계 | 사용자 승인 (2026-10-25) | path/metadata 후보만 제안; policy/label/decision 자동 변경 없음; v0.1 implementation out of scope |
 | [x] | ENV-01 | 기존 ebpf-lab guest readiness 진단 | VM 사용 작업 승인 | guest manifest·기능 표·미검증 항목·재사용 판단 (2026-10-19) |
 | [x] | ENV-02 | 재현 BPF toolchain·생성물 정책 | ENV-01, E07 | 고정 generator·경로·반복 probe hash 일치 (2026-10-19) |
 | [x] | P0-01 | Go 모듈·패키지 골격·CLI routing | Phase 0 착수 | 빌드 가능한 최소 구조 |
@@ -3069,6 +3071,7 @@ Do not implement it. arm64 MVP의 다음 작업은 CI-01/02 원격·격리 검�
 | 14 / F9 | 승인된 계약으로 단일 바이너리 로컬 dashboard를 구현하고 대표 audit run을 end-to-end 검증한다. | Phase 0~8, F9-DESIGN 승인, F9-PERSIST | `codex/f9-<task-id>-<slug>` / 전용 worktree. run/evidence completeness와 실제 보장 범위를 UI가 과장하지 않는지 검토한다. |
 | 15 / REL-02, REL-03 | 설치·업데이트·제거·복구와 제한된 시범 사용/피드백 운영을 준비한다. | REL-01, F5/F9 필요 산출물, D09 및 공개/자격증명 승인 | 각각 별도 `codex/rel-rel02-*`, `codex/rel-rel03-*` branch/worktree; 공개 배포·외부 계정 작업은 명시 승인 이후 진행한다. |
 | 조건부 / F10 | payload metadata 확장 필요성을 재평가한다. | 구체 사용 사례와 별도 승인 | 필요성이 입증될 때만 `codex/f10-<task-id>-<slug>`에서 설계 카드부터 연다. 자동 착수하지 않는다. |
+| 조건부 / SRC-IMPL | 선택형 Source Discovery를 Linux 로컬 CLI에 구현해 사용자 지정 root의 파일 path/metadata 후보를 출력한다. 정책 자동 수정·본문 검사·자동 label/차단은 금지한다. | SRC-DESIGN 완료, 별도 구현 승인 및 candidate-rule·permission-error acceptance 정의 | 전용 `codex/src-impl-<task-id>` worktree; 출력 경로·오류의 incomplete 처리, symlink 미추적, relative/alias raw path가 exact match에서 빠질 수 있는 한계를 검증한다. Dashboard 보존은 별도 F9-DESIGN 승인 전 금지 |
 
 #### 공통 branch·worktree·통합 규칙
 

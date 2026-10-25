@@ -55,6 +55,11 @@
       조건부 스텁이다** — 필요성이 실제로 확인되기 전까지는 시작하지
       않는다. 지켜야 할 제약은
       [SECURITY_MODEL.md](./SECURITY_MODEL.md)의 관련 절 참고.
+- [ ] **조건부 Source Discovery 정책 작성 보조** · 세부 설계는
+      [IMPLEMENTATION_MASTER_PLAN.md](./IMPLEMENTATION_MASTER_PLAN.md)의 D10과
+      `SRC-IMPL`을 따른다. Linux v0.1 밖의 별도 후보 제안 기능이며, 사용자
+      선택 root의 path/metadata만 검사한다. 본문 분류·자동 policy 변경·자동
+      label은 포함하지 않고, 별도 구현 승인 전까지 착수하지 않는다.
 
 ## 순서를 지키는 이유
 

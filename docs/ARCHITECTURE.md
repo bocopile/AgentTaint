@@ -400,3 +400,36 @@ tracepoint와 active BPF-LSM enforcement hook의 source 파일·생성 object를
 - 정확한 phase 번호·기술 스택·엔드포인트 설계는 이 스텁 단계에서
   확정하지 않는다. 착수 시점에 AGENTS.md의 "문서는 규범이다" 절차대로
   다시 논의한다.
+
+## 향후: Source Discovery 정책 작성 보조 (조건부 설계)
+
+Source Discovery는 보안 판단 경로 밖의 명시적 사용자 보조 기능으로 둔다.
+사용자가 지정한 root의 경로·파일 메타데이터를 고정된 규칙으로 살펴 후보를
+출력하며, 파일 본문·환경변수·프롬프트·argv를 읽거나 분류하지 않는다.
+
+```text
+사용자가 선택한 root
+        │ path/metadata rule
+        ▼
+임시 후보 보고서 (path, rule, reason, scan completeness)
+        │ 사람이 검토하고 YAML policy에 직접 추가
+        ▼
+internal/policy canonical snapshot
+        │ 다음 명시적 run
+        ▼
+기존 Source → Label → Propagation → Sink → Decision 흐름
+```
+
+후보 목록은 policy 파일을 자동 작성하지 않으며 Source/Label/Decision으로
+간주하지 않는다. 성공한 source open의 기존 의미, process-level taint, sink
+평가와 BPF projection은 변경되지 않는다. 경로는 기존 lexical absolute path
+규칙에 맞추고 symlink를 따라가지 않는다. 스캔 권한 오류는 incomplete이며
+0건 결과를 안전 판정으로 표현하지 않는다. Target이 같은 파일을 다른 raw
+path spelling으로 열면 기존 exact-path matcher가 놓칠 수 있고 inode 동일성을
+보장하지 않는다는 한계를 후보 보고서에도 표시한다.
+
+첫 설계는 사용자가 명시 실행한 로컬 CLI 출력이며, 저장·기본 로그·외부 전송은
+없다. Phase 9 dashboard는 현재 read-only 로그 뷰어 방향이므로 후보 승인이나
+policy 쓰기를 제공하지 않는다. 후보를 dashboard에 보존·표시하려면 별도
+F9-DESIGN 갱신에서 경로 노출, 보존·삭제, 권한 계약을 먼저 정한다.
+구현은 별도 승인과 acceptance 설계 전까지 시작하지 않는다.
