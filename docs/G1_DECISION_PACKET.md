@@ -1,6 +1,6 @@
 # G1 — 구현 전 제품 방향 결정 자료
 
-2026-10-25. 상태: **검토용 변경안 준비 / 승인 전 / patch 미적용**.
+2026-10-25. 상태: **G1 승인 / P05 규범 적용 / 새 runtime 미구현**.
 
 ## 권고안
 
@@ -25,7 +25,7 @@
 - [P02 제품·민감정보·위험 명령·범위](PRODUCT_SCOPE_PROPOSAL.md)
 - [P03 고정 후보와 비교 실험](REUSE_COMPARISON_PLAN.md)
 - [P04 위협·T01~T15·증거 저장·대시보드 설계](EVIDENCE_AND_DASHBOARD_PROPOSAL.md)
-- [적용 전 규범 변경 patch](proposals/g1-normative.patch)
+- [승인된 규범 변경 patch 원본](proposals/g1-normative.patch)
 - [전체 실행 큐](EXECUTION_QUEUE.md)
 
 ## Patch가 바꾸는 것
@@ -40,29 +40,26 @@
 | prompts/09-local-web-dashboard.md | Phase 0~8 일괄 완료 대신 검증된 slice·저장/query/권한·상세 prompt를 UI 선행조건으로 명시 |
 | IMPLEMENTATION_MASTER_PLAN.md | 활성 F9-DESIGN/F9 카드의 F8·Phase 0~8 선행조건 5곳을 같은 예외에 맞춤. 기존 완료 상태는 변경하지 않음 |
 
-위 설계 변경은 실제 규범 파일에 적용하지 않았다. patch 자체만 문서 artifact로 보관한다.
-master plan의 CI-01 같은 사실·검증 상태 갱신은 이 설계 변경의 채택과 별개다.
-`git apply --check docs/proposals/g1-normative.patch`로 적용 가능성만 검사한다.
-이 검사는 정책/커널 correctness나 사용자 승인을 대신하지 않는다.
+2026-10-25 사용자 요청 “계속 작업 진행해줘 순차적으로 자꾸 중단하지 말고”를
+앞서 제시한 구체 G1 patch의 진행 승인으로 확인하고 P05에서 적용했다.
+적용 기준은 `b5e01ba096fcc842f8940d05943f763f1b9b14dc`다. patch 원본은
+승인 대상의 이력으로 보존하며, 적용 뒤 다시 forward apply하지 않는다.
 
-승인하면 이 patch를 P05에서 적용·정합성 검토한 뒤 P06의 구체 실험 카드를
-확정한다. 후보 설치·guest 특권 접근은 지정 카드의 실제 권한 범위에서만 수행한다.
-외부 엔진 채택·제품 구현·보장 확대는 P06 증거와 G2 결정 이후다.
+승인은 첫 범위·실험 계약·제한된 UI 순서 변경에 해당한다. 외부 엔진 채택,
+제품 구현 완료, 새 보장의 검증을 뜻하지 않는다. [P06 실험 카드](P06_EXPERIMENT_CARD.md)에
+따라 기존 엔진과 후보의 지원 범위를 확인하고 G2 결정 근거를 모은다.
 
-## 승인이 필요한 이유
+## 승인 근거와 경계
 
-[AGENTS.md](../AGENTS.md)의 “문서는 규범이다” 절은 “그 변경을 적용하기
-**전에 멈추고** 사람의 확인을 받는다”고 정한다. 이번 patch의 실행 제한 단위와
-UI 순서는 현행 규범을 바꾸므로 일반적인 작업 재개 요청만으로 채택됐다고
-간주하지 않았다. 필요한 변경을 모두 검토 가능한 patch로 준비했다.
-
-검토에 사용한 [docs-contract-check skill](../.agents/skills/agenttaint-docs-contract-check/SKILL.md)도
-“Explain the conflict and propose the smallest change; do not apply it without user confirmation”을
-요구한다. 설계 문서 작성·도구 비교는 진행했고, 실제 규범 적용만 확인 전 단계에 둔다.
+[AGENTS.md](../AGENTS.md)의 규범 변경 전 사람 확인과
+[docs-contract-check skill](../.agents/skills/agenttaint-docs-contract-check/SKILL.md)의
+확인 요구에 따라 변경안을 먼저 준비했다. 위 후속 진행 요청으로 그 승인 단계를
+해소했다. 이후 새로운 규범 충돌은 별도로 식별하며, 이미 승인된 patch 적용을
+반복 확인하지 않는다.
 
 ## 남은 작업
 
-G1 미채택 → P05 규범 적용 → P06 지정 환경 비교 → G2 엔진 선택 → P07 최소 기능
+G1 승인·P05 규범 적용 → P06 지정 환경 비교 → G2 엔진 선택 → P07 최소 기능
 → P08 저장·대시보드 → CI/배포 순서다. TOOL-03의 다른 후보, 실제 모델 비용 A/B,
 원격 CI/배포는 별도 잔여 항목이며 이번 문서 완료로 성공 처리하지 않는다.
 

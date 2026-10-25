@@ -1,6 +1,6 @@
 # P04 — 위협·검증·증거 화면 계약 제안
 
-2026-10-25. 상태: **설계 초안 작성 완료 / G1 미채택 / 새 runtime·화면 미구현**.
+2026-10-25. 상태: **G1 설계 계약 승인 / 새 runtime·화면 미구현**.
 입력: [제품 범위](PRODUCT_SCOPE_PROPOSAL.md), [재사용 비교](REUSE_COMPARISON_PLAN.md).
 이 문서는 현재 event JSON schema나 policy YAML을 변경하지 않는다. 아래 필드명은
 설계용 개념이며 현재 API에 존재한다고 가정하지 않는다.
@@ -173,8 +173,8 @@ Run demo-01     요청: block     활성: block
 
 ## 6. G1 이후의 정확한 변경 범위
 
-G1은 [P02의 A/B/C 변경안](PRODUCT_SCOPE_PROPOSAL.md)을 선택하는 단계다.
-선택 후 P05는 규범 문서·Phase prompt·허용 경로에 대한 concrete diff를 만들고,
+G1에서 [P02의 A/B/C 변경안](PRODUCT_SCOPE_PROPOSAL.md)을 승인했다.
+P05는 제시했던 규범 문서·Phase prompt patch를 반영하고 실험 허용 경로를 확정했다.
 P06 실험은 승인된 guest·후보·fixture 범위에서만 시작한다. G2 전에 엔진 교체를
 확정하지 않으며 P08 UI 코드를 저장/조회 계약보다 먼저 작성하지 않는다.
 

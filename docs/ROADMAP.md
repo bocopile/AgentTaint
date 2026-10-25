@@ -7,6 +7,11 @@
 
 각 Phase는 이전 Phase가 완료된 뒤에만 시작한다 ([AGENTS.md](../AGENTS.md)
 의 Scope Order 규칙).
+단, 읽기 전용 로컬 대시보드는 검증된 로컬 slice, 저장/조회·권한 계약,
+상세 Phase 9 prompt와 독립 검토가 준비되면 Kubernetes·Feedback 이전에 착수할 수 있다.
+플랫폼 순서와 로컬 IFC 완료 전 Kubernetes 구현 금지는 그대로 유지한다.
+후속 run-scoped profile은 설계·비교 실험 대상이며 현재 지원 기능이 아니다.
+
 
 ## Linux MVP
 

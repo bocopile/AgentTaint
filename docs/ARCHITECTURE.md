@@ -400,3 +400,19 @@ tracepoint와 active BPF-LSM enforcement hook의 source 파일·생성 object를
 - 정확한 phase 번호·기술 스택·엔드포인트 설계는 이 스텁 단계에서
   확정하지 않는다. 착수 시점에 AGENTS.md의 "문서는 규범이다" 절차대로
   다시 논의한다.
+
+## 후속 실행 보호 profile과 로컬 증거 화면 — 설계 계약
+
+process 접근 사실과 별도의 run-scoped 보수적 집행 상태를 구분한다. taint/policy의
+의미 소유 경계는 유지하고 실제 동기 gate·격리 제공자·외부 엔진 선택은 비교 실험과
+G2 결정 이후 확정한다. 새 제품 패키지나 현재 CLI/schema 변경을 이 절만으로 허용하지 않는다.
+
+실험은 기존 Linux arm64 기준, 합성 source/수신기, 실제 영향·allow 대조군과 cleanup을
+사용한다. 후보 설치/특권 동작은 지정 실험 카드와 환경 권한 범위에 한정한다. 기존
+acceptance를 새 run-wide/기존 연결/원격 source 보장의 근거로 재사용하지 않는다.
+
+읽기 전용 로컬 증거 화면의 선행조건은 검증된 로컬 slice, Event/Decision/effect의
+저장·조회·보존·권한 계약, 상세화된 Phase 9 prompt와 독립 보안 검토다. 이 조건을
+충족하면 Kubernetes·Agent Feedback 구현 이전에도 시작할 수 있다. UI는 정책을
+평가하거나 label을 해제하지 않으며 verdict, actual effect, audit coverage,
+enforcement health를 분리한다. 이 순서 예외는 다른 플랫폼/Phase의 완료를 뜻하지 않는다.

@@ -18,7 +18,7 @@ TOOL-03의 하위 카드이며 별도 제품 Phase가 아니다.
 
 - Linux arm64 기술 MVP, INT-02/03의 저장 실패·capture loss 보완, TOOL-01/02 및
   agent handoff 문서는 기존 기록상 완료. 이번 작업에서 커널 검증을 재실행하지 않았다.
-- 전체 TOOL-03, 실제 토큰 절감 비교, 원격 CI, 배포, 제품 대시보드는 미완료.
+- 전체 TOOL-03, 실제 토큰 절감 비교, Linux BPF 원격 CI, 배포, 제품 대시보드는 미완료.
 - 사용자 지정 파일 접근 모델은 구현되어 있다. 자동 민감 내용 판별, 임의 DB 조회
   보호, 실행 전체 상태, 일반 IPC 전파는 현재 구현된 보장으로 계산하지 않는다.
 - 제품 정의 → 재사용 비교 → 증거·위협 계약 → 규범 변경 확인 → 제한된 실험 →
@@ -45,16 +45,16 @@ Graphify는 제품의 민감정보 추적·집행 엔진이 아니다.
 
 | ID / 상태 | 세부 작업과 산출물 | 완료 기준 / 검증 | 선행 / Git 단위 |
 |---|---|---|---|
-| P02-a / 제안 작성 완료 | [첫 사용자·정상/금지 시나리오](PRODUCT_SCOPE_PROPOSAL.md): 지정 합성 파일을 로컬 AI로 분석하고 사용자에게 표시 | 로컬/cloud/분리 실행 비교, source 전후 대조 및 helper와 실제 AI 사용성 분리. G1 미채택 | `codex/design-p02-20261025-product` |
+| P02-a / 제안 작성 완료 | [첫 사용자·정상/금지 시나리오](PRODUCT_SCOPE_PROPOSAL.md): 지정 합성 파일을 로컬 AI로 분석하고 사용자에게 표시 | 로컬/cloud/분리 실행 비교, source 전후 대조 및 helper와 실제 AI 사용성 분리. G1 승인; 새 runtime 미구현 | `codex/design-p02-20261025-product` |
 | P02-b / 제안 작성 완료 | [민감정보·자원·근거·권한·집행 상태 용어표](PRODUCT_SCOPE_PROPOSAL.md) | 사용자 지정과 자동 내용 탐지 구분, DB 연결과 결과 전달 구분. 새로운 보장 미구현 | P02-a와 같은 문서 카드 |
 | P02-c / 제안 작성 완료 | [위험 명령의 operation/resource/destination 예시](PRODUCT_SCOPE_PROPOSAL.md) | 조회/삭제/전송/credential 권한 구분. argv 관찰을 사전 차단으로 설명하지 않음 | P02-a/b와 같은 문서 카드 |
 | P03 / 조사·계획 완료 | [고정 후보·재사용 비교·P06 실험안](REUSE_COMPARISON_PLAN.md) | ActPlane/OpenShell commit·manifest·license 확인, launch/attach·effect 차이 명시. 후보 실행 not_tested, G2 엔진 미선정 | P02 제안; `codex/design-p03-20261025-reuse` |
-| P04-a / 설계 초안 완료 | [신뢰 경계·상태·identity 계약](EVIDENCE_AND_DASHBOARD_PROPOSAL.md) | process 사실과 run-wide 제한 분리, 기존 연결/alias/IPC/초기 입력/실패 수용 조건. G1 미채택 | `codex/design-p04-20261025-evidence-ui` |
+| P04-a / 설계 초안 완료 | [신뢰 경계·상태·identity 계약](EVIDENCE_AND_DASHBOARD_PROPOSAL.md) | process 사실과 run-wide 제한 분리, 기존 연결/alias/IPC/초기 입력/실패 수용 조건. G1 승인; 새 runtime 미구현 | `codex/design-p04-20261025-evidence-ui` |
 | P04-b / 수용 초안 완료 | [T01~T15 fixture·관측·판정 계약](EVIDENCE_AND_DASHBOARD_PROPOSAL.md) | supervisor 종료와 no-loss/장애 PASS 구분 포함. 새 runtime 테스트는 모두 not_tested | 같은 P04 문서 카드 |
 | P04-ui / 정보 설계 초안 완료 | [Runs→타임라인→근거 상세·가상 화면](EVIDENCE_AND_DASHBOARD_PROPOSAL.md) | incomplete/unknown/deny와 실제 block 구분, 저장/query·로컬 권한 요구. UI 미구현 | 같은 P04 문서 카드 |
-| G1 / 결정 자료 준비, 미채택 | [결정 자료와 적용 전 규범 patch](G1_DECISION_PACKET.md) | 권고: 로컬 사용자·파일 하나·run-wide 후보·기존 연결 검증·읽기 UI 순서 조정. DB broker 제외, 엔진은 P06 후 G2 선택 | 구체 규범 변경 확인 전 P05/P06 구현 착수 금지 |
-| P05 / G1 이후 | AGENTS·ARCHITECTURE·SECURITY_MODEL·THREAT_MODEL·ROADMAP·Phase prompt·허용 파일을 정합화 | 기존/새 의미 차이, 호환성, 보장/비보장, 이전 완료 증거 적용 범위 명시. 규범 변경 확인 후 반영 | G1 및 구체 규범 변경 확인; `codex/design-p05-<date>-normative` |
-| P06 / 미실행 | 고정된 arm64 환경에서 후보별 동일 fixture 비교 | compile/verifier/load/attach/runtime 분리; 실제 errno·수신 효과·allow 대조군·cleanup. 언어 표현 가능성과 실제 지원 구분 | P05에서 승인한 실험 범위; `codex/experiment-p06-<date>-comparison` |
+| G1 / 승인 | [결정 자료와 적용 전 규범 patch](G1_DECISION_PACKET.md) | 권고: 로컬 사용자·파일 하나·run-wide 후보·기존 연결 검증·읽기 UI 순서 조정. DB broker 제외, 엔진은 P06 후 G2 선택 | 2026-10-25 구체 patch 제시 뒤 사용자 순차 진행 요청으로 승인 |
+| P05 / 규범 반영 | AGENTS·ARCHITECTURE·SECURITY_MODEL·THREAT_MODEL·ROADMAP·Phase prompt·허용 파일을 정합화 | 기존/새 의미 차이, 호환성, 보장/비보장, 이전 완료 증거 적용 범위 명시. 승인 patch 적용 및 독립 검토 | G1 및 구체 규범 변경 확인; `codex/design-p05-<date>-normative` |
+| P06 / 실험 카드 준비 | 고정된 arm64 환경에서 후보별 동일 fixture 비교 | compile/verifier/load/attach/runtime 분리; 실제 errno·수신 효과·allow 대조군·cleanup. 언어 표현 가능성과 실제 지원 구분 | [승인 범위의 실험 카드](P06_EXPERIMENT_CARD.md); `codex/experiment-p06-<date>-comparison` |
 | G2 / 미도달 | 재사용·조합·자체 구현 최종 선택 | P06 evidence, 실패/미지원 보존, 독립 correctness/security 검토 | P06; 결정 기록 커밋 |
 
 현재 규범은 OS effect 기반 process label 모델이다. broker를 신뢰된 source로
@@ -72,9 +72,9 @@ Graphify 평가 승인을 그 구체 변경의 채택으로 간주하지 않는�
 | P08b / 계획 | Runs → 실행 타임라인 → 근거 상세, 자원·목적지·정책별 필터 | 화면↔원시 근거 일치, incomplete/미지원/집행 실패 표시, localhost 접근 경계, 대표 run end-to-end | P08a 및 Phase 순서 변경 승인; `codex/dashboard-p08b-<date>-viewer` |
 | P09 / 조건부 | 원격 DB source 하나의 adapter/broker 설계, 필요 시 구현 | credential 보호와 DB 작업 권한 분리, 직접 접속 우회·첫 byte 전 상태 설정·부분 실패·재시도·교차 run·결과 재사용 검증 | DB 필요성·신뢰 경계 변경 별도 결정, P07 송신 경계; `codex/source-p09-<date>-db` |
 
-현재 F9는 Phase 0~8 완료 이후라는 규범을 따른다. P04-ui의 정보 설계는 먼저
-할 수 있지만 P08 구현을 앞당기는 것은 P05에서 검토할 **제안**이다.
-Kubernetes를 생략하고 UI를 먼저 구현하도록 여기서 순서를 바꾸지 않는다.
+G1/P05의 제한된 UI 순서 예외를 적용한다. 검증된 로컬 slice, 저장/query/권한
+계약, 상세 Phase 9 prompt와 독립 검토를 충족하면 Kubernetes·Feedback 이전에
+읽기 UI를 구현할 수 있다. 현재 이 선행조건은 모두 충족된 상태가 아니다.
 
 대시보드는 다음 질문에 답하도록 설계한다.
 
@@ -140,6 +140,7 @@ P10은 CI/릴리스의 상위 묶음이다. 기존 CI/REL 카드를 그대로 �
 6. 상태는 `planned / proposed / implemented / verified / not_tested / inconclusive`
    로 구분한다. 계획 문서 수·설치 성공·소스 검색 성공을 제품 완성률로 환산하지 않는다.
 
-현재 다음 단계는 G1이다. P02/P03/P04의 제안·조사·설계 자료는 준비했지만
-새 제품 방향은 미채택이며, run-wide·송신/격리 책임·UI 순서의 규범 변경 확인이
-필요하다. DB broker는 권고 첫 범위에서 제외했고 기존 모델은 그대로 유지한다.
+G1 구체 변경안은 사용자 후속 진행 요청으로 승인했고 P05에서 적용했다.
+다음은 [P06 실험](P06_EXPERIMENT_CARD.md)이다. run-wide·기존 연결 송신·격리의
+설계 요구와 현재 구현 지원은 구별한다. DB broker는 첫 범위에서 제외하며,
+외부 엔진 선정은 P06 증거와 G2 결정 이후다.

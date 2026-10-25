@@ -264,3 +264,21 @@ audit record다. 공통 schema v1 metadata와 원본 process identity를 보존�
 정체성을 보장하지 않는다. operation은 derived event가 만들어지기 전에 이미
 시도되거나 완료됐을 수 있다. 이 record는 감사를 위한 것이며 prevention 증거가
 아니다.
+
+## 후속 실행 보호 profile — 설계 계약, 구현 전
+
+기존 v0.1 Go reference의 successful completed FileOpen→process SECRET 의미는
+그대로 유지한다. 별도의 실험 profile은 source-attempt의 동기 projection에 따라
+동일 run 전체에 단조 증가하는 보수적 제한을 적용할 수 있다. 다른 process의
+successful-open event나 실제 byte 이동을 만들어내지 않는다. 현재 CLI/policy
+schema에 새로운 필드가 구현됐다는 뜻이 아니다.
+
+source 접근을 허용하는 경계 이전에 상태를 반영하고, 이후 지원 송신 gate가 그
+상태를 확인해야 한다. 기존 연결, 다른 CPU, 초기 FD/mapping, alias, 외부 IPC와
+다음 run 산출물 경로를 profile별로 검사한다. 필요한 경계를 제공하지 못하면
+해당 strict profile의 launch를 거부한다. 정확한 hook과 지원표는 실험 증거 후 확정한다.
+
+실행 중 exec/자식 종료/로그 삭제/UI 조작으로 제한을 해제하지 않는다. audit loss와
+집행 health는 별도 기록하며, 실패한 source open을 성공으로 고치지 않는다.
+Byte-level taint tracking과 일반 유출 방지를 주장하지 않는다. 현재 구현·검증된
+v0.1 지원 범위는 이 설계 계약으로 확장되지 않는다.

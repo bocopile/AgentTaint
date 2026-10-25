@@ -1,8 +1,11 @@
 # Phase 9 — Local Web Dashboard (스텁)
 
-아직 상세화하지 않았다. Phase 0~8 완료 후, 이 시점에 확정된 이벤트/
-Decision 영속화 방식과 `docs/ARCHITECTURE.md`의 `internal/web` 자리를
-기준으로 `prompts/README.md`의 템플릿에 맞춰 상세화한다.
+아직 상세화하지 않았다. 검증된 로컬 slice와 승인된 Event/Decision/effect의
+영속화·조회·보존·권한 계약을 선행조건으로 한다. 그 조건과 독립 보안 검토가
+갖춰지면 Kubernetes·Agent Feedback 이전에 읽기 전용 로컬 화면을 시작할 수 있다.
+구현 전 `docs/ARCHITECTURE.md`의 `internal/web` 자리를 기준으로
+`prompts/README.md` 템플릿에 맞춰 허용 파일·화면·검증 조건을 상세화한다.
+이 스텁만으로 UI 코드나 저장 패키지를 추가하지 않는다.
 
 방향성만 기록: `agenttaint`가 이미 수집한 이벤트/정책 위반 로그를 로컬
 브라우저에서 조회하는 뷰어. AgentSight의 `frontend`+`controller`(별도

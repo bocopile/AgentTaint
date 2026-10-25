@@ -99,3 +99,19 @@ AgentTaint v0.x는 다음이 **아니다**:
 - TLS decryption / packet DPI 엔진
 - 완전한 sandbox (컨테이너/VM 대체재 아님 — 그 위에 얹는 semantic policy layer)
 - Kubernetes NetworkPolicy 대체재
+
+## 후속 실행 보호 profile의 추가 수용 경계 — 구현 전
+
+첫 비교 시나리오는 사용자가 지정한 합성 파일을 동일 실행의 로컬 AI가 분석하고
+본인에게 표시하는 작업이다. 외부 LLM 전송과 DB broker는 첫 범위에 포함하지 않는다.
+실행 전체 제한은 process 관측 사실과 별개이며 단독으로 완전한 sandbox를 제공하지 않는다.
+
+격리 제공자는 대상의 scope 이탈, 외부 same-UID process/IPC/공유 cache, 초기
+입력/FD/mapping, source alias와 산출물 재사용 경계를 제한해야 한다. AgentTaint는
+필요 capability를 확인하고 미지원 profile을 시작하지 않는다. 기존 연결 송신과
+source/send 경쟁은 실제 효과·대조군으로 검증하며 관측 시간 정렬만으로 증명하지 않는다.
+
+supervisor 종료 후 target이 남는 경우 집행 지속 또는 안전한 실행 종료를 확인한다.
+증거가 없으면 해당 장애 경로의 보호는 미지원이다. 감사 누락은 incomplete로 남기고
+집행 성공으로 오인하지 않는다. host root/kernel compromise는 여전히 범위 밖이다.
+이 절은 후속 실험의 요구 조건이며 현재 완료된 runtime 보장이 아니다.

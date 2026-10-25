@@ -992,9 +992,9 @@ AgentTaint/
 | [ ] | F6 | rich flow·다중 라벨 상세화 | 선행 Phase 완료 | pipe/file/IPC 전파 설계 |
 | [ ] | F7 | Kubernetes 범위 상세화 | 로컬 IFC 완성·선행 Phase 완료 | cgroup/pod attribution 계획 |
 | [ ] | F8 | 설명·피드백 인터페이스 상세화 | 선행 Phase 완료 | 읽기 중심 MCP/hook 계약 |
-| [ ] | F9-DESIGN | 로컬 웹 대시보드 화면·데이터·보안 설계 | F8, Event/Decision persistence·query 계약 입력 | Runs → Run detail timeline → Evidence detail 흐름, completeness 표시, 화면 필드·보존/삭제·localhost 보안 명세; 현재 제안은 미승인 |
+| [ ] | F9-DESIGN | 로컬 웹 대시보드 화면·데이터·보안 설계 | 검증된 로컬 slice의 Event/Decision/effect 및 persistence·query 계약 입력; F8 필수 아님 | Runs → Run detail timeline → Evidence detail 흐름, completeness 표시, 화면 필드·보존/삭제·localhost 보안 명세; 현재 제안은 미승인 |
 | [ ] | F9-PERSIST | 대시보드 Event/Decision 저장·조회·보존 계약 | F9-DESIGN에서 식별된 요구 | event completeness를 보존하는 persistence/query 계층 계약과 검증 |
-| [ ] | F9 | 로컬 웹 뷰어 상세화·구현 | Phase 0~8, F9-DESIGN 승인, 이벤트 저장·조회 계약 | 단일 바이너리 로컬 뷰어; Phase 9 prompt는 현재 스텁 |
+| [ ] | F9 | 로컬 웹 뷰어 상세화·구현 | 검증된 로컬 slice, F9-DESIGN 승인, 저장·조회·권한 계약, 상세 Phase 9 prompt와 독립 검토 | 단일 바이너리 로컬 뷰어; Phase 9 prompt는 현재 스텁 |
 | [ ] | F10 | payload metadata 확장 필요성 판단 | 실제 필요성·별도 승인 | 구현 여부 결정; 자동 착수 안 함 |
 
 **설계 입력과 선행 조건의 구분:** E01~E09는 독립적인 실행 작업이 아니라 담당 작업에서 구체화할 설계 계약이다. E07을 확정하기 위해 ENV-02를 수행하고, E04를 검증하기 위해 P4-01을 수행한다. 표의 E 참조를 “이미 구현 완료돼야 설계 착수 가능”으로 해석하지 않는다. 다만 그 설계를 사용하는 후속 코드 작업에는 규범 정합성과 검증된 계약이 필요하다.
@@ -1503,7 +1503,7 @@ go test -race -count=1 ./...
 | F7 / cgroup↔pod 귀속 → 종료/재사용 → 최소 권한 배포 → 정책 배포 → 다중 tenant 검증 | `prompts/07-kubernetes.md`, `deploy/daemonset.yaml/configmap.yaml/rbac.yaml`, Linux sensor 재사용 | 로컬 IFC와 선행 Phase 완료 후. hostPID/privilege·업데이트·노드 차이·pod attribution 증거. 첫 배포에 CRD/operator를 자동 추가하지 않음 |
 | F8 / 피드백 계약 → 읽기 중심 MCP/hook → 인증·권한·rate/size 제한 → host 통합 검증 | ROADMAP Phase 8, 10.3절. 아직 없는 상세 프롬프트부터 작성·확인 | F7 및 저장/조회에 필요한 데이터 계약 확인 후. capability/run 상태/위반 설명 중심. remote/기존 daemon의 scope 경계 유지, 자동 라벨 제거·정책 완화 API 금지 |
 | F9-DESIGN / 모니터링 대시보드 정보구조·사용자 흐름·데이터/보안 계약 | `prompts/09-local-web-dashboard.md`, `docs/ARCHITECTURE.md`의 local-only 방향, 현재 Event/Decision 모델 | F9 구현 전에 별도 완료. 화면 흐름과 저해상도 mockup, 화면별 데이터 필드, 검색·필터, run 상세 timeline, empty/error/incomplete 상태, 보존·삭제·export 정책, localhost 접근·브라우저 보안·접근성 요구를 명세하고 규범 문서 충돌을 검토한다. event persistence/query 계약과 연결하되 payload 수집·외부 업로드·정책 변경 UI를 추가하지 않음 |
-| F9 / 로컬 저장·보존/삭제 → query → localhost HTTP → 내장 UI → 브라우저 보안·접근성 검증 | `prompts/09-local-web-dashboard.md`, `internal/web`, F9-DESIGN 산출물 | F8 및 영속화 계약 승인 후. 승인된 화면/데이터 계약을 구현하고 loopback 접근 제어·CSRF/웹 입력·민감 경로 표시·로그 용량·접근성 검증. SaaS/OAuth relay/외부 업로드 기본 추가 금지 |
+| F9 / 로컬 저장·보존/삭제 → query → localhost HTTP → 내장 UI → 브라우저 보안·접근성 검증 | `prompts/09-local-web-dashboard.md`, `internal/web`, F9-DESIGN 산출물 | 검증된 로컬 slice 및 저장·조회·권한 계약 승인, 상세 Phase 9 prompt와 독립 검토 후. 승인된 화면/데이터 계약을 구현하고 loopback 접근 제어·CSRF/웹 입력·민감 경로 표시·로그 용량·접근성 검증. SaaS/OAuth relay/외부 업로드 기본 추가 금지 |
 | F10 / 필요성 검토 → 명시적 범위 승인 → metadata hook 가능성 → 별도 수용 시험 | `prompts/10-payload-aware-llm-sink.md`, SECURITY_MODEL의 조건부 확장 절 | 실제 요구와 별도 승인 전 보류. prompt/response 분류·DLP 전환 금지. 정적 TLS·hook 부재·관찰 대 집행의 차이를 검증. 불필요 판정이면 구현하지 않는 것이 정상 결과 |
 
 **F9-DESIGN 시작안 — 제품/화면 제안이며 아직 구현 승인 계약이 아니다:** 대시보드는 전역 감시 제어판이 아니라 AgentTaint가 기록한 run과 그 증거를 읽는 로컬 뷰어로 시작한다.
@@ -3064,9 +3064,9 @@ Do not implement it. arm64 MVP의 다음 작업은 CI-01/02 원격·격리 검�
 | 9 / F6 | 다중 label 및 pipe/file/IPC 전파 범위를 설계하고 Source→Label→Propagation→Sink→Decision을 보존해 구현한다. | 이전 Phase 완료, security semantics review | `codex/f6-<task-id>-<slug>` / 전용 worktree. 규범 문서와 충돌하면 구현 전 중단한다. |
 | 10 / F7 | 로컬 IFC 완료 뒤 Kubernetes attribution 범위를 설계·구현한다. | F6 및 로컬 정보 흐름 완료 | `codex/f7-<task-id>-<slug>` / 전용 worktree. 선행 로컬 증거 없이 k8s 코드를 시작하지 않는다. |
 | 11 / F8 | 읽기 중심 설명·피드백 인터페이스의 권한·데이터 계약을 정한다. | F6/F7 선행 작업과 현재 event 계약 | `codex/f8-<task-id>-<slug>` / 전용 worktree. 새로운 MCP/hook 권한은 별도 검토한다. |
-| 12 / F9-DESIGN | 대시보드의 Runs → Run detail timeline → Evidence detail 화면, 데이터 필드, completeness/loss 표현, 기간·삭제, localhost 인증/노출 경계를 구체화하고 승인받는다. | F8 및 Event/Decision persistence·query 계약 입력 | `codex/f9-design-<task-id>-<slug>` / 전용 worktree. 지금은 설계 문서와 검토만 하며 UI 구현을 선행하지 않는다. |
+| 12 / F9-DESIGN | 대시보드의 Runs → Run detail timeline → Evidence detail 화면, 데이터 필드, completeness/loss 표현, 기간·삭제, localhost 인증/노출 경계를 구체화하고 승인받는다. | 검증된 로컬 slice의 Event/Decision/effect 및 persistence·query 계약 입력; F8 필수 아님 | `codex/f9-design-<task-id>-<slug>` / 전용 worktree. 지금은 설계 문서와 검토만 하며 UI 구현을 선행하지 않는다. |
 | 13 / F9-PERSIST | 대시보드가 소비할 Event/Decision 저장, 조회, 보존/삭제 및 completeness 계약을 설계하고 필요한 선행 구현을 승인받는다. | F9-DESIGN에서 식별된 저장/query 요구 | `codex/f9-persist-<task-id>-<slug>` / 전용 worktree; security/privacy review 후 구현 branch를 분리한다. |
-| 14 / F9 | 승인된 계약으로 단일 바이너리 로컬 dashboard를 구현하고 대표 audit run을 end-to-end 검증한다. | Phase 0~8, F9-DESIGN 승인, F9-PERSIST | `codex/f9-<task-id>-<slug>` / 전용 worktree. run/evidence completeness와 실제 보장 범위를 UI가 과장하지 않는지 검토한다. |
+| 14 / F9 | 승인된 계약으로 단일 바이너리 로컬 dashboard를 구현하고 대표 audit run을 end-to-end 검증한다. | 검증된 로컬 slice, F9-DESIGN 승인, F9-PERSIST, 상세 Phase 9 prompt와 독립 검토 | `codex/f9-<task-id>-<slug>` / 전용 worktree. run/evidence completeness와 실제 보장 범위를 UI가 과장하지 않는지 검토한다. |
 | 15 / REL-02, REL-03 | 설치·업데이트·제거·복구와 제한된 시범 사용/피드백 운영을 준비한다. | REL-01, F5/F9 필요 산출물, D09 및 공개/자격증명 승인 | 각각 별도 `codex/rel-rel02-*`, `codex/rel-rel03-*` branch/worktree; 공개 배포·외부 계정 작업은 명시 승인 이후 진행한다. |
 | 조건부 / F10 | payload metadata 확장 필요성을 재평가한다. | 구체 사용 사례와 별도 승인 | 필요성이 입증될 때만 `codex/f10-<task-id>-<slug>`에서 설계 카드부터 연다. 자동 착수하지 않는다. |
 

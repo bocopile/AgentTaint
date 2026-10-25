@@ -1,8 +1,8 @@
 # P02 — 사용자·민감정보·첫 제품 범위 제안
 
-2026-10-25. 상태: **제안 작성 완료 / 제품 선택 G1 미채택**.
-현행 [보안 모델](SECURITY_MODEL.md)과 [아키텍처](ARCHITECTURE.md)를 변경하지
-않는다. 기준 구현은 `3b8c9ea`의 Linux arm64 기술 MVP이며 이 제안의 새로운
+2026-10-25. 상태: **G1 첫 범위 승인 / 새 runtime 미구현**.
+승인된 설계 계약은 P05에서 [보안 모델](SECURITY_MODEL.md)과
+[아키텍처](ARCHITECTURE.md)에 반영했다. 아래 제안 표현은 구현 후보를 뜻한다. 기준 구현은 `3b8c9ea`의 Linux arm64 기술 MVP이며 이 제안의 새로운
 보호 범위를 구현·검증한 것으로 취급하지 않는다.
 
 ## 1. 제품 정의
@@ -120,13 +120,15 @@ profile launch를 거부한다.
 - 대상 agent가 정책·제어 socket·source 등록·scope membership을 바꾸지 못해야 한다.
   동일 UID 외부 process와 공유 daemon은 격리 검증 대상이다.
 
-## 8. G1에서 선택할 사항과 최소 규범 변경안
+## 8. G1에서 승인한 선택과 최소 규범 변경안
 
 권고: **로컬 사용자 시나리오 + 파일 하나 + run-wide 제한 후보 + 검증된 격리
 제공자와의 조합을 비교 실험**한다. DB broker는 추가하지 않는다. P06의 결과로
-기존 엔진 재사용/조합/자체 구현을 선택한다. 이 권고는 채택 전 제안이다.
+기존 엔진 재사용/조합/자체 구현을 선택한다. 이 방향은 G1에서 승인했으며 엔진은 미선정이다.
 
-| 선택 | 현행 계약 | 제안하는 변경 | 반영 대상 |
+아래 비교표의 기존 계약은 G1 이전 기준이며, A/B/C는 설계 계약으로 승인했다.
+
+| 선택 | G1 이전 계약 | 승인한 설계 변경 | 반영 대상 |
 |---|---|---|---|
 | A. 실행 제한 단위 | process label과 fork/exec 전파 | process 사실은 그대로 두고 run-wide 집행 상태를 별도로 허용 | AGENTS Architecture Rules, SECURITY_MODEL projection, ARCHITECTURE 책임 |
 | B. 송신·격리 책임 | 지원 source/open·새 IPv4 connect와 명시 한계 | 새 profile의 기존 연결/실행 밖 경계·capability·실패 의미를 명시. 외부 격리 제공자의 책임을 분리 | ARCHITECTURE, THREAT_MODEL, Phase prompt |
@@ -141,7 +143,7 @@ profile만 실행하며, 미검증 경로는 해당 보장에 포함하지 않�
 
 C는 제품 데이터·보안 계약을 먼저 검증한 뒤 읽기 전용 사용자 화면을 배치하자는
 순서 변경 제안이다. Kubernetes 기능을 미리 구현하거나 이미 완료로 표시하지 않는다.
-G1 확인 전 현행 규범·코드·prompt는 수정하지 않는다.
+G1 확인 뒤 P05에서 규범·prompt에 승인 patch를 반영했다. 제품 코드는 변경하지 않았다.
 
 ## 검증 상태
 

@@ -79,6 +79,17 @@ Source -> Label -> Propagation -> Sink -> Decision
    pre-operation sink decision을 허용하며, 커널 안에서 YAML parsing·정규식·일반
    정책 평가를 하지 않는다.
 
+## 후속 실행 보호 profile의 설계 계약
+
+기존 process audit/label 의미를 유지한다. 승인된 후속 실험은 별도의 run-scoped
+보수적 집행 상태를 후보로 평가할 수 있다. 이 상태는 같은 run의 다른 process가
+실제로 source를 읽었다는 증거가 아니다. 일반 policy/taint 의미의 소유권은 유지하며
+외부 엔진 채택·코드 변경은 비교 실험 후 별도 G2 결정과 허용 경로 확정에 따른다.
+
+이 계약은 새 profile의 구현·지원 선언이 아니다. source 시도/성공, 동기 집행과
+audit, 기존 연결 송신, 격리 제공자 책임, 장애·정리 수용 조건은 SECURITY_MODEL과
+THREAT_MODEL을 따른다. DB broker나 payload/LLM classification은 포함하지 않는다.
+
 ## eBPF 절대 규칙
 
 - 모든 eBPF 프로그램은 커널 verifier를 통과해야 한다.
@@ -303,3 +314,5 @@ Do not implement it. Only describe the next expected step.
 - eBPF verifier를 통과시키기 위해 Security Semantics 절의 원칙을 깨야 할
   것 같을 때
 - 이전 Phase가 완료되지 않았는데 다음 Phase 작업을 시작하게 될 때
+  단, ROADMAP의 읽기 전용 로컬 대시보드 순서 예외는 그곳에 명시된
+  검증된 로컬 slice·저장/조회·권한 계약·상세 prompt·독립 검토를 충족하면 적용한다.
