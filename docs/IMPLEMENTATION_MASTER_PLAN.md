@@ -4,7 +4,7 @@
 
 최초 분석 기준: `bocopile/AgentTaint`의 `5cc919dadb0a86ea5ec00c794ed07918ccc42d9a`
 
-상태: **2026-10-25 작업 계획 snapshot. Linux arm64 MVP의 P4-04/V-01 acceptance는 candidate `b0d482b`, Linux 7.0.0-28 aarch64 guest의 지정 fixtures에서 완료했다. INT-01 통합 acceptance는 코드 HEAD `1a059e7`에서 통과했고, 최신 integration HEAD `979f5db`에는 그 뒤 문서 status 기록만 추가됐다. amd64 runtime은 미지원이며 ARCH-01로 이연한다. `main`은 작업 시작 시 clean `d50981a`였고, main merge 전 독립 diff/security review를 진행 중이다. 외부 dirty P4 worktree의 다섯 파일은 보존한다. 현재 권위 있는 잔여 작업과 Git 실행 순서는 12.14절을 따른다.**
+상태: **2026-10-25 작업 계획 snapshot. Linux arm64 MVP의 P4-04/V-01 acceptance는 candidate `b0d482b`, Linux 7.0.0-28 aarch64 guest의 지정 fixtures에서 완료했다. INT-01 통합 acceptance는 코드 HEAD `1a059e7`에서 통과했다. `979f5db`와 `a0db503`은 해당 acceptance와 review 상태를 반영한 문서 commit이다. amd64 runtime은 미지원이며 ARCH-01로 이연한다. `main`은 작업 시작 시 clean `d50981a`였고, main merge 전 독립 diff/security review를 진행 중이다. 외부 dirty P4 worktree의 다섯 파일은 보존한다. 현재 권위 있는 잔여 작업과 Git 실행 순서는 12.14절을 따른다.**
 
 이 문서는 제품 철학 분석, macOS 사용 가능성, `addyosmani/agent-skills` 도입 검토, 아키텍처, 언어, 디렉터리, 작업 목록, 검증 기준과 사용자 결정 사항을 한 곳에 모은다. 다른 AI가 새로운 세션에서 읽고 현재 작업을 식별할 수 있도록 작성했다. 최초 분석 당시에는 제품 코드·Go 모듈이 없었다. **현재 실행 상태와 우선순위는 12.14절 snapshot이 기준이며, 12.10~12.13절의 날짜가 붙은 기록과 2절 조사는 당시 상태를 보존한다.**
 
@@ -954,7 +954,7 @@ AgentTaint/
 |---|---|---|---|---|
 | [x] | DOC-00 | 2026-10-25 현재 상태·잔여 작업·Git 전략 snapshot 통합 | INT-00 변경 소유권 분류 | 12.14절 기준선·의존성 목록을 integration에 반영하고 문서 diff 검토·`git diff --check` 완료 (integration `9a510f4`) |
 | [x] | PRE-01 | 문서·Phase·예시 불일치 정리안 적용 | 문서 수정 요청 | Phase 2 probe 상태 정합성, Phase 0/1 Roadmap snapshot links, SECRET/PRIVATE_KEY 예시 확인; 92개 local file links와 19개 internal anchors 해소 확인; integration `aff15f2` 이후 `git diff --check` 통과 |
-| [x] | PRE-02 | 채택 기본안·허용 경로를 구체화해 규범에 반영 | 4절 기본안, 관련 E 설계 | G1/G2/G4·D05 계약을 ARCHITECTURE/SECURITY/THREAT/Phase 4와 대조; normative conflict 없음. disk/cap failure-injection 및 current integration acceptance는 별도 검증에서 `not_tested` 유지 |
+| [x] | PRE-02 | 채택 기본안·허용 경로를 구체화해 규범에 반영 | 4절 기본안, 관련 E 설계 | G1/G2/G4·D05 계약을 ARCHITECTURE/SECURITY/THREAT/Phase 4와 대조; normative conflict 없음. disk/cap failure-injection은 `not_tested`; integration acceptance는 이후 INT-01에서 통과 |
 | [ ] | TOOL-01 | 선택한 외부 스킬 세 개와 reference 도입 | D06 기본안, E01 | source SHA·reference 검증·discovery 증거 |
 | [ ] | TOOL-02 | 전용 preflight·docs·semantics 스킬 | E01 | 세 개의 좁은 검증 절차 |
 | [ ] | TOOL-03 | 서브에이전트 역할·인계·후속 검증 절차 | TOOL-02, 해당 Phase 진입 | 역할별 변경 경계·검증 증거·세션 인계 |
