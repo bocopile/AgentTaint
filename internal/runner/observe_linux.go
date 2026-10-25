@@ -245,13 +245,9 @@ func runProtectedPlatformWithAuditWriterFactory(ctx context.Context, path string
 	if err := sensor.Barrier(5 * time.Second); err != nil {
 		return 1, fmt.Errorf("prepare observer event boundary for scope %d: %w", scopeID, err)
 	}
-	baselineDrops, err := sensor.DropCounts()
-	if err != nil {
-		return 1, fmt.Errorf("read initial observer health: %w", err)
-	}
 
 	quality := &coverageQuality{}
-	lastDropCounts := baselineDrops
+	var lastDropCounts linux.DropCounts
 	var processor *policyAuditProcessor
 	if snapshot != nil {
 		processor, err = newPolicyAuditProcessor(snapshot)
@@ -281,6 +277,7 @@ func runProtectedPlatformWithAuditWriterFactory(ctx context.Context, path string
 		<-writerDone
 		return 1, fmt.Errorf("prepare target launch: %w", err)
 	}
+	defer unix.Close(controlFD)
 	if err := sensor.TrackProcess(uint32(cmd.Process.Pid)); err != nil {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
@@ -288,9 +285,19 @@ func runProtectedPlatformWithAuditWriterFactory(ctx context.Context, path string
 		<-writerDone
 		return 1, fmt.Errorf("scope observer to target process: %w", err)
 	}
+	// The observer hooks run globally until TrackProcess enables run scoping.
+	// Snapshot cumulative drop counters only after that boundary so unrelated
+	// host activity during helper startup cannot mark this run incomplete.
+	lastDropCounts, err = sensor.DropCounts()
+	if err != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		close(queue)
+		<-writerDone
+		return 1, fmt.Errorf("read initial observer health: %w", err)
+	}
 	targetStarted = true
 	keepAudit = true
-	defer unix.Close(controlFD)
 
 	waitDone := make(chan struct{})
 	var waitErr error
@@ -876,7 +883,35 @@ func processPolicyAuditEvent(sensor *linux.Sensor, lastSeen *linux.DropCounts, q
 }
 
 func recordBPFDropDeltas(lastSeen *linux.DropCounts, current linux.DropCounts, quality *coverageQuality) {
-	reasons := [...]string{"process-ring-reserve", "process-capture", "file-ring-reserve", "file-capture", "network-ring-reserve", "network-capture", "file-syscall-args", "file-process", "file-pending-map", "file-openat-path-unreadable-success", "file-openat-path-unreadable-other-error", "file-openat2-path-unreadable-success", "file-openat2-path-unreadable-other-error"}
+	reasons := [...]string{
+		"process-ring-reserve",
+		"process-capture-fork-scope",
+		"file-ring-reserve",
+		"file-capture",
+		"network-ring-reserve",
+		"network-capture",
+		"file-syscall-args",
+		"file-process-task",
+		"file-pending-map",
+		"file-openat-path-unreadable-success",
+		"file-openat-path-unreadable-other-error",
+		"file-openat2-path-unreadable-success",
+		"file-openat2-path-unreadable-other-error",
+		"process-capture-fork-parent-birth",
+		"process-capture-fork-ids",
+		"process-capture-fork-birth-map",
+		"process-capture-fork-scope-map",
+		"process-capture-fork-context",
+		"process-capture-exec-state",
+		"process-capture-exec-context",
+		"process-capture-exec-path",
+		"process-capture-exit-identity",
+		"process-capture-exit-context",
+		"file-process-signal",
+		"file-process-metadata",
+		"file-process-identity",
+		"file-process-comm",
+	}
 	for index, count := range current {
 		if count < lastSeen[index] {
 			// A per-run cumulative counter should never decrease. Treat a reset as
