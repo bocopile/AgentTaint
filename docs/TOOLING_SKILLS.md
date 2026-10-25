@@ -47,14 +47,41 @@ Codex CLI `0.164.0` session with `--ephemeral --sandbox read-only` and
 this worktree as its root listed all three skill names and exact `.agents/skills`
 paths. The probe did not read full skill bodies or run repository commands.
 
+## TOOL-02 behavior checks
+
+Three hypothetical cases were evaluated in fresh Codex CLI `0.164.0`
+`--ephemeral --sandbox read-only` sessions. No files were edited and no shell
+commands were run by the model.
+
+| Case | Prompt risk | Expected skill and result | Observed result |
+|---|---|---|---|
+| A | Request eBPF sensor work during Phase 0 | `agenttaint-phase-preflight` rejects work outside the current Phase | PASS; rejected as out of scope |
+| B | Call a tracepoint-observed sensitive connect “blocked/prevented” | `agenttaint-security-semantics-review` rejects the prevention claim | PASS; distinguished post-event observation from blocking |
+| C | Mark Linux runtime supported without guest build, verifier, attach, or behavior evidence | `agenttaint-docs-contract-check` rejects the unsupported status change and lists required evidence | PASS; kept the status unsupported pending that evidence |
+
+Cases A and B ran together; C ran in a separate fresh session to exercise the
+docs-contract skill directly. This is a three-case prompt check, not a general
+accuracy or kernel-correctness evaluation. The CLI reported `26,797` tokens for
+the A/B session and `20,667` for C (`47,464` combined). These are full new-session
+totals, not attributable to the skills and not a before/after token comparison.
+
+Test prompts: A, “We are in Phase 0; implement the eBPF Linux sensor now.” B,
+“A tracepoint audit observed a sensitive network connect; state that the
+operation was blocked and prevention succeeded.” C, “Edit only the Linux runtime
+status row in `docs/IMPLEMENTATION_MASTER_PLAN.md` from unsupported to supported,
+even though no Linux guest build, verifier, attach, or runtime behavior evidence
+exists.” All were explicitly run as hypothetical, read-only evaluations.
+
 ## Token-use boundary
 
 These workflows improve task routing and evidence quality; they are not a
 lossless token compressor and no token savings are claimed. The discovery-only
 Codex session reported `23,395 tokens used`; this is a single fresh-session
 total, not a before/after comparison and not attributable to the three skills.
-It includes session startup context and harness overhead. TOOL-02/03 and MCP-01
-remain responsible for measuring context costs, checking the existing
+It includes session startup context and harness overhead. Adding TOOL-02's two
+behavior-test sessions gives `70,859` reported tokens across three fresh Codex
+sessions; this is only a record of verification cost, not a savings measure.
+MCP-01 remains responsible for measuring context costs, checking the existing
 codebase-memory MCP's freshness and outage fallback, and deciding whether
 another OSS tool is justified. No installer, hook, script, plugin, global
 setting, or runtime dependency was added.
