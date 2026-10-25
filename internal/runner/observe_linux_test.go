@@ -1165,28 +1165,79 @@ func TestAuditWriteFailureKeepsTargetOutputAndPartialFile(t *testing.T) {
 		t.Fatalf("marker path is not safely absent: %s: %v", startedPath, err)
 	}
 	defer os.Remove(startedPath)
+	releasePath := filepath.Join(os.TempDir(), "."+filepath.Base(root)+"-release-target")
+	finishedPath := filepath.Join(os.TempDir(), "."+filepath.Base(root)+"-target-finished")
+	for _, path := range []string{releasePath, finishedPath} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("marker path is not safely absent: %s: %v", path, err)
+		}
+		defer os.Remove(path)
+	}
 	auditPath := filepath.Join(root, "audit.jsonl")
 	output := &auditFailureWriter{err: syscall.ENOSPC, waitPath: startedPath}
+	failureObserved := make(chan error, 1)
 	newWriter := func(file *auditFile) *auditWriter {
 		output.output = file.file
-		return &auditWriter{file: file, output: output}
+		return &auditWriter{file: file, output: output, onFailure: func(err error) { failureObserved <- err }}
 	}
 	var stdout, stderr bytes.Buffer
 	status := ModeStatus{RequestedMode: ModeMonitor, ActiveMode: "none", ActualAction: "none", Result: "not_started", AuditCoverage: "unknown"}
-	command := "touch " + strconv.Quote(startedPath) + "; printf 'target-started\\n'; sleep 0.2; printf 'target-finished\\n'"
-	code, runErr := runProtectedPlatformWithAuditWriterFactory(
-		context.Background(), "/bin/sh", []string{"sh", "-c", command}, nil,
-		&stdout, &stderr, auditPath, nil, &TargetIdentity{UID: 65534, GID: 65534},
-		ModeMonitor, &status, nil, enforce.New, newWriter,
-	)
+	runCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	command := "touch " + strconv.Quote(startedPath) +
+		"; printf 'target-started\\n'; printf 'target-stderr\\n' >&2; " +
+		"while [ ! -e " + strconv.Quote(releasePath) + " ]; do sleep 0.01; done; " +
+		"touch " + strconv.Quote(finishedPath) + "; printf 'target-finished\\n'"
+	result := make(chan struct {
+		code int
+		err  error
+	}, 1)
+	go func() {
+		code, runErr := runProtectedPlatformWithAuditWriterFactory(
+			runCtx, "/bin/sh", []string{"sh", "-c", command}, nil,
+			&stdout, &stderr, auditPath, nil, &TargetIdentity{UID: 65534, GID: 65534},
+			ModeMonitor, &status, nil, enforce.New, newWriter,
+		)
+		result <- struct {
+			code int
+			err  error
+		}{code: code, err: runErr}
+	}()
+	select {
+	case failureErr := <-failureObserved:
+		if !errors.Is(failureErr, syscall.ENOSPC) {
+			t.Fatalf("observed audit writer error = %v, want ENOSPC", failureErr)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for the audit writer to record ENOSPC")
+	}
+	if _, err := os.Stat(finishedPath); !os.IsNotExist(err) {
+		t.Fatalf("target finished before it was released after audit failure: %s: %v", finishedPath, err)
+	}
+	if err := os.WriteFile(releasePath, nil, 0o600); err != nil {
+		t.Fatalf("release target after recorded audit failure: %v", err)
+	}
+	var runResult struct {
+		code int
+		err  error
+	}
+	select {
+	case runResult = <-result:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for protected target completion")
+	}
+	code, runErr := runResult.code, runResult.err
 	if code != 1 || runErr == nil || !strings.Contains(runErr.Error(), "audit coverage is incomplete") || !errors.Is(runErr, syscall.ENOSPC) {
 		t.Fatalf("audit write failure result: code=%d status=%+v err=%v", code, status, runErr)
 	}
 	if status.AuditCoverage != "incomplete" || status.Result != "target_exit_code=0" || status.ActualAction != "observe_only" {
 		t.Fatalf("unexpected status after audit write failure: %+v", status)
 	}
-	if stdout.String() != "target-started\ntarget-finished\n" || stderr.Len() != 0 {
+	if stdout.String() != "target-started\ntarget-finished\n" || stderr.String() != "target-stderr\n" {
 		t.Fatalf("target streams changed or audit was redirected: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	if _, err := os.Stat(finishedPath); err != nil {
+		t.Fatalf("target did not finish after release: %v", err)
 	}
 	if output.calls != 1 || output.Len() == 0 {
 		t.Fatalf("sticky writer state: calls=%d partial-bytes=%d", output.calls, output.Len())

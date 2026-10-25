@@ -37,10 +37,11 @@ const (
 )
 
 type auditWriter struct {
-	file    *auditFile
-	output  io.Writer
-	written int64
-	failed  error
+	file      *auditFile
+	output    io.Writer
+	written   int64
+	failed    error
+	onFailure func(error)
 }
 
 func (w *auditWriter) write(event core.Event) error {
@@ -57,25 +58,29 @@ func (w *auditWriter) writeTo(event core.Event, output io.Writer) error {
 	}
 	encoded, err := json.Marshal(event)
 	if err != nil {
-		w.failed = fmt.Errorf("marshal audit event: %w", err)
-		return w.failed
+		return w.fail(fmt.Errorf("marshal audit event: %w", err))
 	}
 	encoded = append(encoded, '\n')
 	if int64(len(encoded)) > maxAuditBytes-w.written {
-		w.failed = fmt.Errorf("audit output exceeded the %d-byte limit", maxAuditBytes)
-		return w.failed
+		return w.fail(fmt.Errorf("audit output exceeded the %d-byte limit", maxAuditBytes))
 	}
 	n, err := output.Write(encoded)
 	w.written += int64(n)
 	if err != nil {
-		w.failed = fmt.Errorf("write audit event: %w", err)
-		return w.failed
+		return w.fail(fmt.Errorf("write audit event: %w", err))
 	}
 	if n != len(encoded) {
-		w.failed = io.ErrShortWrite
-		return w.failed
+		return w.fail(io.ErrShortWrite)
 	}
 	return nil
+}
+
+func (w *auditWriter) fail(err error) error {
+	w.failed = err
+	if w.onFailure != nil {
+		w.onFailure(err)
+	}
+	return err
 }
 
 type coverageQuality struct {
