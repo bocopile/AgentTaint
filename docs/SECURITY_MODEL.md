@@ -106,31 +106,6 @@ IFC label은 자원 접근 자체를 허용하거나 거부하는 access control
 | Sink | 파일, clipboard, stdout |
 | Label | 다중 라벨: `SECRET`, `CREDENTIAL`, `SOURCE_CODE`, `UNTRUSTED` |
 
-### 선택형 Source Discovery — 정책 작성 보조, v0.1 밖
-
-향후 Source Discovery는 사용자가 직접 선택한 루트에서 경로·파일 메타데이터에
-대한 고정된 규칙으로 source 후보를 제안할 수 있다. 이 기능은 파일 내용을
-읽거나 비밀 값을 추출하지 않는다. 후보는 민감정보의 존재를 입증하지 않으며,
-발견되지 않은 파일을 안전하다고 판정하지 않는다.
-
-- 후보 결과는 `path`, 일치한 규칙과 이유, 스캔 완전성만 제공한다. 추측 점수나
-  파일 내용은 포함하지 않는다. 상세 경로는 사용자가 discovery를 명시적으로
-  실행했을 때만 로컬 결과로 보여주며 기본 audit log에 기록하거나 외부로
-  전송하지 않는다.
-- 후보는 `Source`도 `Label`도 아니다. Source Discovery는 policy를 쓰거나
-  변경하지 않으며 label, audit/deny 결정, kernel state에도 영향을 주지 않는다.
-  사용자가 후보를 확인해 YAML policy에 직접 추가하고 다음 run을 시작한 뒤에야
-  기존 Source→Label 흐름이 적용된다.
-- Discovery는 사용자가 선택한 root만 검사한다. 첫 구현은 symlink를 따라가지
-  않으며 기존 policy의 절대·정리 경로와 syscall event의 raw path 비교 한계를
-  유지한다. 실행 시 다른 spelling/relative path로 열리면 후보가 policy에
-  추가됐어도 일치하지 않을 수 있고, file identity를 보장하지 않는다. 권한
-  오류나 순회 실패가 있으면 결과를 incomplete로 표시한다. 후보 0건은
-  민감정보가 없다는 뜻이 아니다.
-- 결과는 기본적으로 실행 중 메모리/명령 출력에만 존재하고 저장하지 않는다.
-  dashboard가 이를 보존하거나 policy 승인을 수행하려면 retention, 경로 노출,
-  사용자 권한을 별도로 설계해야 한다.
-
 TLS 페이로드 내용 검사(`SSL_write` uprobe 등 payload-aware observability)는
 v0.1 sink 정의에 없다. 이유는 [THREAT_MODEL.md](./THREAT_MODEL.md)와
 [ARCHITECTURE.md](./ARCHITECTURE.md)에서: payload inspection은 AgentSight가

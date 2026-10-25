@@ -25,10 +25,9 @@ pre-operation hook에서 집행한다. 검증 범위는 직접 file open과 새 
 한정되며 기존 socket 송신, UDP `sendto`, IPv6 및 다른 미지원 경로를 보장하지 않는다.
 
 민감 source 경로는 사용자가 YAML policy에 지정해야 한다. AgentTaint은 파일
-본문이나 프롬프트를 검사해 민감 값을 찾지 않는다. 향후 Source Discovery는
-사용자가 고른 root의 path/metadata 후보를 제안하는 별도 정책 작성 보조로
-설계됐으며 아직 구현되지 않았다. ProcessExec 관측은 실행 파일 경로를 기록하고
-argv를 수집하지 않으므로 명령 인자의 의미를 판별하지 않는다.
+본문이나 프롬프트를 검사해 민감 값을 자동 발견하지 않는다. ProcessExec 관측은
+실행 파일 경로를 기록하고 argv를 수집하지 않으므로 명령 인자의 의미를
+판별하지 않는다.
 
 Go **1.26 이상**에서 빌드한다. 환경 진단과 일반 커맨드 실행은 macOS/Linux를
 대상으로 한다. 현재 Linux runtime은 arm64 전용이다. 실제 차단 검증은
