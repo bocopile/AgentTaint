@@ -82,6 +82,19 @@ func TestCoverageQualityDropPollingUsesOnlyNewDeltas(t *testing.T) {
 	}
 }
 
+func TestProcessCaptureDropReasonsIdentifyLifecycleStage(t *testing.T) {
+	quality := &coverageQuality{}
+	lastSeen := linux.DropCounts{}
+	current := lastSeen
+	current[17] = 2 // fork event context capture
+	recordBPFDropDeltas(&lastSeen, current, quality)
+
+	incomplete, detail := quality.report()
+	if !incomplete || !strings.Contains(detail, "process-capture-fork-context=2") {
+		t.Fatalf("process capture detail = %q, incomplete=%t; want fork-context loss", detail, incomplete)
+	}
+}
+
 func TestPollDropsBeforeCompletedSinkSkipsOtherEvents(t *testing.T) {
 	events := []core.Event{
 		core.FileOpenEvent{},

@@ -25,16 +25,21 @@ static __always_inline void file_count_drop(__u32 reason)
 
 static __always_inline int file_read_process(struct task_struct *task,
 						     struct agenttaint_raw_process *out,
-						     __u64 scope_id, __u64 birth_id)
+						     __u64 scope_id, __u64 birth_id,
+						     __u32 *failure_reason)
 {
 	struct signal_struct *signal = BPF_CORE_READ(task, signal);
-	if (!signal)
+	if (!signal) {
+		*failure_reason = AGENTTAINT_DROP_FILE_PROCESS_SIGNAL;
 		return -1;
+	}
 	struct pid *pgrp = BPF_CORE_READ(signal, pids[2]);
 	struct pid *session = BPF_CORE_READ(signal, pids[3]);
 	struct task_struct *parent = BPF_CORE_READ(task, real_parent);
-	if (!pgrp || !session || !parent)
+	if (!pgrp || !session || !parent) {
+		*failure_reason = AGENTTAINT_DROP_FILE_PROCESS_METADATA;
 		return -1;
+	}
 
 	__builtin_memset(out, 0, sizeof(*out));
 	out->pid = BPF_CORE_READ(task, tgid);
@@ -43,16 +48,25 @@ static __always_inline int file_read_process(struct task_struct *task,
 	out->session_id = BPF_CORE_READ(session, numbers[0].nr);
 	out->birth_id = birth_id;
 	out->scope_id = scope_id;
-	if (!out->pid || !out->pgid || !out->session_id || !birth_id || !scope_id)
+	if (!out->pid || !out->pgid || !out->session_id || !birth_id || !scope_id) {
+		*failure_reason = AGENTTAINT_DROP_FILE_PROCESS_IDENTITY;
 		return -1;
-	return bpf_core_read(out->comm, sizeof(out->comm), &task->comm);
+	}
+	if (bpf_core_read(out->comm, sizeof(out->comm), &task->comm) < 0) {
+		*failure_reason = AGENTTAINT_DROP_FILE_PROCESS_COMM;
+		return -1;
+	}
+	return 0;
 }
 
-static __always_inline int file_current_process(struct agenttaint_raw_process *out)
+static __always_inline int file_current_process(struct agenttaint_raw_process *out,
+							__u32 *failure_reason)
 {
 	struct task_struct *task = bpf_get_current_task_btf();
-	if (!task)
+	if (!task) {
+		*failure_reason = AGENTTAINT_DROP_FILE_PROCESS_TASK;
 		return -1;
+	}
 	__u32 tid = BPF_CORE_READ(task, pid);
 	__u32 tgid = BPF_CORE_READ(task, tgid);
 	__u64 *known = bpf_map_lookup_elem(&process_births, &tid);
@@ -75,7 +89,7 @@ static __always_inline int file_current_process(struct agenttaint_raw_process *o
 		__u64 *global_scope = bpf_map_lookup_elem(&process_scope, &zero);
 		scope = global_scope;
 	}
-	return file_read_process(task, out, scope ? *scope : 0, birth_id);
+	return file_read_process(task, out, scope ? *scope : 0, birth_id, failure_reason);
 }
 
 static __always_inline __u8 file_access_from_flags(__u64 flags, bool valid)
@@ -103,11 +117,12 @@ static __always_inline void file_enter_openat(const char *filename, __u64 flags,
 		file_count_drop(AGENTTAINT_DROP_FILE_CAPTURE);
 		return;
 	}
-	int process_status = file_current_process(&pending.process);
+	__u32 process_failure_reason = AGENTTAINT_DROP_FILE_PROCESS_TASK;
+	int process_status = file_current_process(&pending.process, &process_failure_reason);
 	if (process_status == -2)
 		return;
 	if (process_status < 0) {
-		file_count_drop(AGENTTAINT_DROP_FILE_PROCESS);
+		file_count_drop(process_failure_reason);
 		return;
 	}
 	pending.monotonic_ns = bpf_ktime_get_ns();

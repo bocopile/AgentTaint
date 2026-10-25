@@ -96,8 +96,16 @@ int BPF_PROG(on_process_fork, struct task_struct *parent, struct task_struct *ch
 		return 0;
 	__u64 scope_id = scoped ? *parent_scope : current_scope();
 	__u64 parent_birth = process_birth(parent);
-	if (!scope_id || !parent_birth || !parent_tid || !child_tid || !child_tgid) {
-		count_drop(AGENTTAINT_DROP_PROCESS_CAPTURE);
+	if (!scope_id) {
+		count_drop(AGENTTAINT_DROP_PROCESS_FORK_SCOPE);
+		return 0;
+	}
+	if (!parent_birth) {
+		count_drop(AGENTTAINT_DROP_PROCESS_FORK_PARENT_BIRTH);
+		return 0;
+	}
+	if (!parent_tid || !child_tid || !child_tgid) {
+		count_drop(AGENTTAINT_DROP_PROCESS_FORK_IDS);
 		return 0;
 	}
 
@@ -105,18 +113,18 @@ int BPF_PROG(on_process_fork, struct task_struct *parent, struct task_struct *ch
 	if (child_tgid != parent_tgid)
 		child_birth = BPF_CORE_READ(child, start_boottime);
 	if (!child_birth || bpf_map_update_elem(&process_births, &child_tid, &child_birth, BPF_ANY) < 0) {
-		count_drop(AGENTTAINT_DROP_PROCESS_CAPTURE);
+		count_drop(AGENTTAINT_DROP_PROCESS_FORK_BIRTH_MAP);
 		return 0;
 	}
 	if (child_tgid != parent_tgid &&
 	    bpf_map_update_elem(&process_births, &child_tgid, &child_birth, BPF_ANY) < 0) {
-		count_drop(AGENTTAINT_DROP_PROCESS_CAPTURE);
+		count_drop(AGENTTAINT_DROP_PROCESS_FORK_BIRTH_MAP);
 		return 0;
 	}
 	if (scoped && (bpf_map_update_elem(&tracked_processes, &child_tid, &scope_id, BPF_ANY) < 0 ||
 	    (child_tgid != parent_tgid &&
 	     bpf_map_update_elem(&tracked_processes, &child_tgid, &scope_id, BPF_ANY) < 0))) {
-		count_drop(AGENTTAINT_DROP_PROCESS_CAPTURE);
+		count_drop(AGENTTAINT_DROP_PROCESS_FORK_SCOPE_MAP);
 		return 0;
 	}
 	/* Thread creation shares the process identity and is not a core fork event. */
@@ -131,7 +139,7 @@ int BPF_PROG(on_process_fork, struct task_struct *parent, struct task_struct *ch
 	if (read_process(parent, &event->parent, scope_id, parent_birth) < 0 ||
 	    read_process(child, &event->child, scope_id, child_birth) < 0) {
 		bpf_ringbuf_discard(event, 0);
-		count_drop(AGENTTAINT_DROP_PROCESS_CAPTURE);
+		count_drop(AGENTTAINT_DROP_PROCESS_FORK_CONTEXT);
 		return 0;
 	}
 	init_header(&event->header, AGENTTAINT_PROCESS_FORK, 0, sizeof(*event));
@@ -171,7 +179,7 @@ int BPF_PROG(on_process_exec, struct task_struct *task, pid_t old_pid, struct li
 	     bpf_map_update_elem(&tracked_processes, &tgid, &scope_id, BPF_ANY) < 0)) ||
 	    bpf_map_update_elem(&process_births, &tid, &birth_id, BPF_ANY) < 0 ||
 	    bpf_map_update_elem(&process_births, &tgid, &birth_id, BPF_ANY) < 0) {
-		count_drop(AGENTTAINT_DROP_PROCESS_CAPTURE);
+		count_drop(AGENTTAINT_DROP_PROCESS_EXEC_STATE);
 		return 0;
 	}
 
@@ -183,14 +191,14 @@ int BPF_PROG(on_process_exec, struct task_struct *task, pid_t old_pid, struct li
 	__builtin_memset(event, 0, sizeof(*event));
 	if (read_process(task, &event->process, scope_id, birth_id) < 0) {
 		bpf_ringbuf_discard(event, 0);
-		count_drop(AGENTTAINT_DROP_PROCESS_CAPTURE);
+		count_drop(AGENTTAINT_DROP_PROCESS_EXEC_CONTEXT);
 		return 0;
 	}
 	long copied = bpf_probe_read_kernel_str(event->path, sizeof(event->path),
 						       BPF_CORE_READ(bprm, filename));
 	if (copied <= 0) {
 		bpf_ringbuf_discard(event, 0);
-		count_drop(AGENTTAINT_DROP_PROCESS_CAPTURE);
+		count_drop(AGENTTAINT_DROP_PROCESS_EXEC_PATH);
 		return 0;
 	}
 	__u8 flags = copied >= sizeof(event->path) ? AGENTTAINT_PATH_TRUNCATED : 0;
@@ -228,7 +236,7 @@ int BPF_PROG(on_process_exit, struct task_struct *task, bool group_dead)
 	}
 	__u64 birth_id = process_birth(task);
 	if (!scope_id || !birth_id || !tid || !tgid) {
-		count_drop(AGENTTAINT_DROP_PROCESS_CAPTURE);
+		count_drop(AGENTTAINT_DROP_PROCESS_EXIT_IDENTITY);
 		return 0;
 	}
 	struct agenttaint_raw_exit *event = bpf_ringbuf_reserve(&process_events, sizeof(*event), 0);
@@ -238,7 +246,7 @@ int BPF_PROG(on_process_exit, struct task_struct *task, bool group_dead)
 	}
 	if (read_process(task, &event->process, scope_id, birth_id) < 0) {
 		bpf_ringbuf_discard(event, 0);
-		count_drop(AGENTTAINT_DROP_PROCESS_CAPTURE);
+		count_drop(AGENTTAINT_DROP_PROCESS_EXIT_CONTEXT);
 		return 0;
 	}
 	init_header(&event->header, AGENTTAINT_PROCESS_EXIT, 0, sizeof(*event));
