@@ -40,7 +40,8 @@
 | prompts/09-local-web-dashboard.md | Phase 0~8 일괄 완료 대신 검증된 slice·저장/query/권한·상세 prompt를 UI 선행조건으로 명시 |
 | IMPLEMENTATION_MASTER_PLAN.md | 활성 F9-DESIGN/F9 카드의 F8·Phase 0~8 선행조건 5곳을 같은 예외에 맞춤. 기존 완료 상태는 변경하지 않음 |
 
-현재 파일들은 변경하지 않았다. patch 자체만 문서 artifact로 보관한다.
+위 설계 변경은 실제 규범 파일에 적용하지 않았다. patch 자체만 문서 artifact로 보관한다.
+master plan의 CI-01 같은 사실·검증 상태 갱신은 이 설계 변경의 채택과 별개다.
 `git apply --check docs/proposals/g1-normative.patch`로 적용 가능성만 검사한다.
 이 검사는 정책/커널 correctness나 사용자 승인을 대신하지 않는다.
 
