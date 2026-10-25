@@ -1,0 +1,422 @@
+{
+  "date": "2026-10-25",
+  "tool_distribution": "graphifyy==0.9.95",
+  "inspected_upstream_commit": "92741d162b2094ffc2fed58cfbd8ee823e9da62c",
+  "wheel_commit_equivalence": "not_verified",
+  "host": {
+    "platform": "Darwin",
+    "machine": "arm64",
+    "python": "3.12.5"
+  },
+  "manifest": {
+    "source_commit": "3b8c9ea8442e181df72d01e83d74bb0af0b0ed51",
+    "files": [
+      {
+        "path": "bpf/enforce.bpf.c",
+        "bytes": 9110,
+        "sha256": "929ad2e5deaf7d1717cf885fcd5301c2da06cc2b4d5258e1998383f44626794b"
+      },
+      {
+        "path": "bpf/events.h",
+        "bytes": 4423,
+        "sha256": "1c1a6ea58e0d007b92fdaec636b3549403dfc3af5871ef42dee18c7c793e5ca9"
+      },
+      {
+        "path": "bpf/file.bpf.c",
+        "bytes": 8891,
+        "sha256": "5f5e2f8df5241673a857fbe5e7ee6825e4666491e426f5bce675a4d4a4be85f0"
+      },
+      {
+        "path": "bpf/maps.h",
+        "bytes": 1313,
+        "sha256": "feae536b99be77db9299a64c946dab6a2bfc45304f83b01ea2e2d4fc47b48b2b"
+      },
+      {
+        "path": "bpf/network.bpf.c",
+        "bytes": 4902,
+        "sha256": "744f0fb9df60b0e2215ff3dc8cf29a52932250e9f6696f5dafe4e2d6f298b1fe"
+      },
+      {
+        "path": "bpf/process.bpf.c",
+        "bytes": 11038,
+        "sha256": "193da07c47f13928dec849bb68eabd6d3dddb5ce3ed56fba5667d87f1d45c5eb"
+      },
+      {
+        "path": "cmd/agenttaint/main.go",
+        "bytes": 7996,
+        "sha256": "1123a50b1e56eb39490e7d3932f248cc3235978be7fa72f494d891698d4c4706"
+      },
+      {
+        "path": "go.mod",
+        "bytes": 185,
+        "sha256": "6ab89b9746249e8f2cfe57590d92d4fca3ffe950aa55fb45b379b80cf3a968e2"
+      },
+      {
+        "path": "internal/core/doc.go",
+        "bytes": 823,
+        "sha256": "9b491eba814cffb352ecbbb79bb17f67092669a48e075d2d9704eacbf8fd4465"
+      },
+      {
+        "path": "internal/core/event.go",
+        "bytes": 15519,
+        "sha256": "b58026eb49aa128662d4d8a890af76d0fdd50b306b41d4bc9e6ff0930440c2fb"
+      },
+      {
+        "path": "internal/core/label.go",
+        "bytes": 148,
+        "sha256": "d50ee1eb1444bc554cc432cd994bc918a83c72dc10a0667ffe82f34598bc6458"
+      },
+      {
+        "path": "internal/core/process.go",
+        "bytes": 1568,
+        "sha256": "a9f6fa33b9c2babad99d3580f6aaf73e1c4ece582c92cc9aa24882f717ac53c7"
+      },
+      {
+        "path": "internal/core/resource.go",
+        "bytes": 911,
+        "sha256": "8d1c52a073968884e24331a42bfdc5af098a5a7f9a1b6c289db11849096504de"
+      },
+      {
+        "path": "internal/enforce/doc.go",
+        "bytes": 390,
+        "sha256": "96b2bba0e663f49096fef5ab3ee81c614a5fc3177c98f1920ccae7694a82d161"
+      },
+      {
+        "path": "internal/enforce/enforce_linux.go",
+        "bytes": 5698,
+        "sha256": "744437ce6537bd8badcd27866a9fce499b10534c1dd33259916fae09fdff1d72"
+      },
+      {
+        "path": "internal/enforce/enforce_unsupported.go",
+        "bytes": 454,
+        "sha256": "e29ed8dbca0f365bf0c6ea6574ccc3eb750f89549c24a40edc7954ea9bd00913"
+      },
+      {
+        "path": "internal/env/doctor.go",
+        "bytes": 15360,
+        "sha256": "70ec511397e2e1d0a8112ce882ed665a51e7589cf23aae180246175e785575b7"
+      },
+      {
+        "path": "internal/policy/doc.go",
+        "bytes": 73,
+        "sha256": "eceff9fa2fb243a43ce93046c485c89c0cad59487461fae668fc06924083189d"
+      },
+      {
+        "path": "internal/policy/evaluator.go",
+        "bytes": 1576,
+        "sha256": "9dd593e34a03755a0faf28521f07caa6a115c1a51c67a60f5f1095557669dba2"
+      },
+      {
+        "path": "internal/policy/kernel.go",
+        "bytes": 3091,
+        "sha256": "bed94875274cb2f8191df690d63999350cc7f7719ef313d5dbd781e374c935bb"
+      },
+      {
+        "path": "internal/policy/model.go",
+        "bytes": 1490,
+        "sha256": "9130536cf641927f8fdfbe39044dc02d9d2a80a2442f9e8c41091c13b0fdfe9e"
+      },
+      {
+        "path": "internal/policy/parser.go",
+        "bytes": 10122,
+        "sha256": "f60edf347da3c8b32fbbcfc99a13bc6dc6e24f2321e1512104a5dfeeb8d36d48"
+      },
+      {
+        "path": "internal/runner/auditfile_linux.go",
+        "bytes": 4449,
+        "sha256": "45fd4dac2b46682ca453b655888b7b15a42f1c6431280b811507432f41afd982"
+      },
+      {
+        "path": "internal/runner/cgroup_linux.go",
+        "bytes": 3995,
+        "sha256": "a278e87d802be7f1ea267afd864a92050068875abaf6e5622655623843957752"
+      },
+      {
+        "path": "internal/runner/observe.go",
+        "bytes": 3362,
+        "sha256": "efdf432283d8adb558c8e1e0c4271c49bbf701445e66c2b3f6b8ddfed8d28cb4"
+      },
+      {
+        "path": "internal/runner/observe_helper_linux.go",
+        "bytes": 4620,
+        "sha256": "14ed46d6132e4c7298a8437c926dffc1d7c52acefd4ad4f62c92a3acab077e15"
+      },
+      {
+        "path": "internal/runner/observe_linux.go",
+        "bytes": 27738,
+        "sha256": "c27dc75887ed7156f14301696e9036cab7170271e7732e9dfb4d8922318ddadb"
+      },
+      {
+        "path": "internal/runner/observe_unsupported.go",
+        "bytes": 712,
+        "sha256": "abb1454a73c1fa8048a5ba99c0f7896cb949b04ea9ddabf6468befc8412b7f04"
+      },
+      {
+        "path": "internal/runner/policy_pipeline.go",
+        "bytes": 2980,
+        "sha256": "6a7ccf4eac9ffd6d1127b0236e9199b1a722a7c67f93fa1c3d394cd831957db6"
+      },
+      {
+        "path": "internal/runner/runner.go",
+        "bytes": 1669,
+        "sha256": "f65b3a3917de890bee00e4df4b285d0949b4beda9ed69ab68b0819afa36dd2ce"
+      },
+      {
+        "path": "internal/sensor/darwin/doc.go",
+        "bytes": 88,
+        "sha256": "858bd0a560497ceec65e36afa8a47237efc9d7c33d4646c4b27a216972fa3858"
+      },
+      {
+        "path": "internal/sensor/linux/doc.go",
+        "bytes": 365,
+        "sha256": "a96737d141e8055cf2c40b8f2794562e055b6c5c1ccde484bc34a10c9cf51d4b"
+      },
+      {
+        "path": "internal/sensor/linux/raw.go",
+        "bytes": 16916,
+        "sha256": "532bed4de5a31863c9d3edd3c1f3d14d6865665d9c381fd312c8d176826f58d9"
+      },
+      {
+        "path": "internal/sensor/linux/sensor.go",
+        "bytes": 8552,
+        "sha256": "3fc5a484e0fe681874f8bff1651243306913f5764aa4e29781fd50f20c399b95"
+      },
+      {
+        "path": "internal/taint/doc.go",
+        "bytes": 71,
+        "sha256": "7316bf00d23f022b8d4c11d4659e0635d5ff2e8a871388a1cec2102fb10fca63"
+      },
+      {
+        "path": "internal/taint/engine.go",
+        "bytes": 5369,
+        "sha256": "0541ca4705d6ce45b64ced94b5791ac53a52fd10389c974390acda849ca38cd9"
+      },
+      {
+        "path": "internal/web/doc.go",
+        "bytes": 69,
+        "sha256": "0aa7fc7bdd1eaee4857f70b626b1fd053dcb3147f2ce937d8283aac5b255fd44"
+      }
+    ]
+  },
+  "corpus_bytes": 186036,
+  "selection": "tracked go.mod and .go/.c/.h under cmd/internal/bpf; exclude *_test.go, *_bpfel.*, *_bpfeb.*, vmlinux.h",
+  "command": [
+    "graphify",
+    "update",
+    ".",
+    "--no-cluster"
+  ],
+  "env_keys": {
+    "PATH": "/usr/bin:/bin",
+    "GRAPHIFY_BACKEND": "none"
+  },
+  "nodes": 372,
+  "edges": 1044,
+  "graph_sha256": "3718364cca95a79b0b6d18629069905c2f1b0b5a87f681f8674e33acf32fc56d",
+  "html_bytes": 397819,
+  "html_script_sources": [
+    "https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"
+  ],
+  "dependencies": [
+    "graphifyy==0.9.95",
+    "networkx==3.7",
+    "numpy==2.5.4",
+    "PyYAML==6.0.3",
+    "RapidFuzz==3.14.6",
+    "tree-sitter==0.25.2",
+    "tree-sitter-bash==0.25.1",
+    "tree-sitter-c==0.24.2",
+    "tree-sitter-c-sharp==0.23.5",
+    "tree-sitter-cpp==0.23.4",
+    "tree-sitter-elixir==0.3.5",
+    "tree-sitter-fortran==0.6.0",
+    "tree-sitter-go==0.25.0",
+    "tree-sitter-groovy==0.1.2",
+    "tree-sitter-java==0.23.5",
+    "tree-sitter-javascript==0.25.0",
+    "tree-sitter-json==0.24.8",
+    "tree-sitter-julia==0.23.1",
+    "tree-sitter-kotlin==1.1.0",
+    "tree-sitter-lua==0.5.0",
+    "tree-sitter-objc==3.0.2",
+    "tree-sitter-php==0.24.1",
+    "tree-sitter-powershell==0.26.4",
+    "tree-sitter-python==0.25.0",
+    "tree-sitter-ruby==0.23.1",
+    "tree-sitter-rust==0.24.2",
+    "tree-sitter-scala==0.26.3",
+    "tree-sitter-swift==0.7.4",
+    "tree-sitter-typescript==0.23.2",
+    "tree-sitter-verilog==1.0.3",
+    "tree-sitter-zig==1.1.2"
+  ],
+  "queries": [
+    {
+      "query": "Apply",
+      "exit": 0,
+      "seconds": 0.284,
+      "stdout_bytes": 11610,
+      "first_lines": [
+        "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['.Apply()'] | 39 nodes found",
+        "",
+        "[i] Complete answer over budget: all 39 nodes and 80 edges shown (~3718 tokens vs the requested ~1000-token budget). Edges are never dropped once every node fits, so this is already the full answer — raising --budget further will not shrink it. Narrow with context_filter=['call'] or use get_node for a specific symbol to reduce size instead."
+      ]
+    },
+    {
+      "query": "applyFileOpen",
+      "exit": 0,
+      "seconds": 0.199,
+      "stdout_bytes": 7080,
+      "first_lines": [
+        "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['.applyFileOpen()'] | 27 nodes found",
+        "",
+        "[i] Complete answer over budget: all 27 nodes and 51 edges shown (~2205 tokens vs the requested ~1000-token budget). Edges are never dropped once every node fits, so this is already the full answer — raising --budget further will not shrink it. Narrow with context_filter=['call'] or use get_node for a specific symbol to reduce size instead."
+      ]
+    },
+    {
+      "query": "applyFork",
+      "exit": 0,
+      "seconds": 0.196,
+      "stdout_bytes": 7116,
+      "first_lines": [
+        "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['.applyFork()'] | 26 nodes found",
+        "",
+        "[i] Complete answer over budget: all 26 nodes and 52 edges shown (~2219 tokens vs the requested ~1000-token budget). Edges are never dropped once every node fits, so this is already the full answer — raising --budget further will not shrink it. Narrow with context_filter=['call'] or use get_node for a specific symbol to reduce size instead."
+      ]
+    },
+    {
+      "query": "Evaluate",
+      "exit": 0,
+      "seconds": 0.198,
+      "stdout_bytes": 6090,
+      "first_lines": [
+        "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['.Evaluate()'] | 24 nodes found",
+        "",
+        "[i] Complete answer over budget: all 24 nodes and 42 edges shown (~1877 tokens vs the requested ~1000-token budget). Edges are never dropped once every node fits, so this is already the full answer — raising --budget further will not shrink it. Narrow with context_filter=['call'] or use get_node for a specific symbol to reduce size instead."
+      ]
+    },
+    {
+      "query": "DecodeEvent",
+      "exit": 0,
+      "seconds": 0.212,
+      "stdout_bytes": 3494,
+      "first_lines": [
+        "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['DecodeEvent()'] | 64 nodes found",
+        "",
+        "[!] TRUNCATED: showing 43 of 64 nodes (~1000-token budget). The answer may be among the 21 cut nodes — raise the token budget to 1448 to get all 64 (CLI: --budget 1448, MCP: token_budget=1448) or narrow the query (e.g. context_filter=['call'], or get_node for a specific symbol)."
+      ]
+    },
+    {
+      "query": "Run",
+      "exit": 3,
+      "seconds": 0.193,
+      "stdout_bytes": 268,
+      "first_lines": [
+        "Ambiguous: 'Run' matches 2 nodes in different files.",
+        "  cmd/agenttaint/main.go",
+        "    id: cmd_agenttaint_main_run"
+      ]
+    },
+    {
+      "query": "file_current_process",
+      "exit": 0,
+      "seconds": 0.204,
+      "stdout_bytes": 3578,
+      "first_lines": [
+        "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['file_current_process()', '.Process()', 'current_scope()', 'file.bpf.c'] | 73 nodes found",
+        "",
+        "[!] TRUNCATED: showing 45 of 73 nodes (~1000-token budget). The answer may be among the 28 cut nodes — raise the token budget to 1546 to get all 73 (CLI: --budget 1546, MCP: token_budget=1546) or narrow the query (e.g. context_filter=['call'], or get_node for a specific symbol)."
+      ]
+    },
+    {
+      "query": "network_current_process",
+      "exit": 0,
+      "seconds": 0.203,
+      "stdout_bytes": 3558,
+      "first_lines": [
+        "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['network_current_process()', '.Process()', 'current_scope()', 'network.bpf.c'] | 68 nodes found",
+        "",
+        "[!] TRUNCATED: showing 44 of 68 nodes (~1000-token budget). The answer may be among the 24 cut nodes — raise the token budget to 1456 to get all 68 (CLI: --budget 1456, MCP: token_budget=1456) or narrow the query (e.g. context_filter=['call'], or get_node for a specific symbol)."
+      ]
+    },
+    {
+      "query": "on_process_fork",
+      "exit": 0,
+      "seconds": 0.206,
+      "stdout_bytes": 3543,
+      "first_lines": [
+        "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['on_process_fork', '.Process()', 'on_sys_exit', '.applyFork()'] | 73 nodes found",
+        "",
+        "[!] TRUNCATED: showing 42 of 73 nodes (~1000-token budget). The answer may be among the 31 cut nodes — raise the token budget to 1669 to get all 73 (CLI: --budget 1669, MCP: token_budget=1669) or narrow the query (e.g. context_filter=['call'], or get_node for a specific symbol)."
+      ]
+    },
+    {
+      "query": "agenttaint_raw_event",
+      "exit": 0,
+      "seconds": 0.195,
+      "stdout_bytes": 3584,
+      "first_lines": [
+        "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['Event', 'RawProcessEvent', 'raw.go', 'github.com/bocopile/AgentTaint'] | 133 nodes found",
+        "",
+        "[!] TRUNCATED: showing 43 of 133 nodes (~1000-token budget). The answer may be among the 90 cut nodes — raise the token budget to 3079 to get all 133 (CLI: --budget 3079, MCP: token_budget=3079) or narrow the query (e.g. context_filter=['call'], or get_node for a specific symbol)."
+      ]
+    },
+    {
+      "query": "raw-file-open",
+      "args": [
+        "query",
+        "agenttaint_raw_file_open",
+        "--budget",
+        "1000"
+      ],
+      "stdout_bytes": 3629,
+      "first_lines": [
+        "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['file_exit_openat()', 'file_enter_openat()', 'FileOpenEvent', 'openRunCgroup()', 'raw.go', 'file.bpf.c', 'github.com/bocopile/AgentTaint'] | 158 nodes found",
+        "",
+        "[!] TRUNCATED: showing 46 of 158 nodes (~1000-token budget). The answer may be among the 112 cut nodes — raise the token budget to 3358 to get all 158 (CLI: --budget 3358, MCP: token_budget=3358) or narrow the query (e.g. context_filter=['call'], or get_node for a specific symbol)."
+      ]
+    },
+    {
+      "query": "focused-call",
+      "args": [
+        "query",
+        "applyFileOpen",
+        "--context",
+        "call",
+        "--budget",
+        "1000"
+      ],
+      "stdout_bytes": 1593,
+      "first_lines": [
+        "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['.applyFileOpen()'] | Context: call (explicit) | 7 nodes found",
+        "",
+        "NODE .applyFileOpen() [src=internal/taint/engine.go loc=L73 community=]"
+      ]
+    },
+    {
+      "query": "run-seed-corrected",
+      "args": [
+        "query",
+        "Run",
+        "--seed",
+        "internal_runner_runner_run",
+        "--budget",
+        "1000"
+      ],
+      "stdout_bytes": 14531,
+      "first_lines": [
+        "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start (given): ['Run()'] | 42 nodes found",
+        "",
+        "[i] Complete answer over budget: all 42 nodes and 101 edges shown (~4690 tokens vs the requested ~1000-token budget). Edges are never dropped once every node fits, so this is already the full answer — raising --budget further will not shrink it. Narrow with context_filter=['call'] or use get_node for a specific symbol to reduce size instead."
+      ]
+    }
+  ],
+  "scope": "retrieval smoke only; no end-to-end LLM tokens or matched-corpus MCP A/B",
+  "limitations": [
+    "BPF maps.h syntax warning",
+    "events.h no symbols",
+    "on_process_fork node has empty source_file/source_location",
+    "HTML rendering not tested",
+    "external network absence not packet-captured"
+  ]
+}

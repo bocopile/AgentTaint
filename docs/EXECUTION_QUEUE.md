@@ -1,0 +1,145 @@
+# AgentTaint 전체 실행 작업표
+
+작성: 2026-10-25 KST. 기준: `3b8c9ea8442e181df72d01e83d74bb0af0b0ed51`.
+
+사용자가 요청한 전체 작업 목록과 순차 진행을 위한 실행 큐다. 기존 완료
+증거는 [master plan](IMPLEMENTATION_MASTER_PLAN.md), 규범은
+[아키텍처](ARCHITECTURE.md)·[보안 모델](SECURITY_MODEL.md)·
+[위협 모델](THREAT_MODEL.md)·[로드맵](ROADMAP.md)을 따른다.
+이 문서는 규범이나 Phase 순서를 변경하지 않는다.
+
+재설계 입력은 별도 브랜치 `codex/arch-redesign-20261025-sensitive-resources`의
+`b9c7368`에 있는 master plan 17~18절이다. 아직 main에 통합되지 않은 제안이며,
+`git show b9c7368:docs/IMPLEMENTATION_MASTER_PLAN.md`로 확인할 수 있다.
+이 문서의 P02~P10은 그 제안의 작업 ID를 유지한다. GF01~GF04는 기존
+TOOL-03의 하위 카드이며 별도 제품 Phase가 아니다.
+
+## 현재 상태와 실행 원칙
+
+- Linux arm64 기술 MVP, INT-02/03의 저장 실패·capture loss 보완, TOOL-01/02 및
+  agent handoff 문서는 기존 기록상 완료. 이번 작업에서 커널 검증을 재실행하지 않았다.
+- 전체 TOOL-03, 실제 토큰 절감 비교, 원격 CI, 배포, 제품 대시보드는 미완료.
+- 사용자 지정 파일 접근 모델은 구현되어 있다. 자동 민감 내용 판별, 임의 DB 조회
+  보호, 실행 전체 상태, 일반 IPC 전파는 현재 구현된 보장으로 계산하지 않는다.
+- 제품 정의 → 재사용 비교 → 증거·위협 계약 → 규범 변경 확인 → 제한된 실험 →
+  최소 기능 구현 순서다. 도구 평가가 제품 정의 작업을 무기한 지연시키지 않도록 한다.
+- `no-loss`는 손실을 숨기거나 성공 기준을 완화하지 않는 수용 기준이다.
+  과부하를 포함한 모든 환경에서 절대 무손실을 보장한다는 뜻이 아니다.
+  손실·불완전·집행 건강을 각각 기록하고 incomplete를 성공으로 바꾸지 않는다.
+
+## A. 개발 도구와 토큰 비용
+
+| ID / 상태 | 세부 작업과 산출물 | 완료 기준 / 검증 | 선행 / Git 단위 |
+|---|---|---|---|
+| GF01 / 평가 완료, 미채택 | Graphify source·license·설치 부작용 확인, 임시 Python 환경, 고정 main의 코드 사본 분석, 검색·HTML 생성 시험, 전체 실행 큐 작성 | [평가 보고서](GRAPHIFY_EVALUATION.md)와 manifest; 성공·누락·미검증 분리, 기존 AGENTS/hook/MCP 설정 보존 | TOOL-03; `codex/tool-gf01-20261025-evaluation` / 문서·증거 커밋 |
+| GF02 / 계획 | 생성 그래프와 현 MCP의 소스 위치·관계 정확도 비교. macro C와 Go method, stale graph·동명 함수·없는 심볼 포함 | 같은 source 집합·정확한 HEAD, 10개 질문의 정답/근거/누락표. 현재 pilot은 같은 corpus 비교가 아니므로 승패 판정 금지 | GF01; `codex/tool-gf02-<date>-accuracy` |
+| GF03 / 계획 | 좁은 MCP 검색, Graphify 보완, 필요 시 명시 파일 인계의 작업 비용 비교 | 같은 질문·모델·완료 기준, 입력/출력·캐시 토큰·추가 조회·재작업·build/update 비용. 실제 usage 미제공 시 `inconclusive`, 추정 절감률 금지 | GF02; `codex/tool-gf03-<date>-cost` |
+| GF04 / 조건부 | 이득이 확인된 최소 통합안: 호출 시점, 인덱스 freshness, 제외 파일, 실패 fallback, artifact 보관 | Graphify 우선 규칙을 무조건 추가하지 않음. 설치 전후 변경 파일·권한·제거 절차와 원문 확인 경로 검증 | GF02/03 결과 및 구체 도입 결정; `codex/tool-gf04-<date>-integration` |
+| TOOL-03 잔여 / 계획 | agent 위임·인계 행동, go-arch-lint/Staticcheck/govulncheck 후보, fuzz 공백, verifier 도구 평가 | 기존 검사와의 중복·고정 버전·라이선스·실제 반례·비용 기록. 후보별로 분리, 새 도구 설치만으로 완료 처리 금지 | 기존 TOOL-03.a~e; 후보당 별도 branch/commit |
+| MCP-01 잔여 / 계획 | freshness 확인과 실제 outage fallback, 연결 도구 권한 범위 기록 | graph miss·미등록 오류와 transport outage를 구분. 테스트를 위해 사용 중인 공유 MCP를 중단하지 않음 | 격리 가능한 검증 환경; `codex/tool-mcp01-<date>-evidence` |
+
+GF02/03은 결과가 불충분하면 Graphify 채택을 보류하고 제품 정의 작업을 계속할 수 있다.
+Graphify는 제품의 민감정보 추적·집행 엔진이 아니다.
+
+## B. 제품 정의·아키텍처 결정
+
+| ID / 상태 | 세부 작업과 산출물 | 완료 기준 / 검증 | 선행 / Git 단위 |
+|---|---|---|---|
+| P02-a / 계획 | 첫 사용자와 정상 작업 1개, 금지 효과 1개. 로컬 모델·승인 cloud·분리 실행 중 첫 방식 비교 | source 전후에 같은 작업의 허용 차이와 사용자 효용을 설명. 외부 전송 전면 차단만으로 정상 AI 작업 성공을 주장하지 않음 | 기존 P01 조사; `codex/design-p02-<date>-product` |
+| P02-b / 계획 | 민감정보·자원·접근 근거·권한·집행 상태 용어표. 파일, credential, DB view/API 결과 사례 | 사용자가 지정한 민감도와 실제 내용 자동 탐지를 분리. 미지정 데이터가 안전하다는 추론 금지 | P02-a; 같은 P02 branch의 별도 문서 커밋 |
+| P02-c / 계획 | 위험 명령의 정의: 실행파일, 실제 operation, resource, destination | `curl`/`psql` 이름만으로 위험·유출을 확정하지 않음. 조회·수정·삭제·전송의 구체 예시와 관측 한계 | P02-a/b; 같은 P02 branch의 별도 문서 커밋 |
+| P03 / 계획 | ActPlane 등 재사용, 기존 격리 도구와 조합, 자체 엔진 비교표 | 버전/commit/license, launch·attach 방식, 지원 hook, 운영 복잡도, 동일 시나리오 실험안. README 주장을 runtime 근거로 승격하지 않음 | P02 첫 시나리오; `codex/design-p03-<date>-reuse` |
+| P04-a / 계획 | process/run/session 식별, source/sink, 신뢰 경계, 격리 제공자, 정책·상태 소유자 | 자식→부모/형제, 기존 연결, 초기 FD, 다음 run 산출물, supervisor 실패를 각각 지원/미지원/실험으로 분류 | P02; `codex/design-p04-<date>-contracts` |
+| P04-b / 계획 | 위협→메커니즘→검증→사용자 표시 표, 정상·실패 대조군 | 판정·실제 집행·수신 측 효과를 분리. no-loss 기준과 fail-before-start 대상 명시 | P04-a; 같은 P04 branch의 별도 문서 커밋 |
+| P04-ui / 계획 | 화면 흐름과 wireframe, 아래 대시보드 질문·필드 계약 초안 | 데이터가 없거나 손실됐을 때도 정직하게 표현. UI 구현·저장소 선정은 아직 하지 않음 | P04-a/b와 함께 설계; 같은 P04 branch의 문서 커밋 |
+| G1 / 결정 필요 | 첫 제품 범위, 격리 책임, 후보 선택안을 근거와 함께 제시 | 사용자 선택 가능한 구체 변경안. run-wide와 broker를 각각 별도로 결정 | P02/03/04; 결정 기록 커밋 |
+| P05 / G1 이후 | AGENTS·ARCHITECTURE·SECURITY_MODEL·THREAT_MODEL·ROADMAP·Phase prompt·허용 파일을 정합화 | 기존/새 의미 차이, 호환성, 보장/비보장, 이전 완료 증거 적용 범위 명시. 규범 변경 확인 후 반영 | G1 및 구체 규범 변경 확인; `codex/design-p05-<date>-normative` |
+| P06 / 미실행 | 고정된 arm64 환경에서 후보별 동일 fixture 비교 | compile/verifier/load/attach/runtime 분리; 실제 errno·수신 효과·allow 대조군·cleanup. 언어 표현 가능성과 실제 지원 구분 | P05에서 승인한 실험 범위; `codex/experiment-p06-<date>-comparison` |
+| G2 / 미도달 | 재사용·조합·자체 구현 최종 선택 | P06 evidence, 실패/미지원 보존, 독립 correctness/security 검토 | P06; 결정 기록 커밋 |
+
+현재 규범은 OS effect 기반 process label 모델이다. broker를 신뢰된 source로
+추가하거나 실행 전체 집행 상태를 도입하려면 의미 변경이 필요하다. 계획 수립이나
+Graphify 평가 승인을 그 구체 변경의 채택으로 간주하지 않는다.
+
+## C. 최소 기능과 대시보드
+
+| ID / 상태 | 세부 작업과 산출물 | 완료 기준 / 검증 | 선행 / Git 단위 |
+|---|---|---|---|
+| P07-a / 미착수 | 선택한 source 1개, identity/state, 정책·정규화 Event 계약 구현 | 단위/replay 검증, 중복·순서·재사용 identity·오류 처리, 기존 arm64 의미 회귀 없음 | G2와 실제 Phase/card; `codex/impl-p07a-<date>-model` |
+| P07-b / 미착수 | 선택한 sink 1개와 pre-operation 집행 연결 | 정상 작업 성공, source 접근 뒤 금지 effect 부재, 경쟁·오류·미지원 시작 거부. byte-level 보장 주장 금지 | P07-a; `codex/impl-p07b-<date>-enforcement` |
+| P07-c / 미착수 | CLI 실행·진단·예시·지원표·사용자 설명 | source SHA와 guest 일치, portable+Linux acceptance, 독립 리뷰, 자원 정리 | P07-b; `codex/impl-p07c-<date>-acceptance` |
+| P08a / 계획 | Event/Decision/집행 결과 저장 schema, 조회·페이지 처리, 보존·삭제·권한·용량 상한 계약 및 승인 후 구현 | 손실 상태 저장/조회 보존, 부분 기록·disk full·삭제·재시작·호환성. payload/전체 argv/환경변수 기본 비수집 | P07 계약과 P04-ui; `codex/dashboard-p08a-<date>-storage` |
+| P08b / 계획 | Runs → 실행 타임라인 → 근거 상세, 자원·목적지·정책별 필터 | 화면↔원시 근거 일치, incomplete/미지원/집행 실패 표시, localhost 접근 경계, 대표 run end-to-end | P08a 및 Phase 순서 변경 승인; `codex/dashboard-p08b-<date>-viewer` |
+| P09 / 조건부 | 원격 DB source 하나의 adapter/broker 설계, 필요 시 구현 | credential 보호와 DB 작업 권한 분리, 직접 접속 우회·첫 byte 전 상태 설정·부분 실패·재시도·교차 run·결과 재사용 검증 | DB 필요성·신뢰 경계 변경 별도 결정, P07 송신 경계; `codex/source-p09-<date>-db` |
+
+현재 F9는 Phase 0~8 완료 이후라는 규범을 따른다. P04-ui의 정보 설계는 먼저
+할 수 있지만 P08 구현을 앞당기는 것은 P05에서 검토할 **제안**이다.
+Kubernetes를 생략하고 UI를 먼저 구현하도록 여기서 순서를 바꾸지 않는다.
+
+대시보드는 다음 질문에 답하도록 설계한다.
+
+| 화면 | 사용자 질문 | 반드시 구분할 필드 |
+|---|---|---|
+| 실행 목록 | 어느 실행을 확인해야 하는가? | run ID, 시작/종료, 요청/활성 mode, 사건 수, incomplete, 집행 health |
+| 실행 상세 | 어떤 자원 접근 이후 무슨 일이 발생했는가? | 시간/순서 근거, process identity, resource 별칭, label/state 변화, 연결 목적지 |
+| 판정·근거 상세 | 왜 거부됐으며 실제로 막혔는가? | source evidence, policy rule/version, verdict, enforcement result, syscall 결과, 관측 한계 |
+| 수집 상태 | 기록을 어느 범위까지 믿을 수 있는가? | drop/loss reason, 수집 구간, 미지원 경로, 저장 실패, source/build/kernel/arch |
+
+Graphify의 코드 관계 그림은 이 실행 증거 화면을 대체하지 않는다.
+
+## D. 기존 잔여 작업과 후속 지원
+
+| 기존 ID | 세부 작업 / 완료 기준 | 착수 조건 / Git 단위 |
+|---|---|---|
+| CI-01 | portable 원격 job, 정확한 commit의 build/vet/test와 artifacts 확인 | 정해진 batch/원격 실행 범위; `codex/ci-ci01-<date>-portable` |
+| CI-02 | 격리된 Linux BPF runner, verifier/attach/runtime와 정리 증거 | 전용 runner 권한·환경 결정; `codex/ci-ci02-<date>-bpf` |
+| REL-01 | binary/BPF/source 대응, checksum·SBOM·license·재현 빌드 | 검증된 제품 commit과 지원 환경; `codex/rel-rel01-<date>-artifacts` |
+| F5 | macOS에서 Linux VM 실행·진단·소스 동기화 UX | 기존 플랫폼 순서 유지, native Endpoint Security 제외; `codex/f5-<task>-vm` |
+| ARCH-01 | amd64 ABI/object/verifier/attach/runtime 및 arm64 회귀 | arm64 우선 유지, 승인된 amd64 환경; `codex/arch-arch01-<date>-amd64` |
+| F6 | 다중 label·file/pipe/IPC 전파 | P05 재설계 결과와 중복 제거 후 실제 Phase 상세화; `codex/f6-<task>-flow` |
+| F7 | Kubernetes attribution·배포·권한 | 로컬 IFC 완료, 필요한 사용자 시나리오; `codex/f7-<task>-kubernetes` |
+| F8 | 읽기 중심 설명·피드백 인터페이스 | 선행 Phase와 권한·데이터 계약; `codex/f8-<task>-feedback` |
+| F9-DESIGN/PERSIST/F9 | 기존 dashboard 카드와 P04-ui/P08 대응 정리 | P05에서 순서·중복·허용 범위 결정. 두 계획을 각각 구현하지 않음 |
+| DOC-01 | 설치·실행·진단·지원표·감사/차단 차이·실제 예시·프로젝트 소개와 그림 | 해당 검증 증거에 맞춰 지속 갱신; 기능별 docs commit |
+| REL-02/03 | 설치·업데이트·제거·복구, 제한된 시범 사용·피드백 | 재현 산출물, 배포/공개 정책 결정; 각각 별도 rel branch |
+| F10 | payload/LLM sink metadata 필요성 재평가 | 구체 사용 사례와 별도 승인. 자동 내용 탐지/LLM 판단으로 핵심 모델 대체 금지 |
+
+P10은 CI/릴리스의 상위 묶음이다. 기존 CI/REL 카드를 그대로 연결하며 완료 건수를
+이중 계산하지 않는다. F6/P07, F9/P08의 중복도 P05에서 해소한다.
+
+## 팀·모델·동시성·도구
+
+- 기본은 main 단독 순차 수행. 병렬 작업이 명시된 경우 조사/설계/보안 검토를
+  독립 카드로 배정하고 기본 main 포함 4명, 최대 6명, 재귀 위임 없음.
+- writer 기본 1명. writer별 worktree/branch/소유 파일을 명시하고 공통 schema를
+  여러 writer가 동시에 바꾸지 않는다. 공유 Linux guest는 검증자 1명이 소유한다.
+- 구현 작성자와 독립 reviewer/security reviewer를 분리한다. 모델은 실제 호출
+  가능한 모델을 사용하고 모델 ID만으로 가격·품질·절감률을 주장하지 않는다.
+  좁은 사실 추출과 보안 판단을 같은 비용 수준으로 일괄 실행하지 않는다.
+- 필요한 skill은 preflight, source-driven-development, security-semantics-review,
+  code-review-and-quality, documentation-and-adrs, docs-contract-check다.
+- 코드 발견은 기존 codebase-memory MCP 우선, 필요한 심볼/원문만 조회한다.
+  인덱스 상태를 source freshness 증거로 대체하지 않는다. Graphify 채택 전
+  무조건적인 graph-first 지침·전역 skill·자동 hook을 추가하지 않는다.
+- 인계는 task/status/HEAD/files/checks/evidence/blocker/next 요약과 원문 경로로
+  제공한다. 전체 대화·전체 저장소·긴 로그를 모든 agent에게 복사하지 않는다.
+
+## Git·검증·완료 판정
+
+1. 작업마다 clean main 동기화와 기준 SHA 기록, `.worktrees/<task-id>` 및 위 표의
+   고유 branch를 만든다. 기존 dirty/미통합 worktree는 보존한다.
+2. 한 카드의 관련 경로만 stage하고 staged diff 확인 후 conventional commit을
+   만든다. 큰 카드는 표에 적은 하위 단위로 나누되 의존 변경을 먼저 검토한다.
+3. 문서: 링크/상태/규범 정합성·diff 검사. Go: gofmt/vet/build 및 영향 테스트.
+   BPF: pinned 도구와 지정 guest의 verifier/load/attach/실제 효과 검증을 추가한다.
+4. 카드별 관련 검증은 수행하고 전체 suite는 합의된 통합 batch의 정확한 HEAD에서
+   한 번 수행한다. 실패 수정 뒤 영향받은 검증은 재실행한다. 전체 미래 작업이
+   끝날 때까지 선행 Phase 검증을 미루지 않는다.
+5. integration에서 독립 검토·필수 gate 통과 후 main fast-forward. 해당 branch/batch의
+   명시 요청 범위에서 push한다. force push/무단 rebase/자동 원격 merge 없음.
+6. 상태는 `planned / proposed / implemented / verified / not_tested / inconclusive`
+   로 구분한다. 계획 문서 수·설치 성공·소스 검색 성공을 제품 완성률로 환산하지 않는다.
+
+다음 제품 작업은 P02다. GF02/03의 평가가 미채택으로 끝나더라도 기존 개발 도구로
+P02를 진행할 수 있다. run-wide/broker/UI 조기 구현은 구체 규범 변경을 검토한 뒤
+채택 여부를 결정한다.
