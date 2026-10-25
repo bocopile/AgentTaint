@@ -1,0 +1,119 @@
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -79,6 +79,17 @@
+    pre-operation sink decision을 허용하며, 커널 안에서 YAML parsing·정규식·일반
+    정책 평가를 하지 않는다.
+
++## 후속 실행 보호 profile의 설계 계약
++
++기존 process audit/label 의미를 유지한다. 승인된 후속 실험은 별도의 run-scoped
++보수적 집행 상태를 후보로 평가할 수 있다. 이 상태는 같은 run의 다른 process가
++실제로 source를 읽었다는 증거가 아니다. 일반 policy/taint 의미의 소유권은 유지하며
++외부 엔진 채택·코드 변경은 비교 실험 후 별도 G2 결정과 허용 경로 확정에 따른다.
++
++이 계약은 새 profile의 구현·지원 선언이 아니다. source 시도/성공, 동기 집행과
++audit, 기존 연결 송신, 격리 제공자 책임, 장애·정리 수용 조건은 SECURITY_MODEL과
++THREAT_MODEL을 따른다. DB broker나 payload/LLM classification은 포함하지 않는다.
++
+ ## eBPF 절대 규칙
+
+ - 모든 eBPF 프로그램은 커널 verifier를 통과해야 한다.
+--- a/docs/SECURITY_MODEL.md
++++ b/docs/SECURITY_MODEL.md
+@@ -264,3 +264,21 @@
+ 정체성을 보장하지 않는다. operation은 derived event가 만들어지기 전에 이미
+ 시도되거나 완료됐을 수 있다. 이 record는 감사를 위한 것이며 prevention 증거가
+ 아니다.
++
++## 후속 실행 보호 profile — 설계 계약, 구현 전
++
++기존 v0.1 Go reference의 successful completed FileOpen→process SECRET 의미는
++그대로 유지한다. 별도의 실험 profile은 source-attempt의 동기 projection에 따라
++동일 run 전체에 단조 증가하는 보수적 제한을 적용할 수 있다. 다른 process의
++successful-open event나 실제 byte 이동을 만들어내지 않는다. 현재 CLI/policy
++schema에 새로운 필드가 구현됐다는 뜻이 아니다.
++
++source 접근을 허용하는 경계 이전에 상태를 반영하고, 이후 지원 송신 gate가 그
++상태를 확인해야 한다. 기존 연결, 다른 CPU, 초기 FD/mapping, alias, 외부 IPC와
++다음 run 산출물 경로를 profile별로 검사한다. 필요한 경계를 제공하지 못하면
++해당 strict profile의 launch를 거부한다. 정확한 hook과 지원표는 실험 증거 후 확정한다.
++
++실행 중 exec/자식 종료/로그 삭제/UI 조작으로 제한을 해제하지 않는다. audit loss와
++집행 health는 별도 기록하며, 실패한 source open을 성공으로 고치지 않는다.
++Byte-level taint tracking과 일반 유출 방지를 주장하지 않는다. 현재 구현·검증된
++v0.1 지원 범위는 이 설계 계약으로 확장되지 않는다.
+--- a/docs/THREAT_MODEL.md
++++ b/docs/THREAT_MODEL.md
+@@ -99,3 +99,19 @@
+ - TLS decryption / packet DPI 엔진
+ - 완전한 sandbox (컨테이너/VM 대체재 아님 — 그 위에 얹는 semantic policy layer)
+ - Kubernetes NetworkPolicy 대체재
++
++## 후속 실행 보호 profile의 추가 수용 경계 — 구현 전
++
++첫 비교 시나리오는 사용자가 지정한 합성 파일을 동일 실행의 로컬 AI가 분석하고
++본인에게 표시하는 작업이다. 외부 LLM 전송과 DB broker는 첫 범위에 포함하지 않는다.
++실행 전체 제한은 process 관측 사실과 별개이며 단독으로 완전한 sandbox를 제공하지 않는다.
++
++격리 제공자는 대상의 scope 이탈, 외부 same-UID process/IPC/공유 cache, 초기
++입력/FD/mapping, source alias와 산출물 재사용 경계를 제한해야 한다. AgentTaint는
++필요 capability를 확인하고 미지원 profile을 시작하지 않는다. 기존 연결 송신과
++source/send 경쟁은 실제 효과·대조군으로 검증하며 관측 시간 정렬만으로 증명하지 않는다.
++
++supervisor 종료 후 target이 남는 경우 집행 지속 또는 안전한 실행 종료를 확인한다.
++증거가 없으면 해당 장애 경로의 보호는 미지원이다. 감사 누락은 incomplete로 남기고
++집행 성공으로 오인하지 않는다. host root/kernel compromise는 여전히 범위 밖이다.
++이 절은 후속 실험의 요구 조건이며 현재 완료된 runtime 보장이 아니다.
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -400,3 +400,19 @@
+ - 정확한 phase 번호·기술 스택·엔드포인트 설계는 이 스텁 단계에서
+   확정하지 않는다. 착수 시점에 AGENTS.md의 "문서는 규범이다" 절차대로
+   다시 논의한다.
++
++## 후속 실행 보호 profile과 로컬 증거 화면 — 설계 계약
++
++process 접근 사실과 별도의 run-scoped 보수적 집행 상태를 구분한다. taint/policy의
++의미 소유 경계는 유지하고 실제 동기 gate·격리 제공자·외부 엔진 선택은 비교 실험과
++G2 결정 이후 확정한다. 새 제품 패키지나 현재 CLI/schema 변경을 이 절만으로 허용하지 않는다.
++
++실험은 기존 Linux arm64 기준, 합성 source/수신기, 실제 영향·allow 대조군과 cleanup을
++사용한다. 후보 설치/특권 동작은 지정 실험 카드와 환경 권한 범위에 한정한다. 기존
++acceptance를 새 run-wide/기존 연결/원격 source 보장의 근거로 재사용하지 않는다.
++
++읽기 전용 로컬 증거 화면의 선행조건은 검증된 로컬 slice, Event/Decision/effect의
++저장·조회·보존·권한 계약, 상세화된 Phase 9 prompt와 독립 보안 검토다. 이 조건을
++충족하면 Kubernetes·Agent Feedback 구현 이전에도 시작할 수 있다. UI는 정책을
++평가하거나 label을 해제하지 않으며 verdict, actual effect, audit coverage,
++enforcement health를 분리한다. 이 순서 예외는 다른 플랫폼/Phase의 완료를 뜻하지 않는다.
+--- a/docs/ROADMAP.md
++++ b/docs/ROADMAP.md
+@@ -7,6 +7,11 @@
+
+ 각 Phase는 이전 Phase가 완료된 뒤에만 시작한다 ([AGENTS.md](../AGENTS.md)
+ 의 Scope Order 규칙).
++단, 읽기 전용 로컬 대시보드는 검증된 로컬 slice, 저장/조회·권한 계약,
++상세 Phase 9 prompt와 독립 검토가 준비되면 Kubernetes·Feedback 이전에 착수할 수 있다.
++플랫폼 순서와 로컬 IFC 완료 전 Kubernetes 구현 금지는 그대로 유지한다.
++후속 run-scoped profile은 설계·비교 실험 대상이며 현재 지원 기능이 아니다.
++
+
+ ## Linux MVP
+
+--- a/prompts/09-local-web-dashboard.md
++++ b/prompts/09-local-web-dashboard.md
+@@ -1,8 +1,11 @@
+ # Phase 9 — Local Web Dashboard (스텁)
+
+-아직 상세화하지 않았다. Phase 0~8 완료 후, 이 시점에 확정된 이벤트/
+-Decision 영속화 방식과 `docs/ARCHITECTURE.md`의 `internal/web` 자리를
+-기준으로 `prompts/README.md`의 템플릿에 맞춰 상세화한다.
++아직 상세화하지 않았다. 검증된 로컬 slice와 승인된 Event/Decision/effect의
++영속화·조회·보존·권한 계약을 선행조건으로 한다. 그 조건과 독립 보안 검토가
++갖춰지면 Kubernetes·Agent Feedback 이전에 읽기 전용 로컬 화면을 시작할 수 있다.
++구현 전 `docs/ARCHITECTURE.md`의 `internal/web` 자리를 기준으로
++`prompts/README.md` 템플릿에 맞춰 허용 파일·화면·검증 조건을 상세화한다.
++이 스텁만으로 UI 코드나 저장 패키지를 추가하지 않는다.
+
+ 방향성만 기록: `agenttaint`가 이미 수집한 이벤트/정책 위반 로그를 로컬
+ 브라우저에서 조회하는 뷰어. AgentSight의 `frontend`+`controller`(별도

@@ -49,10 +49,10 @@ Graphify는 제품의 민감정보 추적·집행 엔진이 아니다.
 | P02-b / 제안 작성 완료 | [민감정보·자원·근거·권한·집행 상태 용어표](PRODUCT_SCOPE_PROPOSAL.md) | 사용자 지정과 자동 내용 탐지 구분, DB 연결과 결과 전달 구분. 새로운 보장 미구현 | P02-a와 같은 문서 카드 |
 | P02-c / 제안 작성 완료 | [위험 명령의 operation/resource/destination 예시](PRODUCT_SCOPE_PROPOSAL.md) | 조회/삭제/전송/credential 권한 구분. argv 관찰을 사전 차단으로 설명하지 않음 | P02-a/b와 같은 문서 카드 |
 | P03 / 조사·계획 완료 | [고정 후보·재사용 비교·P06 실험안](REUSE_COMPARISON_PLAN.md) | ActPlane/OpenShell commit·manifest·license 확인, launch/attach·effect 차이 명시. 후보 실행 not_tested, G2 엔진 미선정 | P02 제안; `codex/design-p03-20261025-reuse` |
-| P04-a / 계획 | process/run/session 식별, source/sink, 신뢰 경계, 격리 제공자, 정책·상태 소유자 | 자식→부모/형제, 기존 연결, 초기 FD, 다음 run 산출물, supervisor 실패를 각각 지원/미지원/실험으로 분류 | P02; `codex/design-p04-<date>-contracts` |
-| P04-b / 계획 | 위협→메커니즘→검증→사용자 표시 표, 정상·실패 대조군 | 판정·실제 집행·수신 측 효과를 분리. no-loss 기준과 fail-before-start 대상 명시 | P04-a; 같은 P04 branch의 별도 문서 커밋 |
-| P04-ui / 계획 | 화면 흐름과 wireframe, 아래 대시보드 질문·필드 계약 초안 | 데이터가 없거나 손실됐을 때도 정직하게 표현. UI 구현·저장소 선정은 아직 하지 않음 | P04-a/b와 함께 설계; 같은 P04 branch의 문서 커밋 |
-| G1 / 결정 필요 | 첫 제품 범위, 격리 책임, 후보 선택안을 근거와 함께 제시 | 사용자 선택 가능한 구체 변경안. run-wide와 broker를 각각 별도로 결정 | P02/03/04; 결정 기록 커밋 |
+| P04-a / 설계 초안 완료 | [신뢰 경계·상태·identity 계약](EVIDENCE_AND_DASHBOARD_PROPOSAL.md) | process 사실과 run-wide 제한 분리, 기존 연결/alias/IPC/초기 입력/실패 수용 조건. G1 미채택 | `codex/design-p04-20261025-evidence-ui` |
+| P04-b / 수용 초안 완료 | [T01~T15 fixture·관측·판정 계약](EVIDENCE_AND_DASHBOARD_PROPOSAL.md) | supervisor 종료와 no-loss/장애 PASS 구분 포함. 새 runtime 테스트는 모두 not_tested | 같은 P04 문서 카드 |
+| P04-ui / 정보 설계 초안 완료 | [Runs→타임라인→근거 상세·가상 화면](EVIDENCE_AND_DASHBOARD_PROPOSAL.md) | incomplete/unknown/deny와 실제 block 구분, 저장/query·로컬 권한 요구. UI 미구현 | 같은 P04 문서 카드 |
+| G1 / 결정 자료 준비, 미채택 | [결정 자료와 적용 전 규범 patch](G1_DECISION_PACKET.md) | 권고: 로컬 사용자·파일 하나·run-wide 후보·기존 연결 검증·읽기 UI 순서 조정. DB broker 제외, 엔진은 P06 후 G2 선택 | 구체 규범 변경 확인 전 P05/P06 구현 착수 금지 |
 | P05 / G1 이후 | AGENTS·ARCHITECTURE·SECURITY_MODEL·THREAT_MODEL·ROADMAP·Phase prompt·허용 파일을 정합화 | 기존/새 의미 차이, 호환성, 보장/비보장, 이전 완료 증거 적용 범위 명시. 규범 변경 확인 후 반영 | G1 및 구체 규범 변경 확인; `codex/design-p05-<date>-normative` |
 | P06 / 미실행 | 고정된 arm64 환경에서 후보별 동일 fixture 비교 | compile/verifier/load/attach/runtime 분리; 실제 errno·수신 효과·allow 대조군·cleanup. 언어 표현 가능성과 실제 지원 구분 | P05에서 승인한 실험 범위; `codex/experiment-p06-<date>-comparison` |
 | G2 / 미도달 | 재사용·조합·자체 구현 최종 선택 | P06 evidence, 실패/미지원 보존, 독립 correctness/security 검토 | P06; 결정 기록 커밋 |
@@ -140,6 +140,6 @@ P10은 CI/릴리스의 상위 묶음이다. 기존 CI/REL 카드를 그대로 �
 6. 상태는 `planned / proposed / implemented / verified / not_tested / inconclusive`
    로 구분한다. 계획 문서 수·설치 성공·소스 검색 성공을 제품 완성률로 환산하지 않는다.
 
-P02 제안 작성 다음 순서는 P03 재사용 비교와 P04 위협·테스트·화면 계약이다.
-개발 도구 채택 여부와 독립적으로 G1 결정 자료를 준비한다.
-run-wide/broker/UI 조기 구현은 구체 규범 변경을 검토한 뒤 채택 여부를 결정한다.
+현재 다음 단계는 G1이다. P02/P03/P04의 제안·조사·설계 자료는 준비했지만
+새 제품 방향은 미채택이며, run-wide·송신/격리 책임·UI 순서의 규범 변경 확인이
+필요하다. DB broker는 권고 첫 범위에서 제외했고 기존 모델은 그대로 유지한다.
