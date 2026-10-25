@@ -40,8 +40,8 @@ normative docs, authorization, no-loss requirements, and task scope override all
 upstream instructions.
 
 The repository path and `SKILL.md` frontmatter were checked against OpenAI's
-documented project-skill layout and progressive-disclosure behavior. This
-A fresh Codex CLI `0.164.0` session with `--ephemeral --sandbox read-only` and
+documented project-skill layout and progressive-disclosure behavior. A fresh
+Codex CLI `0.164.0` session with `--ephemeral --sandbox read-only` and
 this worktree as its root listed all three skill names and exact `.agents/skills`
 paths. The probe did not read full skill bodies or run repository commands.
 
