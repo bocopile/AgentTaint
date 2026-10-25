@@ -48,14 +48,15 @@ SECRET 프로세스의 socket connect
 
 ## In Scope
 
-- `bpf/file.bpf.c`를 tracepoint에서 BPF-LSM(`file_open`)으로 전환 (또는
-  병행) — 정책에 지정된 민감 파일에 대해 pre-op으로 거부(`-EPERM`) 가능한
-  경로를 구현.
-- `bpf/network.bpf.c`에 지원되는 BPF-LSM(`socket_connect`) pre-op block을
-  구현한다. 요청한 `block` capability를 제공할 수 없으면 target을 시작하기
-  전에 실패한다. post-op kill은 사용자가 `kill` mode를 명시한 경우에만
-  별도 경로로 실행하며 block의 자동 폴백으로 사용하지 않는다. 요청 mode와
-  실제 action을 런타임에 구분해 보고한다.
+- File/network observer는 `bpf/process.bpf.c`에서 `file.bpf.c`와
+  `network.bpf.c`를 include해 생성하는 syscall tracepoint 기반 관찰 경로로
+  유지한다. 이 Phase는 observer source를 LSM으로 전환하지 않는다.
+- `bpf/enforce.bpf.c`의 지원되는 BPF-LSM(`file_open`, `socket_connect`)
+  hook으로 정책 subset의 pre-op block을 구현한다. 요청한 `block`
+  capability를 제공할 수 없으면 target을 시작하기 전에 실패한다. post-op
+  kill은 사용자가 `kill` mode를 명시한 경우에만 별도 경로로 실행하며
+  block의 자동 폴백으로 사용하지 않는다. 요청 mode와 실제 action을 런타임에
+  구분해 보고한다.
 - `internal/enforce`: `internal/policy`의 Decision을 받아 위 두 경로 중
   하나를 실행. 강제 모드는 `monitor`(로그만, 기본값) / `notify` /
   `block`(pre-op 가능할 때만) / `kill` 4단계로 분리.
@@ -96,8 +97,11 @@ SECRET 프로세스의 socket connect
 
 ## Files
 
-`bpf/file.bpf.c`, `bpf/network.bpf.c`, `bpf/enforce.bpf.c` (수정),
-`internal/policy/kernel.go`, `internal/enforce/enforce_linux.go`,
+`bpf/process.bpf.c`, `bpf/file.bpf.c`, `bpf/network.bpf.c` (observer include
+assembly와 syscall tracepoint capture), `bpf/enforce.bpf.c` (별도 active
+BPF-LSM object), `bpf/events.h`, `internal/sensor/linux/doc.go`와 generated
+observer object, `internal/policy/kernel.go`, `internal/enforce/doc.go`,
+`internal/enforce/enforce_linux.go`,
 `internal/enforce/enforce_unsupported.go`, `internal/enforce/enforce_bpfel.go`와
 그 embed object, `internal/env`(doctor)의 BPF-LSM 감지 결과를 `internal/enforce`가
 소비하도록 인터페이스 조정. 현재 생성 파일 경로는 저장소의 실제 패키지 구성에 맞춘다.

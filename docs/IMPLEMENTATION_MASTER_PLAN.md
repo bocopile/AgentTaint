@@ -995,19 +995,30 @@ AgentTaint/
 
 **최소 진행 경로:** 관련 PRE 정합성 정리 → P0 → P1 → P2 → P3 → P4 → V-01. ENV-01/02는 P2 전에 준비하고, TOOL-01/02는 개발 보조 경로다. 외부 스킬·메모리 서버의 설치 실패가 portable P0/P1의 필수 의존성이 되지 않게 한다. 단계 사이의 기존 완료 보고·범위 확인은 생략하지 않는다.
 
-**2026-10-24 현재 순차 실행 항목:**
+**2026-10-25 현재 작업 순서 — 테스트 실행은 마지막 배치로 보류:**
 
-1. **P2-FU-01 — process lifecycle lookup 후속: 완료.** `20cdee1`에서 `on_process_fork`가 parent TID map lookup miss 시 parent TGID를 조회한다. guest `TestProcessObserverThreadLifecycle` 및 CPU 1 affinity의 전체 sensor package는 PASS했다. 뒤이은 P2-FU-02에서 file/network observer worker-thread scope miss도 보완했다.
-2. **P2-FU-02 — file/network worker-thread scope 후속: 완료.** `2c775ba`에서 file/network current process lookup이 TID scope miss 시 같은 프로세스 TGID를 조회한다. aarch64 guest의 `TestFileAndConnectObserver` 비고정 3회, CPU 0, CPU 1 실행 모두 PASS했다. 통합 전체 acceptance에서도 root sensor package가 PASS했다.
-3. **P4-04 — 미완료.** 통합 acceptance 명령은 PASS했지만 실제 path-capture loss가 `AuditCoverage=incomplete`를 만들었다. §12.10의 사용자 승인 S25 결정은 no-loss audit evidence 전까지 S25/P4-04 acceptance를 미완료로 둔다. fail-closed incomplete 경로 통과만으로 완료 처리하지 않는다.
-4. **V-01 — 초안 작성, 미완료.** Source→Label→Propagation→Sink→Decision의 구현 경로와 event/decision 시점을 concrete tests 및 guest evidence에 대조했다. 다만 no-loss audit 기준 미충족 외에도 `docs/ARCHITECTURE.md` 및 `prompts/04-linux-enforcement.md`의 BPF source/file-scope 설명이 현재 구현 경로와 다르다는 PRE-01의 규범 정합성 항목이 남아 있어, 문서 계약을 사용자와 확정하기 전에는 최종 보장 감사로 승인하지 않는다.
-5. **통합 재검증: acceptance 명령 통과, P4 acceptance 미완료.** P2-FU-01/02와 P4-04 fixture를 포함한 통합 HEAD에서 BPF generate, `go vet ./...`, `go build ./...`, 비특권 전체 테스트, root runner, root 나머지 package, 필수 exit-delete 및 S25 outer test가 PASS했다. root runner는 capture loss를 숨기지 않고 incomplete를 보고하며 verdict/action 억제를 검증한다. no-loss audit 보장은 이 결과로 주장하지 않는다.
-6. **V-01 확정:** 아래에 기록한 source-path 불일치의 최소 수정 방향을 사용자와 확정한 뒤 최종 claim-to-test 표와 Required Final Report를 닫는다.
-7. **CI-01/CI-02:** portable 원격 CI와 격리 Linux BPF job은 각각 승인된 workflow 범위 및 guest/runtime 검증과 연결해 진행한다.
-8. **DOC-01 → REL-01 → REL-02 → F5/REL-03:** 사용자/운영 문서, 산출물 검토, 배포 결정과 제한된 시범 사용을 순서대로 수행한다.
-9. **Phase 5~8:** Linux MVP 이후 macOS observer → rich flow → Kubernetes → agent feedback 순으로 상세화·구현한다. 각 단계의 선행 계약과 승인 범위를 먼저 확인한다.
-10. **F9 / Phase 9 대시보드:** Phase 0~8 완료 후 이벤트/정책 결과의 저장·조회 계약을 설계하고 별도 Phase prompt를 상세화한 뒤, 같은 바이너리의 로컬 브라우저 뷰어를 구현한다. 클라우드/SaaS는 현재 계획에 포함하지 않는다.
-11. **F10 / Phase 10:** payload-aware LLM sink는 조건부 항목으로 유지하며 실제 필요성과 별도 승인이 있기 전에는 착수하지 않는다.
+완료 증거는 위 task table과 날짜별 실행 기록을 따른다. 아래 목록은 구현·문서·도구 설정 작업이며 테스트 실행, verifier/load/attach acceptance, 원격 CI 실행은 마지막 batch gate에서 수행한다. 각 항목의 코드·문서 작성은 지금 진행하고, 검증 결과가 필요한 완료 표시는 batch 이후에만 갱신한다.
+
+| 순서 | 항목 | 테스트를 제외한 작업 | batch gate 전 상태 |
+|---|---|---|---|
+| 1 | MCP-01 token 효율 | 기존 OSS `codebase-memory-mcp`를 기본 코드 검색에 적용하고 좁은 graph query·심볼 snippet·응답 필터링 규칙을 AGENTS.md에 추가. `Repomix`는 scope 지정 인계 자료에만 선택 사용하고, 보안 규범·코드에는 lossy compressor를 쓰지 않음. | 적용 중; 토큰 절감률은 측정하지 않음 |
+| 2 | PRE-01 / P4-04 source layout | `ARCHITECTURE.md` BPF tree 및 Phase 4 prompt의 In Scope/Files를 syscall observer assembly/include 경로와 active LSM enforcement source로 구분해 현 구현에 맞춤. | 사용자 승인됨; 문서 변경 진행 대상 |
+| 3 | P4-04 no-loss path capture | syscall-entry capture 실패 시 pending에 보존한 동일 user pointer를 syscall-exit에서 한 번 재시도하는 최소 보완을 적용. raw syscall pathname 의미와 kernel 5.13+ 하한을 보존하고, 재시도 실패는 기존 `incomplete`로 남긴다. resolved path로 `resource.path`를 대체하지 않음. | 구현 반영; no-loss acceptance는 guest batch 전까지 미검증 |
+| 4 | PRE-02 | 채택 기본안·허용 파일 경로·보장 표를 현재 ARCH/SECURITY/Phase prompt와 대조하고 서로 다른 범위를 정합화. | 미착수 |
+| 5 | TOOL-01/02/03 및 MCP-01 잔여 문서 | 이미 저장소에 있는 전용 skills와 agent 역할/인계 규칙의 source·scope·output contract를 정리. Runtime discovery/행동 acceptance는 batch에서 수행. | 문서·정적 정리 진행; runtime 확인 보류 |
+| 6 | CI-02 authoring / CI-01 remote gate | Linux BPF workflow는 격리·일회성 runner 및 artifact/cache 경계를 확인한 뒤 작성한다. 현 세션에는 해당 runner 설정 증거가 없으므로 self-hosted runner를 등록하거나 외부 PR 코드를 실행하지 않는다. CI-01 portable 원격 run은 batch 후보의 정확한 commit에서 별도 GitHub 실행 승인·접근이 확인될 때 수행한다. | runner·remote CI 미검증; workflow 작성과 외부 실행은 환경 근거 전까지 보류 |
+| 7 | V-01 / DOC-01 / REL-01 준비 | 지원 보장 claim-to-test 표, user/operations guide, artifact/source mapping·checksum·SBOM/license manifest 초안을 작성. 런타임 근거가 없는 항목은 `not_tested`로 둠. | P4 no-loss gate 이후 확정 |
+| 8 | REL-02 / REL-03 | install/update/rollback 및 제한된 pilot의 실행 계획·복구 절차를 작성. 실제 배포·외부 공유는 별도 승인 전 수행하지 않음. | V-01/REL-01 이후 |
+| 9 | F5~F9 | Linux MVP 이후 VM UX, rich-flow, Kubernetes, feedback interface, local dashboard를 각 선행 Phase와 저장·조회 계약에 따라 상세화. | 선행 Phase 미완료라 설계·구현 보류 |
+| 10 | F10 | payload-aware metadata 필요성만 검토하고 자동 착수하지 않음. | 조건부, 별도 승인 필요 |
+
+**마지막 검증 배치:** 모든 non-test 작업이 후보 HEAD에 반영된 뒤 정확한 commit에서 `gofmt`/diff 확인, `go vet ./...`, `go build ./...`, 전체 portable tests, guest `make linux-acceptance`, 필요 workflow의 Linux/macOS CI를 순서대로 한 번 실행한다. P4 no-loss path capture가 통과하지 못하면 P4-04/V-01은 미완료로 유지하고 해당 원인에 필요한 검증만 다시 실행한다. 과거 통합 acceptance PASS는 현재 후보의 새 batch 결과로 재사용하지 않는다.
+
+**P2 follow-up 기록:** P2-FU-01은 `20cdee1`에서 `on_process_fork` parent TID miss 시 tracked TGID를 조회한다. P2-FU-02는 `2c775ba`에서 file/network observer TID scope miss 시 같은 process TGID를 조회한다. aarch64 guest의 `TestFileAndConnectObserver` 무고정 3회와 CPU 0/1 고정 실행, 이후 통합 acceptance sensor 단계가 통과했다. 상세 로그는 문서 끝의 2026-10-24 기록에 있다.
+
+**P4 현 상태:** 이전 통합 acceptance 명령은 pass했지만 path-capture loss가 실제로 관측됐다. §12.10 사용자 승인 결정의 no-loss audit acceptance는 충족되지 않았으므로 현재 P4-04는 계속 미완료다. path capture 구현 수정 후 마지막 batch에서 다시 판정한다.
+
+**OSS 기반 토큰 사용 절감 적용:** 이 저장소의 OSS `codebase-memory-mcp`를 코드 탐색 기본 경로로 적용했다. 현재 세션에서 graph status 확인 후 좁은 `search_graph`와 정확한 심볼 `get_code_snippet`을 사용하고, 출력은 필요한 source/metadata만 추렸다. `AGENTS.md`에는 검색 범위 제한·출력 필터링·원문 보존 규칙을 기록했다. 추가 묶음이 필요할 때는 [Repomix](https://github.com/yamadashy/repomix)의 파일 선택/표준입력 기능을 선택적으로 사용하되 전체 저장소 팩을 기본 생성하지 않는다. [LLMLingua](https://github.com/microsoft/LLMLingua)는 의미 압축의 검토 비용과 의미 손실 가능성 때문에 규범 문서·BPF 코드·정책·acceptance assertion에 적용하지 않는다. 현재 전후 토큰 계측 baseline이 없어 절감률이나 비용 절감 수치는 주장하지 않는다.
 
 ### 12.2 문서 정합성 준비 작업
 
@@ -2844,6 +2855,8 @@ E04의 동기 커널 전파 변경, native Mac, Kubernetes, 공개 배포·licen
 - **대안 조사 — resolved-path LSM capture, 미승인·미실행:** Linux v5.13의 BPF LSM은 `file_open`을 sleepable hook으로 분류하고([v5.13 `bpf_lsm.c`](https://github.com/torvalds/linux/blob/v5.13/kernel/bpf/bpf_lsm.c#L118-L139)), `bpf_d_path()`의 verifier 허용 조건은 sleepable LSM을 포함한다([v5.13 `bpf_trace.c`](https://github.com/torvalds/linux/blob/v5.13/kernel/trace/bpf_trace.c#L775-L831)). 따라서 `file_open(struct file *file)`에서 `file->f_path`를 고정 길이 버퍼로 렌더링하면 해당 hook에 도달하는 open의 syscall-entry user pathname no-fault 복사 경로를 피할 수 있는 후보가 된다. Linux v7.0의 `do_dentry_open()`은 경로가 `file->f_path`에 놓인 상태에서 `security_file_open()`을 호출하지만, 그 뒤 fsnotify permission·lease·filesystem `->open()`이 실패할 수 있어 LSM record 자체는 성공한 `FileOpen`이 아니라 open attempt다([v7.0 `fs/open.c`](https://github.com/torvalds/linux/blob/v7.0/fs/open.c#L836-L954)). 현재 Phase 2 completed-success 의미를 유지하려면 현재 pending `openat`/`openat2` syscall과 identity를 매칭한 뒤 성공한 syscall exit에서만 event를 내보내야 한다. `file_open`에 도달하기 전 실패한 lookup/잘못된 pointer는 이 경로로 포착할 수 없고 `bpf_d_path`의 자체 실패·절단도 별도 incomplete coverage로 다뤄야 하므로, 이는 모든 FileOpen 경로를 완전하게 만드는 대안은 아니다. 또한 `d_path`는 user가 전달한 raw path 대신 dirfd·상대경로·symlink lookup 뒤의 rendered path를 줄 수 있어 기존 exact raw-path matching 및 Phase 4 source matcher 계약을 바꾼다. 보안 의미를 보존하려면 resolved path를 기존 raw `resource.path`와 혼합하지 않고 출처가 분명한 별도 정보로 표현해야 하며, 이를 taint/policy matching에 사용하는 범위는 PRE-02 규범 결정을 요구한다. BPF-LSM 활성 설정도 필요하고, kernel/namespace 경계·rename·mount에 대한 안정 파일 identity를 보장하지 않는다. 그러므로 이 방법은 가능성 조사일 뿐 구현 승인·verifier/load/attach·runtime 증거가 아니다.
 
 **S25 결정 — 현 범위 유지, 2026-10-23 사용자 승인:** 지원 kernel floor `5.13+`와 raw syscall pathname 의미를 바꾸지 않는다. helper path capture가 불완전하면 현재처럼 `AuditCoverage=incomplete`로 표시한다. 이 선택은 수집 방식·kernel floor 재설계 승인이 아니며, S25 complete audit acceptance를 충족시키지 않는다. S25 및 P4-04의 해당 acceptance는 Linux 검증에서 누락 없는 감사 기록이 증명되기 전까지 미완료다. resolved-path LSM 값을 기존 `resource.path`에 혼합하지 않는다. 향후 재설계 제안은 별도 설계·호환성 검토와 사용자 결정이 필요하다.
+
+**S25 path-capture 보완 — syscall-exit retry, 2026-10-25:** 승인된 5.13+ 하한과 raw syscall pathname 의미를 유지하며, syscall-entry의 nofault 사용자 복사가 실패했을 때 pending record에 저장한 동일 사용자 주소를 syscall-exit에서 한 번 더 읽도록 `bpf/file.bpf.c`를 보완했다. syscall 내부에서 페이지 fault-in된 뒤의 재시도는 기존 `-EFAULT`/성공 조합을 회복할 수 있는 최소 수정이며, resolved path를 사용하지 않는다. 재시도도 실패하면 기존 diagnostic과 `AuditCoverage=incomplete`를 유지한다. 사용자 버퍼가 syscall 수행 중 다른 thread에 의해 변경되는 경쟁까지 raw pathname의 원자적 동일성을 보장하지 않으므로 이 코드는 no-loss 증거가 아니다. Linux guest에서 S25와 성공·실패 path-capture acceptance를 마지막 검증 batch에서 확인하기 전까지 P4-04/V-01은 미완료다.
 
 **지원 하한 후보의 backport 조건 — 조사, 미승인:** 2026-04-22 mainline merge는 sleepable raw/classic tracepoint runtime·verifier 변경과 `tp_btf.s`/`raw_tp.s`/`tp.s` libbpf section handler를 묶어 추가했다([mainline merge](https://kernel.googlesource.com/pub/scm/linux/kernel/git/torvalds/linux/%2B/e85115ff37f20d5c64ffbfd911d67f3686e2472d)). 하지만 2026-08 Linux 7.1.y stable 논의는 해당 stable 계열에 libbpf handler와 kernel runtime 구성요소가 빠져 있었고, 이후 불완전한 backport 조합에서 faultable tracepoint BPF 실행 문제가 보고됐다고 기록한다([7.1.y review](https://lists.openwall.net/linux-kernel/2026/08/06/1954), [follow-up](https://lkml.iu.edu/2608.2/00274.html)). 고정 의존성인 cilium/ebpf v0.22.0의 ELF section 목록에도 `tp_btf.s`/`raw_tp.s` handler가 없으며([section parser](https://github.com/cilium/ebpf/blob/v0.22.0/elf_sections.go#L40-L61)), `ProgramSpec.Flags`로 `BPF_F_SLEEPABLE`을 직접 요청할 수 있다는 사실만으로 kernel verifier·attach 지원이 성립하지 않는다([program flags](https://github.com/cilium/ebpf/blob/v0.22.0/prog.go#L139-L147)). 따라서 **설계상 추론:** 최소 버전을 단순히 7.1로 올려도 stable/backport 커널 전반의 호환성이 보장되지는 않는다. 이 경로를 채택한다면 kernel runtime, verifier, libbpf/program loader section parsing을 함께 지원하는지 실제 capability/load 확인이 필요하고, helper가 모든 사용자 주소 오류를 없애거나 S25 acceptance를 충족한다고 볼 수 없다. 이 조사는 kernel floor 변경을 승인하지 않으며 Linux guest에서 검증한 결과도 아니다.
 

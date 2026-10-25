@@ -104,6 +104,7 @@ struct agenttaint_raw_network_connect {
 
 struct agenttaint_pending_file_open {
 	__u64 monotonic_ns;
+	__u64 user_path;
 	struct agenttaint_raw_process process;
 	char path[AGENTTAINT_EXEC_PATH_LEN];
 	__u8 flags;
@@ -112,7 +113,7 @@ struct agenttaint_pending_file_open {
 	__s32 path_read_result;
 };
 
-_Static_assert(sizeof(struct agenttaint_pending_file_open) == 320,
+_Static_assert(sizeof(struct agenttaint_pending_file_open) == 328,
 	       "pending file-open map ABI");
 
 enum agenttaint_file_syscall_kind {

@@ -130,6 +130,14 @@ Decision)이 완성되기 전에는 Kubernetes 관련 기능을 구현하지 않
 **절대 스코프를 조용히 늘리지 않는다.** 현재 Phase의 "Out of Scope"에
 있는 것은 다음 Phase를 기다린다.
 
+## Token-efficient Code Discovery
+
+- 코드 발견은 연결된 OSS `codebase-memory-mcp` graph부터 사용한다: 좁은 `search_graph` → 필요한 경우 `trace_path` → 정확한 심볼의 `get_code_snippet` 순서로 조회한다.
+- `file_pattern`, `path_filter`, `limit`으로 검색 범위를 제한한다. `bpf/vmlinux.h` 같은 생성 헤더 전체나 무관한 파일의 full source를 한 번에 반환하지 않는다.
+- MCP 결과는 필요한 심볼명·파일·라인·본문만 추려서 사용한다. 응답 전체 JSON이나 원시 로그를 대화에 복사하지 않는다. graph가 부족하면 `rg`/`sed`로 해당 경로와 좁은 줄 범위만 조사한다.
+- `Repomix`는 구조 검색으로 해결되지 않는 인계용 묶음이 필요할 때만 파일 목록을 명시해 사용한다. 저장소 전체를 기본 입력으로 만들지 않는다.
+- AGENTS.md, SECURITY_MODEL.md, policy/config, eBPF source와 acceptance assertion은 의미 손실이 있는 LLMLingua류 압축을 적용하지 않는다. 요약은 원문을 대체하지 않고 항상 원문 경로·근거를 함께 남긴다.
+
 ## Git / Worktree 작업 규칙
 
 작업 기준은 항상 최신 `main`이다. `main` checkout은 기준선과 최종 통합에만

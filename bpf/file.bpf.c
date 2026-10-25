@@ -107,6 +107,8 @@ static __always_inline void file_enter_openat(const char *filename, __u64 flags,
 		return;
 	}
 	pending.monotonic_ns = bpf_ktime_get_ns();
+	/* Retry a transient nofault miss after the syscall has resolved the user page. */
+	pending.user_path = (__u64)filename;
 	pending.access = file_access_from_flags(flags, flags_valid);
 	pending.syscall_kind = syscall_kind;
 	long copied = bpf_probe_read_user_str(pending.path, sizeof(pending.path), filename);
@@ -129,6 +131,21 @@ static __always_inline void file_exit_openat(long result)
 	struct agenttaint_pending_file_open *pending = bpf_map_lookup_elem(&pending_file_opens, &tid);
 	if (!pending)
 		return;
+	if (pending->flags & AGENTTAINT_PENDING_PATH_CAPTURE_FAILED) {
+		/* Keep the original user pathname; do not substitute a resolved kernel path. */
+		long copied = bpf_probe_read_user_str(pending->path, sizeof(pending->path),
+						     (const char *)(unsigned long)pending->user_path);
+		if (copied > 0) {
+			pending->flags &= ~AGENTTAINT_PENDING_PATH_CAPTURE_FAILED;
+			pending->path_read_result = (__s32)copied;
+			if (copied >= sizeof(pending->path))
+				pending->flags |= AGENTTAINT_PATH_TRUNCATED;
+			if (pending->path[0] != '/')
+				pending->flags |= AGENTTAINT_PATH_RELATIVE;
+		} else {
+			pending->path_read_result = (__s32)copied;
+		}
+	}
 	if (pending->flags & AGENTTAINT_PENDING_PATH_CAPTURE_FAILED) {
 		struct agenttaint_raw_file_open *diagnostic =
 			bpf_ringbuf_reserve(&process_events, sizeof(*diagnostic), 0);

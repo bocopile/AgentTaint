@@ -43,8 +43,8 @@ AgentTaint/
 │   ├── sensor/
 │   │   ├── linux/                # Linux eBPF observer와 raw event decode/normalization
 │   │   │   ├── doc.go, sensor.go, raw.go
-│   │   │   ├── process_bpfel.go / process_bpfel.o  [생성]
-│   │   │   └── process_bpfeb.go / process_bpfeb.o  [생성]
+│   │   │   ├── process_bpfel.go / process_bpfel.o  [process.bpf.c 생성]
+│   │   │   └── process_bpfeb.go / process_bpfeb.o  [process.bpf.c 생성]
 │   │   └── darwin/                # Phase 5+ 자리만 확보. v0.1은 미구현 (VM 우회)
 │   │
 │   ├── taint/                    # Canonical Go reference propagation (Source→Label→Propagation)
@@ -70,10 +70,10 @@ AgentTaint/
 │       └── runner.go
 │
 ├── bpf/                          # eBPF C 소스 (CO-RE)
-│   ├── process.bpf.c             # tracepoint: fork/exec/exit
-│   ├── file.bpf.c                # LSM/tracepoint: file open
-│   ├── network.bpf.c             # LSM: socket connect
-│   ├── enforce.bpf.c              # 제한된 pre-operation enforcement
+│   ├── process.bpf.c             # observer object 조립; process tracepoint + file/network include
+│   ├── file.bpf.c                # process.bpf.c에 포함되는 file syscall tracepoint observer
+│   ├── network.bpf.c             # process.bpf.c에 포함되는 connect tracepoint observer
+│   ├── enforce.bpf.c             # 별도 BPF-LSM object: bounded source projection + pre-op sink decision
 │   ├── maps.h
 │   ├── events.h
 │   └── vmlinux.h                 # 생성물, 직접 작성하지 않음
@@ -346,24 +346,27 @@ entitlement·서명·배포 및 공증(notarization) 요건을 별도로 검토�
 것보다, Linux 백엔드를 제대로 만들고 macOS 사용자는 VM으로 우회하게
 하는 편이 정직하고 실행 가능하다.
 
-## Event Pipeline
+## Observer와 Enforcement 경로
 
 ```
-bpf/*.bpf.c (kernel)
-        │  BPF_MAP_TYPE_RINGBUF
+Observer: bpf/process.bpf.c (+ file.bpf.c, network.bpf.c include)
+        │  process_bpf*.o / BPF_MAP_TYPE_RINGBUF
         ▼
-internal/sensor/linux (userspace, cilium/ebpf)
-        │  internal/core.Event (Event Schema, SECURITY_MODEL.md)
-        ▼
-internal/taint (라벨 전파) → internal/policy (평가)
-        │
-        ▼
-internal/enforce → ALLOW / AUDIT / DENY  +  구조화 로그
+internal/sensor/linux → internal/core.Event → internal/taint → internal/policy
+
+Enforcement: bpf/enforce.bpf.c → internal/enforce/enforce_bpfel*.o
+        ├─ BPF-LSM source hook: bounded kernel-state projection
+        └─ BPF-LSM sink hooks: supported pre-operation decision
 ```
 
-로컬 실행과 향후 Kubernetes DaemonSet 배포는 이 파이프라인을 그대로
-공유한다. 배포 방식만 다르다 (단일 프로세스 vs 노드당 1개 DaemonSet +
-cgroup→pod 매핑).
+Observer object는 `internal/sensor/linux/doc.go`의 `go:generate`가
+`bpf/process.bpf.c`를 입력으로 생성한다. `process.bpf.c`는 `file.bpf.c`와
+`network.bpf.c`를 include하므로 이 파일들은 현재 별도 object가 아니다.
+Enforcement object는 `internal/enforce/doc.go`의 별도 `go:generate`가
+`bpf/enforce.bpf.c`에서 생성한다. 따라서 file/connect 관찰용 syscall
+tracepoint와 active BPF-LSM enforcement hook의 source 파일·생성 object를
+혼동하지 않는다. 로컬 실행과 향후 Kubernetes DaemonSet 배포는 이 경로를
+공유하며 배포 방식만 다르다.
 
 ## 향후: 로컬 웹 대시보드 (스텁)
 
