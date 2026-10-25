@@ -1022,6 +1022,8 @@ AgentTaint/
 
 **2026-10-25 path-capture implementation 준비:** 기존 `ebpf-lab` guest Linux `7.0.0-28-generic`, aarch64에서 Go 1.26.8, clang 21.1.8(BPF/BPFEL/BPFEB target), bpftool 7.7.0 및 readable kernel BTF를 확인했다. branch `33ea081`의 source로 `go generate ./internal/sensor/linux`을 실행해 `process_bpfel.go/.o`와 `process_bpfeb.go/.o`를 재생성했다. clang compile은 성공했고 기존 vmlinux.h의 forward declarations에서 warning만 나왔다. 이후 verifier/load/attach, 실제 open event, no-loss fixture, 전체 test suite는 실행하지 않았다. 생성물을 현재 통합 worktree에 복사했으며 해당 object는 guest kernel BTF에서 직접 재생성된 vmlinux.h를 사용하지 않고 저장소의 기존 `bpf/vmlinux.h` 입력을 사용했다.
 
+**2026-10-25 path-capture batch 결과 및 수정:** candidate `1fe6319`에서 `make BUILD_DIR=.build-integration linux-acceptance`를 시작했다. `go generate`, `go vet`, `go build`, portable `go test -count=1 ./...`가 통과했고, privileged runner에서 새 `getname_flags` probes의 load/attach를 거쳐 mmap target의 `openat` 성공까지 도달했다. 기존 `TestRunObservedMmapPathReadFault`가 이전 설계의 `-EFAULT` diagnostic 및 incomplete 상태를 강제해, 경로를 회수하고 complete coverage를 반환한 결과를 실패로 오판했다. fixture를 exact raw target pathname이 audit file에 있고 RunObserved가 complete/exit 0을 반환하는지 확인하도록 수정했다. 이 수정 반영 후 full final batch를 다시 실행해야 하며 P4-04/V-01은 아직 미완료다.
+
 ### 12.2 문서 정합성 준비 작업
 
 **대상:** PRE-01, PRE-02. 제품 코드 구현 전 또는 관련 Phase 착수 전에 필요한 계약을 정리한다.

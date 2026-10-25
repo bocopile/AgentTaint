@@ -286,9 +286,8 @@ func s25SkipUnlessRequired(t *testing.T, required bool, reason string) {
 }
 
 // TestRunObservedMmapPathReadFault creates a file-backed pathname page in the
-// target and drops its user mapping before one raw openat. On kernels where the
-// BPF no-fault helper reports -EFAULT while the syscall faults the page back in,
-// the target's success marker and the observer's diagnostic must agree.
+// target and drops its user mapping before one raw openat. It verifies that the
+// observer recovers the kernel-copied raw pathname and completes audit coverage.
 func TestRunObservedMmapPathReadFault(t *testing.T) {
 	requireBPF := s25RequiredBPFMode(t)
 	if runtime.GOOS != "linux" || runtime.GOARCH != "arm64" {
@@ -372,32 +371,18 @@ func TestRunObservedMmapPathReadFault(t *testing.T) {
 	if !strings.Contains(stdout.String(), "PASS") {
 		t.Fatalf("target test process did not exit successfully: runner_code=%d err=%v stdout=%q stderr=%q", code, runErr, stdout.String(), stderr.String())
 	}
-	if runErr == nil {
-		t.Fatal("target openat succeeded, but RunObserved reported complete audit coverage without the expected no-fault helper diagnostic")
+	if runErr != nil {
+		t.Fatalf("RunObserved reported incomplete audit coverage after pathname recovery: code=%d err=%v stdout=%q stderr=%q", code, runErr, stdout.String(), stderr.String())
 	}
-	if !strings.Contains(runErr.Error(), "audit coverage is incomplete:") {
-		t.Fatalf("RunObserved failed outside the expected diagnostic coverage report: code=%d err=%v stdout=%q stderr=%q", code, runErr, stdout.String(), stderr.String())
+	if code != 0 {
+		t.Fatalf("RunObserved did not complete the recovered pathname audit successfully: code=%d", code)
 	}
-	if code != 1 {
-		t.Fatalf("RunObserved did not report incomplete coverage with its runner status: code=%d err=%v", code, runErr)
+	audit, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatalf("read completed audit output: %v", err)
 	}
-	want := "file-openat-path-read-helper-errno-14-syscall-success="
-	foundDiagnostic := false
-	for _, line := range strings.Split(runErr.Error(), "\n") {
-		const prefix = "audit coverage is incomplete: "
-		index := strings.Index(line, prefix)
-		if index < 0 {
-			continue
-		}
-		for _, reason := range strings.Split(strings.TrimSpace(line[index+len(prefix):]), ", ") {
-			if strings.HasPrefix(reason, want) {
-				count, parseErr := strconv.ParseUint(strings.TrimPrefix(reason, want), 10, 64)
-				foundDiagnostic = parseErr == nil && count > 0
-			}
-		}
-	}
-	if !foundDiagnostic {
-		t.Fatalf("target openat succeeded, but this kernel produced no matching -EFAULT/syscall-success diagnostic: got %v", runErr)
+	if !strings.Contains(string(audit), targetPath) {
+		t.Fatalf("audit output does not contain the exact raw pathname recovered from the mmap page: want %q, audit=%q", targetPath, audit)
 	}
 }
 
