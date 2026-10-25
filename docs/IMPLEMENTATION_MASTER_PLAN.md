@@ -4,7 +4,7 @@
 
 최초 분석 기준: `bocopile/AgentTaint`의 `5cc919dadb0a86ea5ec00c794ed07918ccc42d9a`
 
-상태: **2026-10-25 작업 계획 snapshot. Linux arm64 MVP의 P4-04/V-01 acceptance는 candidate `b0d482b`, Linux 7.0.0-28 aarch64 guest의 지정 fixtures에서 완료했다. INT-01 통합 acceptance는 코드 HEAD `1a059e7`에서 통과했고, 독립 diff/security review는 integration HEAD `7a43093`에서 blocker 없이 완료했다. `979f5db`, `a0db503`, `7a43093`은 acceptance와 검토 결과를 기록한 문서 commit이다. amd64 runtime은 미지원이며 ARCH-01로 이연한다. `main`은 작업 시작 시 clean `d50981a`였고, integration 반영 대기 중이다. 외부 dirty P4 worktree의 다섯 파일은 보존한다. 현재 권위 있는 잔여 작업과 Git 실행 순서는 12.14절을 따른다.**
+상태: **2026-10-25 작업 계획 snapshot. Linux arm64 MVP의 P4-04/V-01 acceptance는 candidate `b0d482b`, Linux 7.0.0-28 aarch64 guest의 지정 fixtures에서 완료했다. INT-01 통합 acceptance는 코드 HEAD `1a059e7`에서 통과했고, 독립 diff/security review는 integration HEAD `7a43093`에서 blocker 없이 완료했다. status 기록 commit `979f5db`/`a0db503`, 잔여 snapshot 문구 보정 `7a43093` 이후 최종 main은 `13505c7`이며 원격 push를 마쳤다. amd64 runtime은 미지원이며 ARCH-01로 이연한다. 외부 dirty P4 worktree의 다섯 파일은 보존한다. 현재 권위 있는 잔여 작업과 Git 실행 순서는 12.14절을 따른다.**
 
 이 문서는 제품 철학 분석, macOS 사용 가능성, `addyosmani/agent-skills` 도입 검토, 아키텍처, 언어, 디렉터리, 작업 목록, 검증 기준과 사용자 결정 사항을 한 곳에 모은다. 다른 AI가 새로운 세션에서 읽고 현재 작업을 식별할 수 있도록 작성했다. 최초 분석 당시에는 제품 코드·Go 모듈이 없었다. **현재 실행 상태와 우선순위는 12.14절 snapshot이 기준이며, 12.10~12.13절의 날짜가 붙은 기록과 2절 조사는 당시 상태를 보존한다.**
 
@@ -3041,7 +3041,8 @@ Do not implement it. arm64 MVP의 다음 작업은 CI-01/02 원격·격리 검�
 |---|---|---|---|
 | 0 / INT-00 — 완료 | dirty P4 acceptance worktree의 5개 파일을 integration과 읽기 전용 대조했다. 3개 파일은 integration과 동일하고, plan은 stale이며, runner acceptance test 변경은 별도 review가 필요하다. | 완료; 기존 변경 모두 보존 | 비교 결과만 이 절에 기록했다. dirty worktree에 branch/commit을 만들거나 수정하지 않았다. |
 | 1 / PRE-01·PRE-02 완료 | PRE-01의 status/link/example 감사와 PRE-02의 G1/G2/G4/D05 문서 계약 대조를 끝냈다. 실제 audit disk/cap failure-injection evidence는 별도 acceptance에 남긴다. | 문서 정합성 완료. audit disk/cap failure-injection은 별도 미검증이며 P2-FU-03 acceptance는 INT-01에서 통과 | PRE-01/PRE-02 task commits를 integration에 순서대로 반영했다. 후속 문서 수정은 새 task branch/worktree에서 한다. |
-| 2 / INT-01 — 완료 | P2-FU-03와 현재 코드 통합 acceptance는 `1a059e7`에서 통과했고, 독립 diff/security review는 `7a43093`에서 blocker 없이 통과했다. stale status 문구를 정정했다. exact guest archive 및 검증 결과는 위 기록을 따른다. | INT-00 ownership 분류와 DOC-00/PRE 문서 작업 완료. G1 disk/cap failure-injection은 계속 별도 미검증이다. | `codex/phase4-integration-20261024`에 전용 task branch를 순서대로 fast-forward 통합했다. integration은 green gate 후 main fast-forward 및 사용자 요청에 따른 push가 가능하다. |
+| 2 / INT-01 — 완료 | P2-FU-03와 현재 코드 통합 acceptance는 `1a059e7`에서 통과했고, 독립 diff/security review는 `7a43093`에서 blocker 없이 통과했다. stale status 문구를 정정했다. exact guest archive 및 검증 결과는 위 기록을 따른다. | INT-00 ownership 분류와 DOC-00/PRE 문서 작업 완료. G1 disk/cap failure-injection은 계속 별도 미검증이다. | 통합 branch는 main `13505c7`에 fast-forward됐고 `origin/main`에 push했다. |
+| 2a / INT-02 — 다음 | G1 감사 writer의 disk/write failure와 output cap failure-injection을 실행한다. 현재 문서 계약이 요구하는 sticky failure·실패 결과를 확인하고 성공·완전한 audit로 오인되지 않는지 검증한다. | INT-01 완료. failure-injection 구현/test 존재 여부는 preflight에서 확인하며 규범 계약을 바꾸지 않는다. | `codex/int-02-g1-failure-20261025` / `.worktrees/int02-g1-failure`; task branch에서 최소 변경 후 전용 integration에 순차 반영하고 영향 검증을 한 번 실행한다. |
 | 3 / TOOL-01~03, MCP-01 | 사용자가 요청한 토큰 절감 검토를 포함해 도구 후보를 조사하고, 압축 품질·비용·보안 경계·라이선스를 실제 근거로 평가한다. 필요한 최소 도구만 별도 승인 및 안전 설계 뒤 도입한다. MCP 추가는 현재 codebase-memory MCP가 못 채우는 요구가 입증될 때만 완료로 본다. | PRE 감사와 도구 요구 정의. 외부 도구 설치나 자동 호출 정책 변경은 별도 승인 필요 | 카드마다 전용 branch/worktree를 쓰고, 조사 문서와 구현을 분리한다. 도입 후보가 없으면 증거를 남기고 `not_needed`로 닫는다. |
 | 4 / CI-01 | 저장소의 portable 검사·재현성 원격 검증 계약을 정리하고 지정 원격 job에서 통과시킨다. | TOOL 및 현재 acceptance 계약 정리 | `codex/ci-ci01-<slug>` / `.worktrees/ci-ci01`; workflow 권한은 해당 CI 카드가 허용한 파일로 제한한다. 결과 artifact와 source commit을 함께 기록한다. |
 | 5 / CI-02 | 격리된 Linux BPF 검증 job을 구성해 verifier와 필수 scenario를 재현하고 잔류 자원 정리를 확인한다. | CI-01, P2-04, 13.7절. 현재 문서상 승인 범위 충돌 시 구현 전 확인 | `codex/ci-ci02-<slug>` / `.worktrees/ci-ci02`; 전용 runner/권한을 먼저 검증하고 일반 CI에 privileged BPF를 섞지 않는다. |
@@ -3071,5 +3072,5 @@ Do not implement it. arm64 MVP의 다음 작업은 CI-01/02 원격·격리 검�
 
 1. INT-00의 읽기 전용 분류는 완료했다. 외부 dirty 변경은 owner/review 확인 전까지 그대로 둔다.
 2. PRE-01/02 문서 작업은 완료했다. task branch 변경은 별도로 커밋·push한 뒤 순서대로 integration에 반영했다. 잔여 non-test 작업은 다음 카드 순서에 따라 시작한다.
-3. INT-01 acceptance와 독립 diff/security review는 통과했다. 다음은 integration을 clean main에 fast-forward하고 요청된 push를 수행하는 것이다. 향후 CI/architecture/feature work는 각 의존성 단위가 준비된 뒤 별도 batch로 수용 검증한다.
-4. INT-01은 완료됐다. TOOL-01~03 및 MCP-01의 토큰 사용량 절감 검토·도입 판단을 다음 순서로 진행한다.
+3. INT-01 acceptance와 독립 diff/security review는 통과했고 main `13505c7`에 merge/push했다. G1 failure-injection은 INT-02로 분리했다. 다음은 INT-02 preflight와 검증이다.
+4. INT-02 완료 후 TOOL-01~03 및 MCP-01의 토큰 사용량 절감 검토·도입 판단을 순서대로 진행한다.
