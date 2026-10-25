@@ -272,7 +272,7 @@ func TestDoctorNeverExecutesOrMutates(t *testing.T) {
 	t.Setenv("PATH", pathDir)
 	beforeEnv, beforeFiles := os.Environ(), snapshot(t, root)
 	report := diagnose("darwin", Resolver{[]string{fallback}}, nil, nil)
-	if report.Linux != nil || !strings.Contains(report.Platform, "unsupported") {
+	if report.Linux != nil || !strings.Contains(report.Platform, "require Linux") {
 		t.Fatalf("platform: %+v", report)
 	}
 	if !report.CLIs[0].Found || !report.CLIs[0].AvailableInPath || !report.CLIs[1].Found || report.CLIs[1].AvailableInPath {
