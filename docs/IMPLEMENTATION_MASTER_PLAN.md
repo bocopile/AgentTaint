@@ -957,7 +957,7 @@ AgentTaint/
 | [x] | PRE-02 | 채택 기본안·허용 경로를 구체화해 규범에 반영 | 4절 기본안, 관련 E 설계 | G1/G2/G4·D05 계약을 ARCHITECTURE/SECURITY/THREAT/Phase 4와 대조; normative conflict 없음. PRE 시점의 disk/cap failure-injection gap은 후속 INT-02에서 검증 |
 | [x] | TOOL-01 | 선택한 외부 스킬 세 개와 reference 도입 | D06 기본안, E01 | pinned source SHA·필요 reference·MIT notice·짧은 local wrappers를 `docs/TOOLING_SKILLS.md`에 기록; fresh Codex CLI 0.164.0 session에서 세 skill 이름/path discovery PASS |
 | [x] | TOOL-02 | 전용 preflight·docs·semantics 스킬 | E01 | `docs/TOOLING_SKILLS.md`의 세 prompt 사례에서 Phase scope·tracepoint semantics·미검증 지원 status 처리 PASS; Codex CLI 0.164.0 ephemeral read-only evaluation |
-| [ ] | TOOL-03 | 서브에이전트 역할·인계·후속 검증 절차 | TOOL-02, 해당 Phase 진입 | 8개 project-agent 이름 discovery는 Codex CLI에서 확인했다. native delegation과 역할별 행동 검증, TOOL-03 도구 인벤토리는 남아 있어 미완료 |
+| [x] | TOOL-03-agent-handoff | 서브에이전트 역할·인계·후속 검증 절차 | TOOL-02 | 8개 project-agent 설정의 역할·write 경계와 9.2절의 작업/evidence/handoff schema를 확인했고 Codex CLI discovery PASS. Native delegation과 각 role 행동은 `not_tested`; 전체 TOOL-03 도구 인벤토리는 별도 잔여 작업 |
 | [ ] | MCP-01 | 기존 MCP·도구 접근과 장애 경계 점검 | 10절, 실제 사용 환경 | 현재 root index 조회·대표 심볼 대조와 graph miss/미등록 project fallback을 확인했다. index commit/time/dirty fingerprint 부재, 실제 transport outage 재현, GitHub 권한 감사는 남아 있어 부분 진행 |
 | [x] | ENV-01 | 기존 ebpf-lab guest readiness 진단 | VM 사용 작업 승인 | guest manifest·기능 표·미검증 항목·재사용 판단 (2026-10-19) |
 | [x] | ENV-02 | 재현 BPF toolchain·생성물 정책 | ENV-01, E07 | 고정 generator·경로·반복 probe hash 일치 (2026-10-19) |
