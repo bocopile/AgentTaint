@@ -104,7 +104,7 @@ AgentTaint/
 ├── .agents/skills/                # AgentTaint 프로젝트 전용 재사용 절차
 │   └── <skill>/
 │       ├── SKILL.md
-│       └── references/             # 필요할 때만 추가하는 정적 참고자료
+│       └── references/             # 정적 참고자료; 채택한 upstream 원문/라이선스 포함 가능
 │
 └── docs/
     ├── ARCHITECTURE.md           # 이 문서
@@ -122,11 +122,14 @@ privileged BPF CI, 스킬 설치 경로 또는 미래 Phase 구현을 허용하�
 
 Codex 프로젝트 설정은 아래 범위만 저장소에 둘 수 있다. `.codex/agents/*.toml`은
 프로젝트 agent 역할 정의, `.agents/skills/<skill>/SKILL.md`와 해당 skill의
-`references/`는 재사용 절차와 정적 참고자료다. 이 허용은 agent 지침을 OS 수준의
-권한 격리로 간주하거나, 전역 설정·MCP·hook·실행 스크립트·플러그인·외부 skill
-복사본·추가 경로를 허용하지 않는다. 새 경로가 더 필요하면 이 문서의 허용 범위를
-먼저 검토한다. 저장소 agent는 현재 작업의 Phase·파일 범위·보안 의미를 따라야 하며,
-검토 역할의 “읽기 전용” 지침만으로 실제 파일 권한이 제한된다고 주장하지 않는다.
+`references/`는 재사용 절차와 정적 참고자료다. 선택 채택한 외부 skill은 provenance와
+license를 기록한 뒤, 고정 upstream 원문 및 필요한 license/checklist를 해당 skill의
+`references/upstream/` 아래 정적 파일로 보관할 수 있다. 이 디렉터리에는 발견 가능한
+`SKILL.md`, 실행 스크립트, 전체 skill catalog를 두지 않는다. 이 제한된 예외는
+agent 지침을 OS 수준 권한 격리로 간주하거나 전역 설정·MCP·hook·플러그인·임의 추가
+경로를 허용하지 않는다. 더 넓은 경로가 필요하면 이 문서의 허용 범위를 먼저 검토한다.
+저장소 agent는 현재 작업의 Phase·파일 범위·보안 의미를 따라야 하며, 검토 역할의
+“읽기 전용” 지침만으로 실제 파일 권한이 제한된다고 주장하지 않는다.
 
 Phase 2에는 위 `bpf/`의 C·헤더 및 생성 `vmlinux.h`,
 `internal/sensor/linux/sensor.go`와 같은 패키지 안의 실제 `bpf2go` 생성

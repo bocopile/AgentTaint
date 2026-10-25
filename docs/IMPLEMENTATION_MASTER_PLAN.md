@@ -689,7 +689,7 @@ Vercel `skills` CLI의 조사 당시 GitHub main package metadata는 `1.7.0`, No
 | `security-and-hardening` | 보조 검토 | 웹 보안 중심 내용만으로 eBPF/IFC 전문 검증을 대체 못함 |
 | `doubt-driven-development` | 중요한 미결정 설계에 명시적으로 선택 | 매 interactive cycle의 cross-model 질문·추가 CLI 조건을 이해하고 사용 |
 
-우선 도입할 범위는 앞의 세 스킬을 제안한다. 실제 구현 단계에서 테스트·API 설계 스킬을 추가한다. 한 번에 모든 스킬을 항상 활성화할 필요는 없다.
+우선 도입 범위인 앞의 세 스킬은 TOOL-01에서 프로젝트별 짧은 wrapper로 적용했다. 전체 upstream 원문과 필요한 reference는 고정 SHA로 보존하고, 실행 시 전체 pack을 자동 활성화하지 않는다. 테스트·API 설계 스킬은 해당 작업 단계에서 필요성을 다시 확인한다.
 
 참고 본문: [source-driven-development](https://github.com/addyosmani/agent-skills/blob/9d0c60d406b454a78ccc0a175b19932047aa4dac/skills/source-driven-development/SKILL.md), [documentation-and-adrs](https://github.com/addyosmani/agent-skills/blob/9d0c60d406b454a78ccc0a175b19932047aa4dac/skills/documentation-and-adrs/SKILL.md), [code-review-and-quality](https://github.com/addyosmani/agent-skills/blob/9d0c60d406b454a78ccc0a175b19932047aa4dac/skills/code-review-and-quality/SKILL.md), [test-driven-development](https://github.com/addyosmani/agent-skills/blob/9d0c60d406b454a78ccc0a175b19932047aa4dac/skills/test-driven-development/SKILL.md), [api-and-interface-design](https://github.com/addyosmani/agent-skills/blob/9d0c60d406b454a78ccc0a175b19932047aa4dac/skills/api-and-interface-design/SKILL.md).
 
@@ -708,7 +708,7 @@ codex plugin marketplace add addyosmani/agent-skills
 codex plugin add agent-skills@agent-skills
 ```
 
-upstream 안내의 최소 CLI는 0.122이고 현재 로컬 0.160.0에 관련 명령이 있다. 설치·검색 성공은 미검증이다. 이 경로는 전체 팩을 다루며, Claude 전용 slash command와 persona가 Codex subagent로 자동 등록되는 것은 아니다. 출처: [고정 Codex 설치 안내](https://github.com/addyosmani/agent-skills/blob/9d0c60d406b454a78ccc0a175b19932047aa4dac/docs/codex-setup.md).
+upstream 안내는 최소 CLI 0.122를 요구한다. 2026-10-25의 `codex --version`은 로컬 CLI `0.164.0`을 확인했으며, 이번 작업은 native plugin이 아니라 프로젝트 `.agents/skills` 경로를 사용했다. native plugin 설치·검색은 미검증이다. 이 경로는 전체 팩을 다루며, Claude 전용 slash command와 persona가 Codex subagent로 자동 등록되는 것은 아니다. 출처: [고정 Codex 설치 안내](https://github.com/addyosmani/agent-skills/blob/9d0c60d406b454a78ccc0a175b19932047aa4dac/docs/codex-setup.md).
 
 **Claude Code plugin 경로**
 
@@ -743,7 +743,7 @@ upstream은 개별 스킬 설치 시 저장소 최상위 `references/`가 누락
 2. 선택 스킬과 필요한 reference만 프로젝트 배포본으로 가져오고 링크를 조정한다. 원본 SHA·라이선스·변경 기록과 업데이트 검토 절차가 필요하다.
 3. 설치하지 않고 프로젝트 전용 검증 절차를 작성할 때 해당 스킬을 참고한다.
 
-D06의 기본안은 2번이다. 초기 세 스킬과 실제 참조하는 파일만 함께 관리하며 원본 SHA·라이선스·로컬 수정 기록을 남긴다. 세 폴더 복사만으로 완료됐다고 보고하지 않는다. 원본 루트의 `AGENTS.md`·`CLAUDE.md`를 AgentTaint의 같은 이름 파일에 덮어쓰지 않는다. upstream 업데이트 시 이 작은 배포본의 변경과 reference를 다시 확인한다.
+D06의 기본안은 2번이다. TOOL-01은 세 개의 짧은 discoverable wrapper, pinned upstream 원문, 실제 참조하는 checklist 두 개를 프로젝트에서 관리한다. 원본 SHA·MIT 라이선스·local adaptation은 `docs/TOOLING_SKILLS.md`에 기록했다. upstream `AGENTS.md`·`CLAUDE.md`는 가져오지 않는다. upstream 업데이트 시 pinned source와 로컬 wrapper/reference를 다시 대조한다.
 
 ### 8.6 자동화 충돌을 방지하는 도입 계약
 
@@ -955,7 +955,7 @@ AgentTaint/
 | [x] | DOC-00 | 2026-10-25 현재 상태·잔여 작업·Git 전략 snapshot 통합 | INT-00 변경 소유권 분류 | 12.14절 기준선·의존성 목록을 integration에 반영하고 문서 diff 검토·`git diff --check` 완료 (integration `9a510f4`) |
 | [x] | PRE-01 | 문서·Phase·예시 불일치 정리안 적용 | 문서 수정 요청 | Phase 2 probe 상태 정합성, Phase 0/1 Roadmap snapshot links, SECRET/PRIVATE_KEY 예시 확인; 92개 local file links와 19개 internal anchors 해소 확인; integration `aff15f2` 이후 `git diff --check` 통과 |
 | [x] | PRE-02 | 채택 기본안·허용 경로를 구체화해 규범에 반영 | 4절 기본안, 관련 E 설계 | G1/G2/G4·D05 계약을 ARCHITECTURE/SECURITY/THREAT/Phase 4와 대조; normative conflict 없음. PRE 시점의 disk/cap failure-injection gap은 후속 INT-02에서 검증 |
-| [ ] | TOOL-01 | 선택한 외부 스킬 세 개와 reference 도입 | D06 기본안, E01 | source SHA·reference 검증·discovery 증거 |
+| [x] | TOOL-01 | 선택한 외부 스킬 세 개와 reference 도입 | D06 기본안, E01 | pinned source SHA·필요 reference·MIT notice·짧은 local wrappers를 `docs/TOOLING_SKILLS.md`에 기록; fresh Codex CLI 0.164.0 session에서 세 skill 이름/path discovery PASS |
 | [ ] | TOOL-02 | 전용 preflight·docs·semantics 스킬 | E01 | 세 개의 좁은 검증 절차 |
 | [ ] | TOOL-03 | 서브에이전트 역할·인계·후속 검증 절차 | TOOL-02, 해당 Phase 진입 | 역할별 변경 경계·검증 증거·세션 인계 |
 | [ ] | MCP-01 | 기존 MCP·도구 접근과 장애 경계 점검 | 10절, 실제 사용 환경 | 그래프 freshness·최소 권한·장애 대체 절차; index metadata 불일치와 service outage fallback 검토 미완료 |
@@ -1415,7 +1415,7 @@ go test -race -count=1 ./...
 |---|---|---|
 | PRE-01 / 완료 (2026-10-25) | `docs/`, `prompts/`의 status·Phase·example·link consistency를 대조했다. Phase 2 probe 상태를 Architecture/Roadmap/prompt에 맞추고 Phase 0/1 current-status links를 최신 snapshot으로 갱신했다. | 92개 local file links와 19개 internal anchor targets가 해소됨. pinned version references, Phase prompt headings/Roadmap labels, SECRET/PRIVATE_KEY 분리 및 SUBORCHESTRATOR의 dated host facts/least-permission 안내를 확인했다. 리뷰 범위의 보안 의미 변경은 없음; link checker는 문서 정적 확인이며 사용자 runtime/test acceptance가 아님 |
 | PRE-02 / 완료 (2026-10-25, 문서 계약 범위) | E01/E08/E09와 D05의 audit output, generated-file path, Linux launch/mode 계약을 normative docs와 대조했다. | 64 MiB cap·sticky audit failure, bpf2go ident/path, READY/EOF/one-time permit, unsupported block fail-before-start·explicit kill 정합성을 확인했다. G4 input/timeout/output/trust 계약은 문서화돼 있고 P2-FU-03에 구현됐다. PRE-02 시점의 runtime gap은 이후 INT-01, disk/cap failure-injection gap은 INT-02에서 각각 검증했다. PRE-02 완료는 문서 계약 감사의 완료를 뜻한다. |
-| TOOL-01 / 미착수·선택 | 8절의 고정 upstream 세 스킬과 필요한 references를 프로젝트 범위에 도입. provenance·원본 SHA·변경점·host discovery·제거 대상 기록 | E01/설치 경로 쓰기 권한 필요. 스킬 설치 실패는 제품 개발을 차단하지 않음. 전역 설정·전체 팩·hook을 함께 설치하지 않음 |
+| TOOL-01 / 완료 | `docs/TOOLING_SKILLS.md`의 SHA로 source-driven-development, documentation-and-adrs, code-review-and-quality를 짧은 project wrappers와 함께 vendoring했다. 실제 참조 security/performance checklist와 MIT notice를 보존했다. | Codex CLI 0.164.0 fresh ephemeral read-only session에서 세 skill 이름과 project-local path discovery PASS; global 설정·전체 pack installer·hook은 추가하지 않음 |
 | TOOL-02 / 작성 완료·행동 검증 미완료 | 9.1절의 preflight/docs-contract/security-semantics 세 절차부터 skill-creator로 작성. phase-closeout, Linux verifier, replay, adversarial 절차는 해당 Phase에 도달할 때 추가 | 세 skill 파일은 `.agents/skills/`에 있다. 정상/범위 위반/증거 없음 프롬프트 평가와 discovery 확인이 남아 있다. 승인된 경로만 사용하고, 스킬의 답변을 실제 kernel 시험으로 대체하지 않음 |
 | TOOL-03 / 일부 구현·평가 | 9.2절의 implementer/reviewer/verifier 역할, 파일 소유권, 인계 필드, 중단·재개 절차 정리. 필요할 때만 eBPF/adversarial 담당 추가 | 8개 role 정의가 `.codex/agents/`에 있고 TOOL-03.a~e 인벤토리를 시작했다. 별도 파일 소유권을 나눈 병렬 조사·리뷰에 사용했다. 자동 발견, 완전한 handoff 절차와 역할별 동작 검증은 남아 있다. 서로 다른 에이전트가 같은 파일을 동시 수정하지 않고, 별도 orchestration 서버는 추가하지 않음 |
 | MCP-01 / 일부 진행 | codebase-memory freshness·제외 경로와 connector surface·실패 경계 점검 | 같은 저장소 경로·branch·HEAD를 가리키는 `AgentTaint`와 긴 경로 alias 두 인덱스가 있으며, 후자는 현재 `recordBPFDropDeltas` 및 회귀 테스트를 포함하지 않는 stale snapshot이다. `AgentTaint` 인덱스에는 해당 변경이 있다. API는 dirty-worktree fingerprint나 index timestamp를 제공하지 않아 commit HEAD만으로 freshness를 증명하지 못한다. `.git`, `.idea`, `docs`, `internal/env` 제외를 확인하고 제외 source는 직접 읽음. GitHub connector는 read/write API를 노출하며 실제 업무는 읽기 전용으로 유지. service outage 시 graph fallback은 재현·검증하지 않아 `not_tested`. Lima guest host-agent socket은 sandbox에서 `operation not permitted`, Docker daemon socket은 없음; 이는 guest 고장 증거가 아님. graph는 runtime taint가 아님; 중복 인덱스 정리·재색인이나 새 MCP 서버·DB·원격 업로드는 수행하지 않음 |
@@ -3026,8 +3026,8 @@ Do not implement it. arm64 MVP의 다음 작업은 CI-01/02 원격·격리 검�
 
 #### 현재 기준선
 
-- `main`: clean `961ad5350f7a9c9a9e306e7f3936c6b6155b1fc1`, fetch 당시 `origin/main`과 동일.
-- 통합 작업 기준: `.worktrees/phase4-integration-20261024`, branch `codex/phase4-integration-20261024`, code-bearing HEAD `932c325b6bf1aa22cbc6a36e11159095892af52b`. INT-02 `7c7602b`, INT-03 `e2cadfb` 및 plan closeout을 포함한다. 이 exact HEAD는 아래 archive/kernel에서 최종 Linux acceptance 및 독립 review를 통과했다. Integration push와 main fast-forward/push는 이 문서 closeout 시점에 아직 실행하지 않았다.
+- `main`: clean `194514fc5542aeb4a4df8f20e193344d9e901eef`, `origin/main`과 동일.
+- INT-02/INT-03 integration: `.worktrees/phase4-integration-20261024`, branch `codex/phase4-integration-20261024`, HEAD `194514fc5542aeb4a4df8f20e193344d9e901eef`. Integration branch와 main은 push 완료했다. 이 exact source archive SHA-256 `41a93664ab60a2d4e8a539a6cf55b73ffc869b8bc792334564340493d33820ac`에서 Linux `7.0.0-28-generic aarch64` guest의 `make BUILD_DIR=.build-integration linux-acceptance`, explicit S25 mmap/concurrent tests, concurrent-run `-count=20`가 모두 통과했다. 독립 code/security review는 앞선 code-bearing HEAD `932c325`에서 blocker가 없었고, 최종 194514f는 문서 정정만 추가했다. 실제 디스크 고갈·audit close 실패·end-to-end 64 MiB 파일 생성 및 pre-scope in-flight invocation caveat는 그대로 미검증/제한이다.
 - arm64 MVP: candidate `b0d482b`, Linux 7.0.0-28 aarch64 guest의 지정 P4-04/V-01 시나리오에서 acceptance 통과 기록이 있다. 당시 통합 HEAD `db65bf8`은 그 candidate 뒤의 P2-FU-03 구현 및 테스트 변경을 포함했으며, 후속 INT-01 acceptance는 아래에 기록했다. 이 결과는 모든 kernel/배포 환경 보장이 아니다.
 - 아키텍처 지원: Linux arm64 MVP를 우선 지원한다. Linux amd64 runtime은 ARCH-01 전까지 미지원이며, Go cross-build만으로 지원 완료로 표시하지 않는다.
 - P2-FU-03 / INT-01 acceptance 기록 (2026-10-25): 통합 HEAD `1a059e7f768f415d0f3127a4d1c80a224ac10668`의 exact archive SHA-256 `55516a8c568bdb213dce929b59e114a70d023896187b2290558a316047323fab`를 Linux `7.0.0-28-generic aarch64` guest에서 검증했다. `make linux-acceptance`의 BPF generation, `go vet ./...`, `go build ./...`, portable `go test -count=1 ./...`, privileged Linux runner suite 및 fail-closed enforcement test가 모두 통과했다. 최초 batch는 `TestDoctorNeverExecutesOrMutates`가 현재 진단 문구(`require Linux`) 대신 오래된 `unsupported` 단어를 기대해 실패했다. 전용 branch의 assertion을 현재 계약에 맞게 고친 뒤 targeted test와 전체 batch를 새 HEAD에서 통과했다. 독립 diff/security review는 최종 integration HEAD `7a43093`에서 blocker 없이 통과했다. 이 검증은 해당 arm64 guest/commit 범위에 한정하며, amd64 또는 다른 kernel 보장이 아니다.
@@ -3045,9 +3045,9 @@ Do not implement it. arm64 MVP의 다음 작업은 CI-01/02 원격·격리 검�
 | 0 / INT-00 — 완료 | dirty P4 acceptance worktree의 5개 파일을 integration과 읽기 전용 대조했다. 3개 파일은 integration과 동일하고, plan은 stale이며, runner acceptance test 변경은 별도 review가 필요하다. | 완료; 기존 변경 모두 보존 | 비교 결과만 이 절에 기록했다. dirty worktree에 branch/commit을 만들거나 수정하지 않았다. |
 | 1 / PRE-01·PRE-02 완료 | PRE-01의 status/link/example 감사와 PRE-02의 G1/G2/G4/D05 문서 계약을 대조했다. 당시 disk/cap failure-injection은 별도 acceptance로 남겼고 INT-02에서 후속 검증했다. | 문서 정합성 완료. PRE 시점의 failure-injection 미검증 상태는 INT-02 기록으로 갱신 | PRE-01/PRE-02 task commits를 integration에 순서대로 반영했다. 후속 문서 수정은 새 task branch/worktree에서 한다. |
 | 2 / INT-01 — 완료 | P2-FU-03와 코드 통합 acceptance는 `1a059e7`에서 통과했고, 독립 diff/security review는 integration HEAD `7a43093`에서 blocker 없이 통과했다. stale status 문구를 정정했다. exact guest archive 및 검증 결과는 위 기록을 따른다. | INT-00 ownership 분류와 DOC-00/PRE 문서 작업 완료. G1 failure-injection은 INT-02에서 별도 검증 | task branch 변경을 integration에 순서대로 반영한 뒤 main에 fast-forward/push했다. |
-| 2a / INT-02 — task 완료, 통합 보류 | G1 writer의 부분 ENOSPC, short write, 정확한 64 MiB counter 경계와 초과 거부를 검사했다. 결정적 runner fixture는 ENOSPC 기록 이후 target을 release하며 target exit=0, stdout/non-empty stderr 보존, incomplete/error, 4-byte 부분 audit 파일 유지를 확인했다. | INT-01 완료. ARCH/SECURITY의 G1 계약을 바꾸지 않고 주입 writer 사용 | `codex/int-02-g1-failure-20261025` commit `7c7602b` push 및 integration fast-forward. 첫 `make linux-acceptance`와 독립 review는 통과했으나 후속 필수 S25 반복에서 loss가 나와 integration push/main 반영은 보류. 실제 디스크 고갈, close failure, end-to-end 64 MiB 파일 생성은 `not_tested`. |
-| 2b / INT-03 — 완료 | capture loss reason을 fork/exec/exit·file context 단계별로 나누고 drop baseline을 run scope 활성화 뒤로 이동했다. incomplete를 suppress하지 않는다. Task HEAD `e2cadfb`에서 S25 concurrent-run fixture 20회와 전체 Linux acceptance, code-bearing integration HEAD `932c325`에서 final Linux acceptance PASS. | INT-02 task 완료. `7c7602b`에서 간헐 pre-scope counter loss 확인; site-specific evidence 및 scoped baseline fix 적용 | `codex/int-03-process-capture-20261025` commit `e2cadfb` push·독립 review 완료. INT-02/INT-03을 integration에 반영하고 전체 acceptance/review를 통과했다. Integration push 및 main fast-forward/push가 남아 있다. |
-| 3 / TOOL-01~03, MCP-01 | 사용자가 요청한 토큰 절감 검토를 포함해 도구 후보를 조사하고, 압축 품질·비용·보안 경계·라이선스를 실제 근거로 평가한다. 필요한 최소 도구만 별도 승인 및 안전 설계 뒤 도입한다. MCP 추가는 현재 codebase-memory MCP가 못 채우는 요구가 입증될 때만 완료로 본다. | INT-02/INT-03 최종 통합 gate 통과, PRE 감사, 도구 요구 정의. 외부 도구 설치나 자동 호출 정책 변경은 별도 승인 필요 | 카드마다 전용 branch/worktree를 쓰고, 조사 문서와 구현을 분리한다. 도입 후보가 없으면 증거를 남기고 `not_needed`로 닫는다. |
+| 2a / INT-02 — 완료 | G1 writer의 부분 ENOSPC, short write, 정확한 64 MiB counter 경계와 초과 거부를 검사했다. 결정적 runner fixture는 ENOSPC 기록 이후 target을 release하며 target exit=0, stdout/non-empty stderr 보존, incomplete/error, 4-byte 부분 audit 파일 유지를 확인했다. | INT-01 완료. ARCH/SECURITY의 G1 계약을 바꾸지 않고 주입 writer 사용 | `codex/int-02-g1-failure-20261025` commit `7c7602b` push 및 integration/main fast-forward 완료 (`194514f`). 실제 디스크 고갈, close failure, end-to-end 64 MiB 파일 생성은 `not_tested`. |
+| 2b / INT-03 — 완료 | capture loss reason을 fork/exec/exit·file context 단계별로 나누고 drop baseline을 run scope 활성화 뒤로 이동했다. incomplete를 suppress하지 않는다. Task HEAD `e2cadfb`에서 S25 concurrent-run fixture 20회와 전체 Linux acceptance, integration HEAD `194514f`에서 final batch 및 명시 S25 테스트 PASS. | INT-02 task 완료. `7c7602b`에서 간헐 pre-scope counter loss 확인; site-specific evidence 및 scoped baseline fix 적용 | `codex/int-03-process-capture-20261025` commit `e2cadfb` push·독립 review 완료. INT-02/INT-03을 integration/main에 반영하고 검증·push 완료. |
+| 3 / TOOL-01~03, MCP-01 | 사용자가 요청한 토큰 절감 검토를 포함해 도구 후보를 조사하고, 압축 품질·비용·보안 경계·라이선스를 실제 근거로 평가한다. TOOL-01 완료: 짧은 project wrappers와 pinned OSS 원문/reference 적용. 다음은 TOOL-02/03와 MCP-01을 차례로 진행하며 실제 토큰 절감은 계측 후에만 주장한다. | INT-02/INT-03 완료, TOOL-01 적용, PRE 감사 | 각 카드 전용 branch/worktree와 task commit. 조사 문서와 구현을 분리한다. 외부 설치, hook, 자동 호출 설정은 위험·권한을 확인하고 기존 명시 승인 범위에서만 적용한다. |
 | 4 / CI-01 | 저장소의 portable 검사·재현성 원격 검증 계약을 정리하고 지정 원격 job에서 통과시킨다. | TOOL 및 현재 acceptance 계약 정리 | `codex/ci-ci01-<slug>` / `.worktrees/ci-ci01`; workflow 권한은 해당 CI 카드가 허용한 파일로 제한한다. 결과 artifact와 source commit을 함께 기록한다. |
 | 5 / CI-02 | 격리된 Linux BPF 검증 job을 구성해 verifier와 필수 scenario를 재현하고 잔류 자원 정리를 확인한다. | CI-01, P2-04, 13.7절. 현재 문서상 승인 범위 충돌 시 구현 전 확인 | `codex/ci-ci02-<slug>` / `.worktrees/ci-ci02`; 전용 runner/권한을 먼저 검증하고 일반 CI에 privileged BPF를 섞지 않는다. |
 | 6 / REL-01 | 재현 가능한 산출물, binary/BPF/source 대응, checksum, SBOM 및 라이선스 기록을 만든다. | V-01 및 지원 환경에서 CI 증거 | `codex/rel-rel01-<slug>` / `.worktrees/rel-rel01`; release 산출물은 검증된 commit에만 연결한다. |
@@ -3076,5 +3076,5 @@ Do not implement it. arm64 MVP의 다음 작업은 CI-01/02 원격·격리 검�
 
 1. INT-00의 읽기 전용 분류는 완료했다. 외부 dirty 변경은 owner/review 확인 전까지 그대로 둔다.
 2. PRE-01/02 문서 작업은 완료했다. task branch 변경은 별도로 커밋·push한 뒤 순서대로 integration에 반영했다. 잔여 non-test 작업은 다음 카드 순서에 따라 시작한다.
-3. INT-02/INT-03과 plan을 포함한 code-bearing integration HEAD `932c325`의 final batch 및 independent reviews가 통과했다. 다음은 integration branch push와 clean main의 fast-forward/push다.
-4. main 반영 뒤 TOOL-01부터 TOOL-01~03 및 MCP-01의 토큰 절감 조사·도입 판단을 순서대로 진행한다. MCP graph service는 이 세션에서 intermittent `Transport closed`를 반환해 index freshness와 outage fallback 확인은 MCP-01에서 처리한다.
+3. INT-02/INT-03과 plan을 포함한 integration HEAD `194514f`는 Linux/arm64 acceptance 및 명시 S25 재검증을 통과해 integration과 clean main에 fast-forward/push했다.
+4. TOOL-01은 pinned OSS skill 원문, checklist reference와 짧은 local wrappers를 추가했고 fresh Codex CLI session discovery를 통과했다. 다음은 TOOL-02, TOOL-03, MCP-01을 순서대로 진행한다. MCP graph service에서 앞서 intermittent `Transport closed`가 관측됐으므로 index freshness와 outage fallback은 MCP-01에서 확인한다.
