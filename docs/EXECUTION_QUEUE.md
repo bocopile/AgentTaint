@@ -32,9 +32,9 @@ TOOL-03의 하위 카드이며 별도 제품 Phase가 아니다.
 | ID / 상태 | 세부 작업과 산출물 | 완료 기준 / 검증 | 선행 / Git 단위 |
 |---|---|---|---|
 | GF01 / 평가 완료, 미채택 | Graphify source·license·설치 부작용 확인, 임시 Python 환경, 고정 main의 코드 사본 분석, 검색·HTML 생성 시험, 전체 실행 큐 작성 | [평가 보고서](GRAPHIFY_EVALUATION.md)와 manifest; 성공·누락·미검증 분리, 기존 AGENTS/hook/MCP 설정 보존 | TOOL-03; `codex/tool-gf01-20261025-evaluation` / 문서·증거 커밋 |
-| GF02 / 계획 | 생성 그래프와 현 MCP의 소스 위치·관계 정확도 비교. macro C와 Go method, stale graph·동명 함수·없는 심볼 포함 | 같은 source 집합·정확한 HEAD, 10개 질문의 정답/근거/누락표. 현재 pilot은 같은 corpus 비교가 아니므로 승패 판정 금지 | GF01; `codex/tool-gf02-<date>-accuracy` |
-| GF03 / 계획 | 좁은 MCP 검색, Graphify 보완, 필요 시 명시 파일 인계의 작업 비용 비교 | 같은 질문·모델·완료 기준, 입력/출력·캐시 토큰·추가 조회·재작업·build/update 비용. 실제 usage 미제공 시 `inconclusive`, 추정 절감률 금지 | GF02; `codex/tool-gf03-<date>-cost` |
-| GF04 / 조건부 | 이득이 확인된 최소 통합안: 호출 시점, 인덱스 freshness, 제외 파일, 실패 fallback, artifact 보관 | Graphify 우선 규칙을 무조건 추가하지 않음. 설치 전후 변경 파일·권한·제거 절차와 원문 확인 경로 검증 | GF02/03 결과 및 구체 도입 결정; `codex/tool-gf04-<date>-integration` |
+| GF02 / 제한된 비교 완료 | 동일 37개 파일의 대표 심볼·원문 대조와 합성 freshness 실험 | [비교 결과](GRAPHIFY_COMPARISON.md): 10개 질문의 근거와 누락, MCP header 위치 오류와 디렉터리 제외 확인. 전체 semantic accuracy 검증 아님 | GF01; `codex/tool-gf02-20261025-comparison` |
+| GF03 / inconclusive | 실제 모델 usage·동일 모델 A/B 미확보로 절감률 산정 불가 | [비교 결과](GRAPHIFY_COMPARISON.md)의 비용 판정. 비용 평가 성공으로 처리하지 않음 | GF02와 같은 문서 카드로 종료 판정; 필요 시 계측 가능한 환경에서 재개 |
+| GF04 / 현재 미채택 | 자동 설치·hook·MCP 교체를 하지 않고 기존 원문 확인 경로 유지 | BPF coverage와 비용 이득 미확정. 재평가에는 GF02/03 추가 근거와 구체 도입 결정 필요 | 구현 branch 없음; 미채택은 구현 완료가 아님 |
 | TOOL-03 잔여 / 계획 | agent 위임·인계 행동, go-arch-lint/Staticcheck/govulncheck 후보, fuzz 공백, verifier 도구 평가 | 기존 검사와의 중복·고정 버전·라이선스·실제 반례·비용 기록. 후보별로 분리, 새 도구 설치만으로 완료 처리 금지 | 기존 TOOL-03.a~e; 후보당 별도 branch/commit |
 | MCP-01 잔여 / 계획 | freshness 확인과 실제 outage fallback, 연결 도구 권한 범위 기록 | graph miss·미등록 오류와 transport outage를 구분. 테스트를 위해 사용 중인 공유 MCP를 중단하지 않음 | 격리 가능한 검증 환경; `codex/tool-mcp01-<date>-evidence` |
 

@@ -1,0 +1,740 @@
+{
+  "date": "2026-10-25",
+  "source_commit": "3b8c9ea8442e181df72d01e83d74bb0af0b0ed51",
+  "source_manifest": "graphify-20261025.json",
+  "same_input_files": 37,
+  "graphify": {
+    "version": "0.9.95",
+    "mode": "update --no-cluster, backend=none",
+    "nodes": 372,
+    "edges": 1044,
+    "queries": [
+      {
+        "id": "Q01",
+        "symbol": "applyFileOpen",
+        "returncode": 0,
+        "seconds": 0.2654,
+        "stdout_bytes": 1593,
+        "stderr": "",
+        "exact_nodes": [
+          {
+            "id": "taint_engine_applyfileopen",
+            "label": ".applyFileOpen()",
+            "source_file": "internal/taint/engine.go",
+            "source_location": "L73"
+          }
+        ],
+        "stdout_sha256": "d150dafe83814b9ed9b7a1bb1093627494b1d11c6bbe8380f62e56b38a03e994",
+        "first_lines": [
+          "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['.applyFileOpen()'] | Context: call (explicit) | 7 nodes found",
+          "",
+          "NODE .applyFileOpen() [src=internal/taint/engine.go loc=L73 community=]"
+        ],
+        "edge_examples": [
+          "EDGE .Apply() --calls [EXTRACTED context=call]--> .applyFileOpen() at=internal/taint/engine.go:L43",
+          "EDGE .applyFileOpen() --calls [EXTRACTED context=call]--> validKey() at=internal/taint/engine.go:L74",
+          "EDGE .applyFileOpen() --calls [EXTRACTED context=call]--> .add() at=internal/taint/engine.go:L83",
+          "EDGE .applyFileOpen() --calls [EXTRACTED context=call]--> .addSource() at=internal/taint/engine.go:L84",
+          "EDGE .applyFork() --calls [EXTRACTED context=call]--> validKey() at=internal/taint/engine.go:L91"
+        ]
+      },
+      {
+        "id": "Q02",
+        "symbol": "applyFork",
+        "returncode": 0,
+        "seconds": 0.2018,
+        "stdout_bytes": 1925,
+        "stderr": "",
+        "exact_nodes": [
+          {
+            "id": "taint_engine_applyfork",
+            "label": ".applyFork()",
+            "source_file": "internal/taint/engine.go",
+            "source_location": "L88"
+          }
+        ],
+        "stdout_sha256": "4e91547e417676694bb8e0160c6f6bf02cd44c60c1ae5c382115b51258848775",
+        "first_lines": [
+          "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['.applyFork()'] | Context: call (explicit) | 9 nodes found",
+          "",
+          "NODE .applyFork() [src=internal/taint/engine.go loc=L88 community=]"
+        ],
+        "edge_examples": [
+          "EDGE .Apply() --calls [EXTRACTED context=call]--> .applyFork() at=internal/taint/engine.go:L50",
+          "EDGE .applyFork() --calls [EXTRACTED context=call]--> validKey() at=internal/taint/engine.go:L91",
+          "EDGE .applyFork() --calls [EXTRACTED context=call]--> .Labels() at=internal/taint/engine.go:L100",
+          "EDGE .applyFork() --calls [EXTRACTED context=call]--> .add() at=internal/taint/engine.go:L101",
+          "EDGE .applyFork() --calls [EXTRACTED context=call]--> .SourcePaths() at=internal/taint/engine.go:L103"
+        ]
+      },
+      {
+        "id": "Q03",
+        "symbol": "Evaluate",
+        "returncode": 0,
+        "seconds": 0.1979,
+        "stdout_bytes": 538,
+        "stderr": "",
+        "exact_nodes": [
+          {
+            "id": "policy_snapshot_evaluate",
+            "label": ".Evaluate()",
+            "source_file": "internal/policy/evaluator.go",
+            "source_location": "L12"
+          }
+        ],
+        "stdout_sha256": "9b6053214cf39731f3d28a7c45256c4996e730edb2f73c2d47ca7c719b4277b2",
+        "first_lines": [
+          "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['.Evaluate()'] | Context: call (explicit) | 3 nodes found",
+          "",
+          "NODE .Evaluate() [src=internal/policy/evaluator.go loc=L12 community=]"
+        ],
+        "edge_examples": [
+          "EDGE .Evaluate() --calls [EXTRACTED context=call]--> matches() at=internal/policy/evaluator.go:L25",
+          "EDGE .Evaluate() --calls [EXTRACTED context=call]--> rank() at=internal/policy/evaluator.go:L28"
+        ]
+      },
+      {
+        "id": "Q04",
+        "symbol": "RunWithPolicyMode",
+        "returncode": 0,
+        "seconds": 0.1991,
+        "stdout_bytes": 2667,
+        "stderr": "",
+        "exact_nodes": [
+          {
+            "id": "internal_runner_observe_runwithpolicymode",
+            "label": "RunWithPolicyMode()",
+            "source_file": "internal/runner/observe.go",
+            "source_location": "L53"
+          }
+        ],
+        "stdout_sha256": "fb3b4bbb77ecbd2ae9cd5ddaff7bff9912c0f1fe8858b13d1a3a6e705fda3f49",
+        "first_lines": [
+          "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['RunWithPolicyMode()'] | Context: call (explicit) | 15 nodes found",
+          "",
+          "NODE RunWithPolicyMode() [src=internal/runner/observe.go loc=L53 community=]"
+        ],
+        "edge_examples": [
+          "EDGE run() --calls [EXTRACTED context=call]--> RunWithPolicyMode() at=cmd/agenttaint/main.go:L206",
+          "EDGE RunObservedWithPolicy() --calls [EXTRACTED context=call]--> RunWithPolicyMode() at=internal/runner/observe.go:L48",
+          "EDGE RunBlockedWithPolicy() --calls [EXTRACTED context=call]--> RunWithPolicyMode() at=internal/runner/observe.go:L83",
+          "EDGE RunObserved() --calls [EXTRACTED context=call]--> RunObservedWithPolicy() at=internal/runner/observe.go:L43",
+          "EDGE main() --calls [EXTRACTED context=call]--> run() at=cmd/agenttaint/main.go:L20"
+        ]
+      },
+      {
+        "id": "Q05",
+        "symbol": "DecodeEvent",
+        "returncode": 0,
+        "seconds": 0.2047,
+        "stdout_bytes": 3093,
+        "stderr": "",
+        "exact_nodes": [
+          {
+            "id": "internal_core_event_decodeevent",
+            "label": "DecodeEvent()",
+            "source_file": "internal/core/event.go",
+            "source_location": "L194"
+          }
+        ],
+        "stdout_sha256": "7349c354e36eac1b7a060e1af2ac8690363e269d72a9e7afbac236dfd209c53b",
+        "first_lines": [
+          "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['DecodeEvent()'] | Context: call (explicit) | 16 nodes found",
+          "",
+          "NODE DecodeEvent() [src=internal/core/event.go loc=L194 community=]"
+        ],
+        "edge_examples": [
+          "EDGE marshalEvent() --calls [EXTRACTED context=call]--> DecodeEvent() at=internal/core/event.go:L184",
+          "EDGE DecodeEvent() --calls [EXTRACTED context=call]--> checkJSON() at=internal/core/event.go:L195",
+          "EDGE DecodeEvent() --calls [EXTRACTED context=call]--> requiredObject() at=internal/core/event.go:L198",
+          "EDGE DecodeEvent() --calls [EXTRACTED context=call]--> validateProcess() at=internal/core/event.go:L266",
+          "EDGE DecodeEvent() --calls [EXTRACTED context=call]--> validateFile() at=internal/core/event.go:L271"
+        ]
+      },
+      {
+        "id": "Q06",
+        "symbol": "Run",
+        "returncode": 3,
+        "seconds": 0.1887,
+        "stdout_bytes": 268,
+        "stderr": "",
+        "exact_nodes": [
+          {
+            "id": "cmd_agenttaint_main_run",
+            "label": "run()",
+            "source_file": "cmd/agenttaint/main.go",
+            "source_location": "L22"
+          },
+          {
+            "id": "internal_runner_runner_run",
+            "label": "Run()",
+            "source_file": "internal/runner/runner.go",
+            "source_location": "L18"
+          }
+        ],
+        "stdout_sha256": "a26943a17c2f6f73b38ef922db9507bea75c8f7fca69b5979342072cbe756150",
+        "first_lines": [
+          "Ambiguous: 'Run' matches 2 nodes in different files.",
+          "  cmd/agenttaint/main.go",
+          "    id: cmd_agenttaint_main_run"
+        ],
+        "edge_examples": []
+      },
+      {
+        "id": "Q07",
+        "symbol": "file_current_process",
+        "returncode": 0,
+        "seconds": 0.1911,
+        "stdout_bytes": 5563,
+        "stderr": "",
+        "exact_nodes": [
+          {
+            "id": "bpf_file_bpf_file_current_process",
+            "label": "file_current_process()",
+            "source_file": "bpf/file.bpf.c",
+            "source_location": "L62"
+          }
+        ],
+        "stdout_sha256": "bf9ae800181078098ec82a42e27c8fc35c1da7355fa35754cdd3ae19013392c9",
+        "first_lines": [
+          "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['file_current_process()', '.Process()', 'current_scope()', 'file.bpf.c'] | Context: call (explicit) | 26 nodes found",
+          "",
+          "[i] Complete answer over budget: all 26 nodes and 30 edges shown (~1673 tokens vs the requested ~1000-token budget). Edges are never dropped once every node fits, so this is already the full answer — raising --budget further will not shrink it. Narrow with context_filter=['call'] or use get_node for a specific symbol to reduce size instead."
+        ],
+        "edge_examples": [
+          "EDGE processPolicyAuditEvent() --calls [INFERRED context=call]--> .Process() at=internal/runner/observe_linux.go:L878",
+          "EDGE .Process() --calls [EXTRACTED context=call]--> .MarkIncomplete() at=internal/runner/policy_pipeline.go:L42",
+          "EDGE .Process() --calls [EXTRACTED context=call]--> networkConnect() at=internal/runner/policy_pipeline.go:L46",
+          "EDGE BPF_PROG() --calls [EXTRACTED context=call]--> current_scope() at=bpf/process.bpf.c:L97",
+          "EDGE file_current_process() --calls [EXTRACTED context=call]--> file_read_process() at=bpf/file.bpf.c:L92"
+        ]
+      },
+      {
+        "id": "Q07",
+        "symbol": "network_current_process",
+        "returncode": 0,
+        "seconds": 0.2013,
+        "stdout_bytes": 5427,
+        "stderr": "",
+        "exact_nodes": [
+          {
+            "id": "bpf_network_bpf_network_current_process",
+            "label": "network_current_process()",
+            "source_file": "bpf/network.bpf.c",
+            "source_location": "L54"
+          }
+        ],
+        "stdout_sha256": "6d33ce8493aa221cb65f059d0cbb27c8d53008ff99e5d2f6039884fb0ff9fad3",
+        "first_lines": [
+          "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['network_current_process()', '.Process()', 'current_scope()', 'network.bpf.c'] | Context: call (explicit) | 25 nodes found",
+          "",
+          "[i] Complete answer over budget: all 25 nodes and 29 edges shown (~1626 tokens vs the requested ~1000-token budget). Edges are never dropped once every node fits, so this is already the full answer — raising --budget further will not shrink it. Narrow with context_filter=['call'] or use get_node for a specific symbol to reduce size instead."
+        ],
+        "edge_examples": [
+          "EDGE network_current_process() --calls [EXTRACTED context=call]--> network_read_process() at=bpf/network.bpf.c:L81",
+          "EDGE network_enter_connect() --calls [EXTRACTED context=call]--> network_current_process() at=bpf/network.bpf.c:L103",
+          "EDGE processPolicyAuditEvent() --calls [INFERRED context=call]--> .Process() at=internal/runner/observe_linux.go:L878",
+          "EDGE .Process() --calls [EXTRACTED context=call]--> .MarkIncomplete() at=internal/runner/policy_pipeline.go:L42",
+          "EDGE .Process() --calls [EXTRACTED context=call]--> networkConnect() at=internal/runner/policy_pipeline.go:L46"
+        ]
+      },
+      {
+        "id": "Q08",
+        "symbol": "on_process_fork",
+        "returncode": 0,
+        "seconds": 0.2152,
+        "stdout_bytes": 4262,
+        "stderr": "",
+        "exact_nodes": [
+          {
+            "id": "on_process_fork",
+            "label": "on_process_fork",
+            "source_file": "",
+            "source_location": ""
+          }
+        ],
+        "stdout_sha256": "3e16736d051dcdbf6799e65b9dc829e7d0b09fbd98fbb73e0e6351435f23940f",
+        "first_lines": [
+          "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['on_process_fork', '.Process()', 'on_sys_exit', '.applyFork()'] | Context: call (explicit) | 19 nodes found",
+          "",
+          "[i] Complete answer over budget: all 19 nodes and 22 edges shown (~1242 tokens vs the requested ~1000-token budget). Edges are never dropped once every node fits, so this is already the full answer — raising --budget further will not shrink it. Narrow with context_filter=['call'] or use get_node for a specific symbol to reduce size instead."
+        ],
+        "edge_examples": [
+          "EDGE .Apply() --calls [EXTRACTED context=call]--> .applyFork() at=internal/taint/engine.go:L50",
+          "EDGE .applyFork() --calls [EXTRACTED context=call]--> validKey() at=internal/taint/engine.go:L91",
+          "EDGE .applyFork() --calls [EXTRACTED context=call]--> .Labels() at=internal/taint/engine.go:L100",
+          "EDGE .applyFork() --calls [EXTRACTED context=call]--> .add() at=internal/taint/engine.go:L101",
+          "EDGE .applyFork() --calls [EXTRACTED context=call]--> .SourcePaths() at=internal/taint/engine.go:L103"
+        ]
+      },
+      {
+        "id": "Q09",
+        "symbol": "agenttaint_raw_file_open",
+        "returncode": 0,
+        "seconds": 0.2069,
+        "stdout_bytes": 4966,
+        "stderr": "",
+        "exact_nodes": [],
+        "stdout_sha256": "8aee4e2cf43f5b79788d337e5457c89a0ddb1d6f43927185e432c1a3e748fe87",
+        "first_lines": [
+          "Graph: graphify-out/graph.json (372 nodes) | Traversal: BFS depth=2 | Start: ['file_exit_openat()', 'file_enter_openat()', 'FileOpenEvent', 'openRunCgroup()', 'raw.go', 'file.bpf.c', 'github.com/bocopile/AgentTaint'] | Context: call (explicit) | 26 nodes found",
+          "",
+          "[i] Complete answer over budget: all 26 nodes and 25 edges shown (~1452 tokens vs the requested ~1000-token budget). Edges are never dropped once every node fits, so this is already the full answer — raising --budget further will not shrink it. Narrow with context_filter=['call'] or use get_node for a specific symbol to reduce size instead."
+        ],
+        "edge_examples": [
+          "EDGE file_exit_openat() --calls [EXTRACTED context=call]--> file_count_drop() at=bpf/file.bpf.c:L173",
+          "EDGE BPF_PROG() --calls [INFERRED context=call]--> file_exit_openat() at=bpf/process.bpf.c:L330",
+          "EDGE createRunCgroup() --calls [EXTRACTED context=call]--> openRunCgroup() at=internal/runner/cgroup_linux.go:L59",
+          "EDGE openRunCgroup() --calls [EXTRACTED context=call]--> .Close() at=internal/runner/cgroup_linux.go:L72",
+          "EDGE file_enter_openat() --calls [EXTRACTED context=call]--> file_count_drop() at=bpf/file.bpf.c:L117"
+        ]
+      },
+      {
+        "id": "Q10",
+        "symbol": "MarkIncomplete",
+        "returncode": 3,
+        "seconds": 0.2071,
+        "stdout_bytes": 322,
+        "stderr": "",
+        "exact_nodes": [
+          {
+            "id": "runner_policyauditprocessor_markincomplete",
+            "label": ".MarkIncomplete()",
+            "source_file": "internal/runner/policy_pipeline.go",
+            "source_location": "L29"
+          },
+          {
+            "id": "taint_engine_markincomplete",
+            "label": ".MarkIncomplete()",
+            "source_file": "internal/taint/engine.go",
+            "source_location": "L178"
+          }
+        ],
+        "stdout_sha256": "b3864d863444a47103e4571d8b237b2c09ffe0a5c60ef79ee5e7991e2c393cb7",
+        "first_lines": [
+          "Ambiguous: 'MarkIncomplete' matches 2 nodes in different files.",
+          "  internal/runner/policy_pipeline.go",
+          "    id: runner_policyauditprocessor_markincomplete"
+        ],
+        "edge_examples": []
+      }
+    ]
+  },
+  "mcp": {
+    "mode": "fast",
+    "persistence": false,
+    "nodes": 526,
+    "edges": 1451,
+    "excluded_dirs": [
+      "internal/env"
+    ],
+    "searches": [
+      {
+        "id": "Q01",
+        "name_pattern": "^applyFileOpen$",
+        "total": 1,
+        "has_more": false,
+        "milliseconds": 5,
+        "results": [
+          {
+            "name": "applyFileOpen",
+            "qualified_name": "private-tmp-agenttaint-gf02-corpus-20261025.internal.taint.engine.applyFileOpen",
+            "file_path": "internal/taint/engine.go"
+          }
+        ]
+      },
+      {
+        "id": "Q02",
+        "name_pattern": "^applyFork$",
+        "total": 1,
+        "has_more": false,
+        "milliseconds": 7,
+        "results": [
+          {
+            "name": "applyFork",
+            "qualified_name": "private-tmp-agenttaint-gf02-corpus-20261025.internal.taint.engine.applyFork",
+            "file_path": "internal/taint/engine.go"
+          }
+        ]
+      },
+      {
+        "id": "Q03",
+        "name_pattern": "^Evaluate$",
+        "total": 1,
+        "has_more": false,
+        "milliseconds": 9,
+        "results": [
+          {
+            "name": "Evaluate",
+            "qualified_name": "private-tmp-agenttaint-gf02-corpus-20261025.internal.policy.evaluator.Evaluate",
+            "file_path": "internal/policy/evaluator.go"
+          }
+        ]
+      },
+      {
+        "id": "Q04",
+        "name_pattern": "^RunWithPolicyMode$",
+        "total": 1,
+        "has_more": false,
+        "milliseconds": 14,
+        "results": [
+          {
+            "name": "RunWithPolicyMode",
+            "qualified_name": "private-tmp-agenttaint-gf02-corpus-20261025.internal.runner.observe.RunWithPolicyMode",
+            "file_path": "internal/runner/observe.go"
+          }
+        ]
+      },
+      {
+        "id": "Q05",
+        "name_pattern": "^DecodeEvent$",
+        "total": 1,
+        "has_more": false,
+        "milliseconds": 11,
+        "results": [
+          {
+            "name": "DecodeEvent",
+            "qualified_name": "private-tmp-agenttaint-gf02-corpus-20261025.internal.core.event.DecodeEvent",
+            "file_path": "internal/core/event.go"
+          }
+        ]
+      },
+      {
+        "id": "Q06",
+        "name_pattern": "^Run$",
+        "total": 2,
+        "has_more": false,
+        "milliseconds": 18,
+        "results": [
+          {
+            "name": "Run",
+            "qualified_name": "private-tmp-agenttaint-gf02-corpus-20261025.internal.runner.runner.Run",
+            "file_path": "internal/runner/runner.go"
+          },
+          {
+            "name": "run",
+            "qualified_name": "private-tmp-agenttaint-gf02-corpus-20261025.cmd.agenttaint.main.run",
+            "file_path": "cmd/agenttaint/main.go"
+          }
+        ]
+      },
+      {
+        "id": "Q07",
+        "name_pattern": "^(file_current_process|network_current_process)$",
+        "total": 2,
+        "has_more": false,
+        "milliseconds": 16,
+        "results": [
+          {
+            "name": "file_current_process",
+            "qualified_name": "private-tmp-agenttaint-gf02-corpus-20261025.bpf.file.bpf.file_current_process",
+            "file_path": "bpf/file.bpf.c"
+          },
+          {
+            "name": "network_current_process",
+            "qualified_name": "private-tmp-agenttaint-gf02-corpus-20261025.bpf.network.bpf.network_current_process",
+            "file_path": "bpf/network.bpf.c"
+          }
+        ]
+      },
+      {
+        "id": "Q08",
+        "name_pattern": "^on_process_fork$",
+        "total": 0,
+        "has_more": false,
+        "milliseconds": 21,
+        "results": []
+      },
+      {
+        "id": "Q09",
+        "name_pattern": "^agenttaint_raw_file_open$",
+        "total": 1,
+        "has_more": false,
+        "milliseconds": 25,
+        "results": [
+          {
+            "name": "agenttaint_raw_file_open",
+            "qualified_name": "private-tmp-agenttaint-gf02-corpus-20261025.bpf.events.agenttaint_raw_file_open",
+            "file_path": "bpf/events.h"
+          }
+        ]
+      },
+      {
+        "id": "Q10",
+        "name_pattern": "^MarkIncomplete$",
+        "total": 2,
+        "has_more": false,
+        "milliseconds": 28,
+        "results": [
+          {
+            "name": "MarkIncomplete",
+            "qualified_name": "private-tmp-agenttaint-gf02-corpus-20261025.internal.runner.policy_pipeline.MarkIncomplete",
+            "file_path": "internal/runner/policy_pipeline.go"
+          },
+          {
+            "name": "MarkIncomplete",
+            "qualified_name": "private-tmp-agenttaint-gf02-corpus-20261025.internal.taint.engine.MarkIncomplete",
+            "file_path": "internal/taint/engine.go"
+          }
+        ]
+      }
+    ],
+    "snippets": [
+      {
+        "id": "Q01",
+        "name": "applyFileOpen",
+        "file_path": "internal/taint/engine.go",
+        "start_line": 73,
+        "end_line": 86,
+        "matches_reported_source_slice": true,
+        "source_sha256": "56bd4819018acd894db1a1de247ecd1c7db2d20b74b2f09d77c0b9f9a45eb590",
+        "source_excerpt": [
+          "func (e *Engine) applyFileOpen(event core.FileOpenEvent) error {",
+          "\tif !validKey(event.Process.ProcessKey) {",
+          "\t\treturn errors.New(\"file-open event has invalid process key\")",
+          "\t}",
+          "\tif event.ObservationStage != core.StageCompleted || event.OperationResult != core.ResultSuccess {",
+          "\t\treturn nil",
+          "\t}",
+          "\tif _, source := e.sources[event.Resource.Path]; !source {"
+        ]
+      },
+      {
+        "id": "Q02",
+        "name": "applyFork",
+        "file_path": "internal/taint/engine.go",
+        "start_line": 88,
+        "end_line": 107,
+        "matches_reported_source_slice": true,
+        "source_sha256": "5698cbaca41639cf0814d6c2eeb7c8f42f7621eb340cb6b5662079aec0fd5885",
+        "source_excerpt": [
+          "func (e *Engine) applyFork(event core.ProcessForkEvent) error {",
+          "\tparent := event.Process.ProcessKey",
+          "\tchild := event.Child.ProcessKey",
+          "\tif !validKey(parent) || !validKey(child) {",
+          "\t\treturn errors.New(\"process-fork event has invalid process key\")",
+          "\t}",
+          "\tif parent.ScopeID != child.ScopeID {",
+          "\t\treturn errors.New(\"process-fork event crosses observation scopes\")"
+        ]
+      },
+      {
+        "id": "Q03",
+        "name": "Evaluate",
+        "file_path": "internal/policy/evaluator.go",
+        "start_line": 12,
+        "end_line": 33,
+        "matches_reported_source_slice": true,
+        "source_sha256": "d69ddaf4b2575456eb79ceb2d1a962cb61eeed51bf9b2eb7f8fb78104eb7ef9b",
+        "source_excerpt": [
+          "func (s *Snapshot) Evaluate(event core.NetworkConnectEvent, labels []core.Label) (Decision, error) {",
+          "\tif s == nil {",
+          "\t\treturn Decision{}, errors.New(\"nil policy snapshot\")",
+          "\t}",
+          "\tif !event.Destination.Address.Is4() {",
+          "\t\treturn Decision{}, errors.New(\"policy supports IPv4 destinations only\")",
+          "\t}",
+          "\tlabelSet := make(map[core.Label]struct{}, len(labels))"
+        ]
+      },
+      {
+        "id": "Q04",
+        "name": "RunWithPolicyMode",
+        "file_path": "internal/runner/observe.go",
+        "start_line": 53,
+        "end_line": 78,
+        "matches_reported_source_slice": true,
+        "source_sha256": "be54ce843c98062fea9db566d8c68f2d8d00e5348aa2fbc41b0194a3abcc7108",
+        "source_excerpt": [
+          "func RunWithPolicyMode(ctx context.Context, resolver env.Resolver, bin string, args []string, stdin io.Reader, stdout, stderr io.Writer, auditPath string, snapshot *policy.Snapshot, identity *TargetIdentity, mode PolicyMode) (int, ModeStatus, error) {",
+          "\tstatus := ModeStatus{",
+          "\t\tRequestedMode: mode,",
+          "\t\tActiveMode:    \"none\",",
+          "\t\tActualAction:  \"none\",",
+          "\t\tResult:        \"not_started\",",
+          "\t\tAuditCoverage: \"unknown\",",
+          "\t}"
+        ]
+      },
+      {
+        "id": "Q05",
+        "name": "DecodeEvent",
+        "file_path": "internal/core/event.go",
+        "start_line": 194,
+        "end_line": 333,
+        "matches_reported_source_slice": true,
+        "source_sha256": "36e337acb51ebdc5fa20420b8b543af6f7b943f43e6c6cb04be5ed352ece1916",
+        "source_excerpt": [
+          "func DecodeEvent(data []byte) (Event, error) {",
+          "\tif err := checkJSON(data); err != nil {",
+          "\t\treturn nil, err",
+          "\t}",
+          "\tfields, err := requiredObject(data, \"event\", \"schema_version\", \"event_id\", \"run_id\", \"timestamp\", \"session_id\", \"observation_stage\", \"operation_result\", \"process\")",
+          "\tif err != nil {",
+          "\t\treturn nil, err",
+          "\t}"
+        ]
+      },
+      {
+        "id": "Q06",
+        "name": "Run",
+        "file_path": "internal/runner/runner.go",
+        "start_line": 18,
+        "end_line": 48,
+        "matches_reported_source_slice": true,
+        "source_sha256": "05e9da3c7f8e8316a1473f0262a8153f168b10d51dcddcb6a217f886428e9798",
+        "source_excerpt": [
+          "func Run(resolver env.Resolver, bin string, args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {",
+          "\tif len(args) == 0 {",
+          "\t\treturn 1, errors.New(\"missing command\")",
+          "\t}",
+          "\tfound, err := resolver.Resolve(args[0], bin)",
+          "\tif err != nil {",
+          "\t\treturn 1, fmt.Errorf(\"resolve command: %w\", err)",
+          "\t}"
+        ]
+      },
+      {
+        "id": "Q06",
+        "name": "run",
+        "file_path": "cmd/agenttaint/main.go",
+        "start_line": 22,
+        "end_line": 218,
+        "matches_reported_source_slice": true,
+        "source_sha256": "4db5e4f13acef1b1b94878db745a75eb2bd16251a2a4d2e1b524ae0db0f6bfb6",
+        "source_excerpt": [
+          "func run(args []string, stdin io.Reader, stdout, stderr io.Writer, resolver env.Resolver) int {",
+          "\tinvalid := func(message string) int { fmt.Fprintln(stderr, message); fmt.Fprintln(stderr, usage); return 2 }",
+          "\tif len(args) == 0 {",
+          "\t\treturn invalid(\"missing subcommand\")",
+          "\t}",
+          "\tswitch args[0] {",
+          "\tcase \"--help\", \"-h\", \"help\":",
+          "\t\tfmt.Fprintln(stdout, usage)"
+        ]
+      },
+      {
+        "id": "Q07",
+        "name": "file_current_process",
+        "file_path": "bpf/file.bpf.c",
+        "start_line": 62,
+        "end_line": 93,
+        "matches_reported_source_slice": true,
+        "source_sha256": "51eb25a11f189317815b3a27299f08346e9a56217c7e574300dc32f30f0754e7",
+        "source_excerpt": [
+          "static __always_inline int file_current_process(struct agenttaint_raw_process *out,",
+          "\t\t\t\t\t\t\t__u32 *failure_reason)",
+          "{",
+          "\tstruct task_struct *task = bpf_get_current_task_btf();",
+          "\tif (!task) {",
+          "\t\t*failure_reason = AGENTTAINT_DROP_FILE_PROCESS_TASK;",
+          "\t\treturn -1;",
+          "\t}"
+        ]
+      },
+      {
+        "id": "Q07",
+        "name": "network_current_process",
+        "file_path": "bpf/network.bpf.c",
+        "start_line": 54,
+        "end_line": 82,
+        "matches_reported_source_slice": true,
+        "source_sha256": "c4a3da5a41d529cf0dfb01525b72e76c7075680ff7812d128646995d025fbb5b",
+        "source_excerpt": [
+          "static __always_inline int network_current_process(struct agenttaint_raw_process *out)",
+          "{",
+          "\tstruct task_struct *task = bpf_get_current_task_btf();",
+          "\tif (!task)",
+          "\t\treturn -1;",
+          "\t__u32 tid = BPF_CORE_READ(task, pid);",
+          "\t__u32 tgid = BPF_CORE_READ(task, tgid);",
+          "\t__u64 *known = bpf_map_lookup_elem(&process_births, &tid);"
+        ]
+      },
+      {
+        "id": "Q09",
+        "name": "agenttaint_raw_file_open",
+        "file_path": "bpf/events.h",
+        "start_line": 152,
+        "end_line": 202,
+        "matches_reported_source_slice": true,
+        "source_sha256": "04a9474376a68640f389be3407f9cd06d1184cb940fbc4f26739bb6a15c17ccf",
+        "source_excerpt": [
+          "_Static_assert(sizeof(struct agenttaint_raw_file_open) == 336, \"raw file-open ABI\");",
+          "_Static_assert(sizeof(struct agenttaint_raw_network_connect) == 80, \"raw network-connect ABI\");",
+          "",
+          "#endif"
+        ]
+      },
+      {
+        "id": "Q10",
+        "name": "MarkIncomplete",
+        "file_path": "internal/runner/policy_pipeline.go",
+        "start_line": 29,
+        "end_line": 33,
+        "matches_reported_source_slice": true,
+        "source_sha256": "ca4cdb550cf8890289efb4215a860f8d20390815ab005828241870877173ab6c",
+        "source_excerpt": [
+          "func (p *policyAuditProcessor) MarkIncomplete(reason string) {",
+          "\tif p != nil && p.engine != nil {",
+          "\t\tp.engine.MarkIncomplete(reason)",
+          "\t}",
+          "}"
+        ]
+      },
+      {
+        "id": "Q10",
+        "name": "MarkIncomplete",
+        "file_path": "internal/taint/engine.go",
+        "start_line": 178,
+        "end_line": 186,
+        "matches_reported_source_slice": true,
+        "source_sha256": "353d0d1416569698eaf29b9b39b886b74b67a997ebdfd1bc46f677f19ca0fe43",
+        "source_excerpt": [
+          "func (e *Engine) MarkIncomplete(reason string) {",
+          "\tif e == nil {",
+          "\t\treturn",
+          "\t}",
+          "\te.complete = false",
+          "\tif reason != \"\" {",
+          "\t\te.problems = append(e.problems, reason)",
+          "\t}"
+        ]
+      }
+    ],
+    "stale": {
+      "before_refresh": {
+        "search": [
+          {
+            "name": "GF02Before",
+            "qualified_name": "private-tmp-agenttaint-gf02-freshness-20261025.probe.GF02Before"
+          }
+        ],
+        "snippet": {
+          "name": "GF02Before",
+          "start_line": 3,
+          "source": "func GF02After() string { return \"after\" }\n"
+        }
+      },
+      "after_refresh": {
+        "total": 1,
+        "results": [
+          {
+            "name": "GF02After",
+            "file_path": "probe.go"
+          }
+        ]
+      }
+    }
+  },
+  "freshness_fixture": {
+    "before": "package probe\n\nfunc GF02Before() string { return \"before\" }\n",
+    "after": "package probe\n\nfunc GF02After() string { return \"after\" }\n",
+    "graphify_before_refresh": "GF02Before node at probe.go:L3",
+    "graphify_after_refresh": "GF02After node at probe.go:L3",
+    "intermediate_mcp_reindex": "included generated Graphify artifacts; cardinalities excluded from comparison; moved graph out and reindexed"
+  },
+  "actual_llm_tokens": "not_available",
+  "actual_cost_savings": "inconclusive",
+  "negative_control": "GF01 already observed nonexistent agenttaint_raw_event returns broad keyword candidates"
+}
